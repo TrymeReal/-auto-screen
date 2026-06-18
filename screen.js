@@ -467,7 +467,7 @@ function buildMsg(t, rug, grade, dex24h) {
   var supportLabel = dex24h && dex24h.priceChange24h ? 'Fib Level (24h)' : 'Est. Fib Level';
   msg += '\ud83d\udcca ' + supportLabel + ':\n';
   var f = calculateFibonacci(t.price, fibChange, t.market_cap, t.history_highest_market_cap);
-  msg += '\ud83d\udfe2 Support: $' + f.support + '\n';
+  msg += '\ud83d\udfe2 Support: $' + f.support + ' (referensi, cek chart)\n';
   msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
 
   var warnings = [];
