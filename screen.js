@@ -210,19 +210,20 @@ function calculateFibonacci(price, changePct, mc, athMc) {
   }
   var range = h - l;
   if (range < p * 0.05) range = p * 0.1;
+  var floor = p * 0.1;
   if (priceIsHigh) {
     return {
-      support: (h - range * 0.618).toFixed(10),
-      fair: (h - range * 0.5).toFixed(10),
+      support: Math.max(h - range * 0.618, floor).toFixed(10),
+      fair: Math.max(h - range * 0.5, floor).toFixed(10),
       resist: (h + range * 0.382).toFixed(10),
-      sl: (h - range * 1.272).toFixed(10),
+      sl: Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
     };
   } else {
     return {
-      support: (l - range * 0.272).toFixed(10),
-      fair: (l - range * 0.5).toFixed(10),
+      support: Math.max(l - range * 0.272, floor).toFixed(10),
+      fair: Math.max(l - range * 0.5, floor).toFixed(10),
       resist: (l + range * 0.382).toFixed(10),
-      sl: (l - range * 0.618).toFixed(10),
+      sl: Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
     };
   }
 }
