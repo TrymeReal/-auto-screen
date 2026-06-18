@@ -248,7 +248,22 @@ async function processTokens() {
         continue;
       }
       log(grade + ' ' + t.symbol + ' (LP: $' + t.liquidity + ', Vol: $' + t.volume + ', Rug: ' + rug.score + ')');
-      await sendTelegram(buildMessage(t, rug, grade));
+
+      var dex24h = null;
+      try {
+        var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + t.address, { timeout: 6000 });
+        var pair = (ds.data.pairs || []).find(p => p.priceUsd) || null;
+        if (pair) {
+          dex24h = {
+            vol24h: Number(pair.volume?.h24 || 0),
+            priceChange24h: Number(pair.priceChange?.h24 || 0),
+            dexName: pair.dexId || '',
+            url: pair.url || '',
+          };
+        }
+      } catch {}
+
+      await sendTelegram(buildMessage(t, rug, grade, dex24h));
       totalNotified++;
       if (grade !== 'SKIP' && t.price && Number(t.price) > 0) {
         TRACKED.set(t.address, {
@@ -374,7 +389,7 @@ function detectNarrative(name, symbol) {
   return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
 }
 
-function buildMsg(t, rug, grade) {
+function buildMsg(t, rug, grade, dex24h) {
   var re, ve, le;
   if (rug.score < 50) re = '\u2705'; else if (rug.score < 100) re = '\u26a0\ufe0f'; else re = '\ud83d\udea8';
   if (t.volume > 100000) ve = '\ud83d\ude80'; else if (t.volume > 50000) ve = '\ud83d\udcc8'; else ve = '\ud83d\udcca';
@@ -427,6 +442,8 @@ function buildMsg(t, rug, grade) {
   msg += '\ud83d\udcb0 Harga   : $' + t.price + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
   msg += '\ud83d\udcca MC      : $' + Number(t.market_cap).toLocaleString() + '\n';
+  if (dex24h && dex24h.vol24h > 0) msg += '\ud83d\udcca Vol 24h : $' + Number(dex24h.vol24h).toLocaleString() + '\n';
+  if (dex24h && dex24h.dexName) msg += '\ud83d\udee1\ufe0f DEX     : ' + dex24h.dexName + '\n';
   msg += '\u23f1\ufe0f Age     : ' + age + '\n';
   msg += '\ud83d\udc64 Creator : <code>' + rug.creator + '</code>' + dangerText + '\n';
   if (linkList) {
@@ -446,8 +463,10 @@ function buildMsg(t, rug, grade) {
   msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + '\n';
   msg += SEP + '\n';
 
-  msg += '\ud83d\udcca Est. Fib Level:\n';
-  var f = calculateFibonacci(t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap);
+  var fibChange = dex24h && dex24h.priceChange24h ? dex24h.priceChange24h : t.price_change_percent1h;
+  var supportLabel = dex24h && dex24h.priceChange24h ? 'Fib Level (24h)' : 'Est. Fib Level';
+  msg += '\ud83d\udcca ' + supportLabel + ':\n';
+  var f = calculateFibonacci(t.price, fibChange, t.market_cap, t.history_highest_market_cap);
   msg += '\ud83d\udfe2 Support: $' + f.support + '\n';
   msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
 
@@ -476,8 +495,8 @@ function buildMsg(t, rug, grade) {
   return msg;
 }
 
-function buildMessage(t, rug, grade) {
-  return buildMsg(t, rug, grade);
+function buildMessage(t, rug, grade, dex24h) {
+  return buildMsg(t, rug, grade, dex24h);
 }
 
 function doHealthCheck() {
