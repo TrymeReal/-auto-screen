@@ -196,26 +196,35 @@ function gradeToken(lp, vol, rugScore) {
 function calculateFibonacci(price, changePct, mc, athMc) {
   var p = Number(price);
   if (!p || p <= 0) p = 0.0001;
-  var h, l;
-  var athRatio = 1;
+  var h, l, priceIsHigh;
   if (athMc && mc && Number(athMc) > Number(mc)) {
-    athRatio = Number(athMc) / Number(mc);
-    h = p * Math.min(athRatio, 20);
+    var ratio = Math.min(Number(athMc) / Number(mc), 20);
+    h = p * ratio;
     l = p;
+    priceIsHigh = false;
   } else {
     var ch = Number(changePct) || 0;
-    if (ch > 0) { h = p; l = p / (1 + ch / 100); }
-    else if (ch < 0) { h = p / (1 + ch / 100); l = p; }
-    else { h = p * 1.5; l = p * 0.3; }
+    if (ch > 0) { h = p; l = p / (1 + ch / 100); priceIsHigh = true; }
+    else if (ch < 0) { h = p / (1 + ch / 100); l = p; priceIsHigh = false; }
+    else { h = p * 1.2; l = p * 0.8; priceIsHigh = false; }
   }
   var range = h - l;
   if (range < p * 0.05) range = p * 0.1;
-  return {
-    support: (h - range * 0.618).toFixed(10),
-    fair: (h - range * 0.5).toFixed(10),
-    resist: (h + range * 0.382).toFixed(10),
-    sl: (h - range * 0.85).toFixed(10),
-  };
+  if (priceIsHigh) {
+    return {
+      support: (h - range * 0.618).toFixed(10),
+      fair: (h - range * 0.5).toFixed(10),
+      resist: (h + range * 0.382).toFixed(10),
+      sl: (h - range * 1.272).toFixed(10),
+    };
+  } else {
+    return {
+      support: (l - range * 0.272).toFixed(10),
+      fair: (l - range * 0.5).toFixed(10),
+      resist: (l + range * 0.382).toFixed(10),
+      sl: (l - range * 0.618).toFixed(10),
+    };
+  }
 }
 
 async function processTokens() {
