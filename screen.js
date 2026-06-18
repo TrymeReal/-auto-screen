@@ -28,7 +28,7 @@ const LOG_FILE = path.join(__dirname, 'screen.log');
 
 const SEEN = new Map();
 const TRACKED = new Map();
-const TARGETS = [30, 50, 100, 200];
+const TARGETS = [30, 50, 100, 200, 500];
 let startTime = Date.now();
 let totalNotified = 0;
 
@@ -311,8 +311,12 @@ async function checkTrackedPositions(trendingTokens) {
       continue;
     }
 
-    while (pos.nextTargetIdx < TARGETS.length && gain >= TARGETS[pos.nextTargetIdx]) {
-      var target = TARGETS[pos.nextTargetIdx];
+    var highestIdx = -1;
+    for (var ti = 0; ti < TARGETS.length; ti++) {
+      if (gain >= TARGETS[ti]) highestIdx = ti;
+    }
+    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
+      var target = TARGETS[highestIdx];
       var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
@@ -325,7 +329,7 @@ async function checkTrackedPositions(trendingTokens) {
         'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
         '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>'
       );
-      pos.nextTargetIdx++;
+      pos.nextTargetIdx = highestIdx + 1;
       savePositions();
     }
   }
