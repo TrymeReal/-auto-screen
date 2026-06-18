@@ -182,14 +182,18 @@ async function getRugCheck(ca) {
   } catch { return { score: 999, risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
 }
 
-async function sendTelegram(msg) {
+async function sendTelegram(msg, replyTo) {
   try {
-    await axios.post(TG_API, { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' }, { timeout: 10000 });
+    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+    if (replyTo) payload.reply_to_message_id = replyTo;
+    var res = await axios.post(TG_API, payload, { timeout: 10000 });
+    return res.data.result?.message_id || null;
   } catch (e) {
     var desc = '';
     if (e.response && e.response.data && e.response.data.description) desc = e.response.data.description;
     else desc = e.message;
     log('TG error: ' + desc);
+    return null;
   }
 }
 
@@ -293,7 +297,7 @@ async function processTokens() {
         }
       } catch {}
 
-      await sendTelegram(buildMessage(t, rug, grade, dex24h));
+      var msgId = await sendTelegram(buildMessage(t, rug, grade, dex24h));
       totalNotified++;
       if (grade !== 'SKIP' && t.price && Number(t.price) > 0) {
         TRACKED.set(t.address, {
@@ -303,6 +307,7 @@ async function processTokens() {
           entryPrice: Number(t.price),
           entryAt: Date.now(),
           nextTargetIdx: 0,
+          msgId: msgId,
         });
         log('Tracked ' + t.symbol + ' @ $' + t.price);
       }
@@ -351,7 +356,8 @@ async function checkTrackedPositions(trendingTokens) {
       var riskLabel = pos.grade === 'GOLD' ? 'Low Risk' : 'High Risk';
       await sendTelegram(
         gradeEmoji + ' 🗑️ ' + riskLabel + ' | <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
-        'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10)
+        'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
+        pos.msgId
       );
       continue;
     }
@@ -372,7 +378,8 @@ async function checkTrackedPositions(trendingTokens) {
         'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
         'Sekarang: $' + currentPrice.toFixed(10) + '\n' +
         'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
-        '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>'
+        '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+        pos.msgId
       );
       pos.nextTargetIdx = highestIdx + 1;
       savePositions();
