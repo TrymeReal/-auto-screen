@@ -183,20 +183,20 @@ function gradeToken(lp, vol, rugScore) {
   return 'SKIP';
 }
 
-function calculateFibonacci(price, changePct) {
+function calculateFibonacci(price, changePct, mc, athMc) {
   var p = Number(price);
   if (!p || p <= 0) p = 0.0001;
-  var ch = Number(changePct) || 0;
   var h, l;
-  if (ch > 0) {
-    h = p;
-    l = p / (1 + ch / 100);
-  } else if (ch < 0) {
-    h = p / (1 + ch / 100);
+  var athRatio = 1;
+  if (athMc && mc && Number(athMc) > Number(mc)) {
+    athRatio = Number(athMc) / Number(mc);
+    h = p * Math.min(athRatio, 20);
     l = p;
   } else {
-    h = p * 1.5;
-    l = p * 0.3;
+    var ch = Number(changePct) || 0;
+    if (ch > 0) { h = p; l = p / (1 + ch / 100); }
+    else if (ch < 0) { h = p / (1 + ch / 100); l = p; }
+    else { h = p * 1.5; l = p * 0.3; }
   }
   var range = h - l;
   if (range < p * 0.05) range = p * 0.1;
@@ -422,7 +422,8 @@ function buildMsg(t, rug, grade) {
   msg += SEP + '\n';
   msg += le + ' LP      : $' + Number(t.liquidity).toLocaleString() + '\n';
   msg += ve + ' Vol 1h  : $' + Number(t.volume).toLocaleString() + '\n';
-  msg += re + ' RugCheck: ' + rug.score + ' ' + (rug.score < 100 ? 'Aman' : 'Bahaya!') + '\n';
+  var rugLabel = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
+  msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')\n';
   msg += '\ud83d\udcb0 Harga   : $' + t.price + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
   msg += '\ud83d\udcca MC      : $' + Number(t.market_cap).toLocaleString() + '\n';
@@ -442,11 +443,11 @@ function buildMsg(t, rug, grade) {
   msg += '\ud83d\udc64 Creator: ' + creatorHold + '%\n';
   msg += '\u267b\ufe0f Burn: ' + burnPct + '%\n';
   msg += 'Mint: ' + mi + ' | Freeze: ' + fr + ' | Honeypot: ' + hp + '\n';
-  msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + ' | Fresh: 0' + '\n';
+  msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + '\n';
   msg += SEP + '\n';
 
-  msg += '\ud83d\udcca Fib Level:\n';
-  var f = calculateFibonacci(t.price, t.price_change_percent1h);
+  msg += '\ud83d\udcca Est. Fib Level:\n';
+  var f = calculateFibonacci(t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap);
   msg += '\ud83d\udfe2 Support: $' + f.support + '\n';
   msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
 
