@@ -23,9 +23,12 @@ if (!CFG.tgToken || !CFG.tgChatId) {
 
 const TG_API = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
 const SEEN_FILE = path.join(__dirname, 'seen.json');
+const POSITIONS_FILE = path.join(__dirname, 'positions.json');
 const LOG_FILE = path.join(__dirname, 'screen.log');
 
 const SEEN = new Map();
+const TRACKED = new Map();
+const TARGETS = [30, 50, 100, 200];
 let startTime = Date.now();
 let totalNotified = 0;
 
@@ -69,6 +72,29 @@ function cleanupSeen() {
     if (entry.firstSeen < cutoff) { SEEN.delete(ca); deleted++; }
   }
   if (deleted > 0) { log('Cleaned up ' + deleted + ' old entries'); saveSeen(); }
+}
+
+function loadPositions() {
+  try {
+    const raw = fs.readFileSync(POSITIONS_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    for (const [ca, entry] of Object.entries(data.entries || {})) {
+      TRACKED.set(ca, entry);
+    }
+    log('Loaded ' + TRACKED.size + ' tracked positions');
+  } catch {
+    log('No existing positions.json, starting fresh');
+  }
+}
+
+function savePositions() {
+  try {
+    fs.writeFileSync(POSITIONS_FILE, JSON.stringify({
+      version: 1, savedAt: Date.now(), entries: Object.fromEntries(TRACKED),
+    }));
+  } catch (e) {
+    log('Failed to save positions.json: ' + e.message);
+  }
 }
 
 async function getWithRetry(url, opts, retries) {
@@ -224,13 +250,86 @@ async function processTokens() {
       log(grade + ' ' + t.symbol + ' (LP: $' + t.liquidity + ', Vol: $' + t.volume + ', Rug: ' + rug.score + ')');
       await sendTelegram(buildMessage(t, rug, grade));
       totalNotified++;
+      if (grade !== 'SKIP' && t.price && Number(t.price) > 0) {
+        TRACKED.set(t.address, {
+          symbol: t.symbol,
+          name: t.name,
+          grade: grade,
+          entryPrice: Number(t.price),
+          entryAt: Date.now(),
+          nextTargetIdx: 0,
+        });
+        log('Tracked ' + t.symbol + ' @ $' + t.price);
+      }
     } catch (e) {
       log('RugCheck error for ' + t.symbol + ': ' + e.message);
     }
   }
   saveSeen();
+  savePositions();
   cleanupSeen();
+  if (TRACKED.size > 0) {
+    await checkTrackedPositions(tokens);
+    savePositions();
+  }
   log('Cycle done. Total notified: ' + totalNotified);
+}
+
+async function checkTrackedPositions(trendingTokens) {
+  var priceMap = {};
+  for (let i = 0; i < trendingTokens.length; i++) {
+    var tt = trendingTokens[i];
+    if (tt.address && tt.price) priceMap[tt.address] = Number(tt.price);
+  }
+
+  var toRemove = [];
+  for (const [ca, pos] of TRACKED) {
+    var currentPrice = priceMap[ca];
+
+    if (!currentPrice) {
+      try {
+        var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + ca, { timeout: 8000 });
+        var pairs = ds.data.pairs || [];
+        var best = pairs.find(p => p.priceUsd) || pairs[0] || null;
+        if (best && best.priceUsd) currentPrice = Number(best.priceUsd);
+      } catch {}
+    }
+
+    if (!currentPrice || currentPrice <= 0) continue;
+
+    var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+
+    if (gain <= -80) {
+      log(pos.symbol + ' dropped >80%, removing tracking');
+      toRemove.push(ca);
+      await sendTelegram(
+        '🗑️ <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
+        'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10)
+      );
+      continue;
+    }
+
+    while (pos.nextTargetIdx < TARGETS.length && gain >= TARGETS[pos.nextTargetIdx]) {
+      var target = TARGETS[pos.nextTargetIdx];
+      var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
+      log(pos.symbol + ' hit target +' + target + '%');
+      await sendTelegram(
+        emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
+        '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
+        'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
+        'Sekarang: $' + currentPrice.toFixed(10) + '\n' +
+        'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
+        '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>'
+      );
+      pos.nextTargetIdx++;
+      savePositions();
+    }
+  }
+
+  for (var i = 0; i < toRemove.length; i++) {
+    TRACKED.delete(toRemove[i]);
+  }
+  if (toRemove.length > 0) savePositions();
 }
 
 function detectNarrative(name, symbol) {
@@ -380,6 +479,7 @@ log('Interval: ' + CFG.interval + 's');
 log('');
 
 loadSeen();
+loadPositions();
 if (process.env.CI === 'true') {
   processTokens().then(() => process.exit(0));
 } else {
