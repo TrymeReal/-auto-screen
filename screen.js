@@ -158,8 +158,11 @@ async function getRugCheck(ca) {
       risks: riskNames.join(', '),
       creator: d.creator || d.owner || '?',
       topDangers: dangerFlags.slice(0, 3),
+      tokenType: d.tokenType || '',
+      rugged: d.rugged || false,
+      deployPlatform: d.deployPlatform || '',
     };
-  } catch { return { score: 999, risks: 'Fetch failed', creator: '?', topDangers: [] }; }
+  } catch { return { score: 999, risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
 }
 
 async function sendTelegram(msg) {
@@ -438,7 +441,10 @@ function buildMsg(t, rug, grade, dex24h) {
   msg += le + ' LP      : $' + Number(t.liquidity).toLocaleString() + '\n';
   msg += ve + ' Vol 1h  : $' + Number(t.volume).toLocaleString() + '\n';
   var rugLabel = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
-  msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')\n';
+  msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
+  if (rug.tokenType && rug.tokenType !== 'unknown') msg += ' | ' + rug.tokenType;
+  if (rug.deployPlatform) msg += ' | ' + rug.deployPlatform;
+  msg += '\n';
   msg += '\ud83d\udcb0 Harga   : $' + t.price + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
   msg += '\ud83d\udcca MC      : $' + Number(t.market_cap).toLocaleString() + '\n';
