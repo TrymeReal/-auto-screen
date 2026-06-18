@@ -459,6 +459,7 @@ function buildMsg(t, rug, grade) {
   }
   if (Number(creatorHold) > 5) warnings.push('👤 Creator hold ' + creatorHold + '% — rawan dump');
   if (Number(bundler) > 20 && Number(top10) > 30) warnings.push('🔄 Bundler ' + bundler + '% + Top10 ' + top10 + '% — kombinasi bahaya');
+  if (t.bot_degen_count > 100) warnings.push('🤖 Bots ' + t.bot_degen_count + ' dari ' + (t.holder_count || 0).toLocaleString() + ' holders — rawan bot activity');
   if (t.volume && t.volume < CFG.minVol * 2) warnings.push('📊 Volume tipis ($' + Number(t.volume).toLocaleString() + ') — rawan manipulasi');
   for (var wi = 0; wi < warnings.length; wi++) {
     msg += '\u26a0\ufe0f ' + warnings[wi] + '\n';
