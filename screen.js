@@ -449,6 +449,21 @@ function buildMsg(t, rug, grade) {
   var f = calculateFibonacci(t.price, t.price_change_percent1h);
   msg += '\ud83d\udfe2 Support: $' + f.support + '\n';
   msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
+
+  var warnings = [];
+  var currentPrice = Number(t.price);
+  var supportPrice = Number(f.support);
+  if (currentPrice > 0 && supportPrice > 0) {
+    var pctAbove = ((currentPrice - supportPrice) / supportPrice) * 100;
+    if (pctAbove > 20) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — jangan FOMO');
+  }
+  if (Number(creatorHold) > 5) warnings.push('👤 Creator hold ' + creatorHold + '% — rawan dump');
+  if (Number(bundler) > 20 && Number(top10) > 30) warnings.push('🔄 Bundler ' + bundler + '% + Top10 ' + top10 + '% — kombinasi bahaya');
+  if (t.volume && t.volume < CFG.minVol * 2) warnings.push('📊 Volume tipis ($' + Number(t.volume).toLocaleString() + ') — rawan manipulasi');
+  for (var wi = 0; wi < warnings.length; wi++) {
+    msg += '\u26a0\ufe0f ' + warnings[wi] + '\n';
+  }
+
   msg += SEP + '\n';
 
   msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
