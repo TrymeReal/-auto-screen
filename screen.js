@@ -302,8 +302,9 @@ async function checkTrackedPositions(trendingTokens) {
     if (gain <= -80) {
       log(pos.symbol + ' dropped >80%, removing tracking');
       toRemove.push(ca);
+      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
       await sendTelegram(
-        '🗑️ <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
+        gradeEmoji + ' 🗑️ <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
         'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10)
       );
       continue;
@@ -313,8 +314,9 @@ async function checkTrackedPositions(trendingTokens) {
       var target = TARGETS[pos.nextTargetIdx];
       var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
+      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
       await sendTelegram(
-        emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
+        gradeEmoji + ' ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
         '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
         'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
         'Sekarang: $' + currentPrice.toFixed(10) + '\n' +
@@ -407,8 +409,9 @@ function buildMsg(t, rug, grade) {
   var SEP = '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
 
   var nar = detectNarrative(t.name, t.symbol);
+  var gradeEmoji = grade === 'GOLD' ? '🟢' : '🔴';
   var msg = '';
-  msg += '<b>' + grade + '</b> | ' + nar.category + ' | ' + t.name + ' (<code>' + t.symbol + '</code>)\n';
+  msg += gradeEmoji + ' <b>' + grade + '</b> | ' + nar.category + ' | ' + t.name + ' (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
   msg += le + ' LP      : $' + Number(t.liquidity).toLocaleString() + '\n';
   msg += ve + ' Vol 1h  : $' + Number(t.volume).toLocaleString() + '\n';
