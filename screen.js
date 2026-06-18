@@ -39,6 +39,16 @@ function fmt(n) {
   return Number(n).toFixed(2);
 }
 
+function fmtPrice(n) {
+  var v = Number(n);
+  if (!v || isNaN(v)) return '0';
+  if (v >= 1000) return (v / 1000).toFixed(2) + 'K';
+  if (v >= 1) return v.toFixed(4);
+  if (v >= 0.0001) return v.toFixed(6);
+  if (v >= 0.000001) return v.toFixed(8);
+  return v.toFixed(10);
+}
+
 function timeNow() {
   return new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
 }
@@ -462,7 +472,7 @@ function buildMsg(t, rug, grade, dex24h) {
   if (rug.tokenType && rug.tokenType !== 'unknown') msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
-  msg += '\ud83d\udcb0 Harga   : $' + t.price + chg1h + '\n';
+  msg += '\ud83d\udcb0 Harga   : $' + fmtPrice(t.price) + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
   msg += '\ud83d\udcca MC      : $' + fmt(t.market_cap) + '\n';
   if (dex24h && dex24h.vol24h > 0) msg += '\ud83d\udcca Vol 24h : $' + fmt(dex24h.vol24h) + '\n';
@@ -490,7 +500,7 @@ function buildMsg(t, rug, grade, dex24h) {
   var supportLabel = dex24h && dex24h.priceChange24h ? 'Fib Level (24h)' : 'Est. Fib Level';
   msg += '\ud83d\udcca ' + supportLabel + ':\n';
   var f = calculateFibonacci(t.price, fibChange, t.market_cap, t.history_highest_market_cap);
-  msg += '\ud83d\udfe2 Support: $' + f.support + ' (referensi, cek chart)\n';
+  msg += '\ud83d\udfe2 Support: $' + fmtPrice(f.support) + ' (referensi, cek chart)\n';
   msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
 
   var warnings = [];
