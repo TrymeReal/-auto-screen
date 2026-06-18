@@ -2,6 +2,7 @@ require('dotenv').config();
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const CFG = {
@@ -183,6 +184,54 @@ async function getRugCheck(ca) {
   } catch { return { score: 999, risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
 }
 
+async function fetchGMGNKline(address, resolution = '1h', fromMs, toMs) {
+  try {
+    const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
+    const ts = Math.floor(Date.now() / 1000);
+    const cid = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
+    const url = host + '/v1/market/token_kline?chain=sol&address=' + address + '&resolution=' + resolution + '&from=' + Math.floor(fromMs) + '&to=' + Math.floor(toMs) + '&timestamp=' + ts + '&client_id=' + cid;
+    const res = await axios.get(url, {
+      headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
+      timeout: 10000,
+    });
+    return res.data?.list || null;
+  } catch {
+    return null;
+  }
+}
+
+function calculateFibFromKline(candles, currentPrice) {
+  if (!candles || candles.length < 6) return null;
+  var closes = candles.map(function(c) { return Number(c.close); }).filter(function(v) { return v > 0; });
+  if (closes.length < 6) return null;
+  var sorted = closes.slice().sort(function(a, b) { return a - b; });
+  var trimIdx = Math.max(1, Math.floor(sorted.length * 0.15));
+  var trimmed = sorted.slice(trimIdx, sorted.length - trimIdx);
+  var swingHigh = trimmed[trimmed.length - 1];
+  var swingLow = trimmed[0];
+  var range = swingHigh - swingLow;
+  if (range <= 0 || isNaN(range)) return null;
+  var midpoint = (swingHigh + swingLow) / 2;
+  var aboveMid = currentPrice >= midpoint;
+  var floor = currentPrice * 0.1;
+  if (aboveMid) {
+    return {
+      support: Math.max(swingHigh - range * 0.618, floor).toFixed(10),
+      fair: Math.max(swingHigh - range * 0.382, floor).toFixed(10),
+      resist: (swingHigh + range * 0.382).toFixed(10),
+      sl: Math.max(swingHigh - range * 1.272, floor * 0.5).toFixed(10),
+      source: 'kline',
+    };
+  }
+  return {
+    support: Math.max(swingLow - range * 0.272, floor).toFixed(10),
+    fair: Math.max(swingLow + range * 0.382, floor).toFixed(10),
+    resist: (swingLow + range * 0.618).toFixed(10),
+    sl: Math.max(swingLow - range * 0.618, floor * 0.5).toFixed(10),
+    source: 'kline',
+  };
+}
+
 async function sendTelegram(msg, replyTo) {
   try {
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
@@ -285,21 +334,19 @@ async function processTokens() {
       }
       log(grade + ' ' + t.symbol + ' (LP: $' + t.liquidity + ', Vol: $' + t.volume + ', Rug: ' + rug.score + ')');
 
-      var dex24h = null;
-      try {
-        var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + t.address, { timeout: 6000 });
-        var pair = (ds.data.pairs || []).find(p => p.priceUsd) || null;
-        if (pair) {
-          dex24h = {
-            vol24h: Number(pair.volume?.h24 || 0),
-            priceChange24h: Number(pair.priceChange?.h24 || 0),
-            dexName: pair.dexId || '',
-            url: pair.url || '',
-          };
+      var fibData = null;
+      if (grade === 'GOLD' && t.price && Number(t.price) > 0) {
+        var now = Date.now();
+        var kline = await fetchGMGNKline(t.address, '1h', now - 86400000, now);
+        if (kline) {
+          fibData = calculateFibFromKline(kline, Number(t.price));
         }
-      } catch {}
+      }
+      if (!fibData) {
+        log('Fib fallback (GMGN) for ' + t.symbol);
+      }
 
-      var msgId = await sendTelegram(buildMessage(t, rug, grade, dex24h));
+      var msgId = await sendTelegram(buildMessage(t, rug, grade, null, fibData));
       totalNotified++;
       if (grade !== 'SKIP' && t.price && Number(t.price) > 0) {
         TRACKED.set(t.address, {
@@ -428,7 +475,7 @@ function detectNarrative(name, symbol) {
   return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
 }
 
-function buildMsg(t, rug, grade, dex24h) {
+function buildMsg(t, rug, grade, dex24h, fibData) {
   var re, ve, le;
   if (rug.score < 50) re = '\u2705'; else if (rug.score < 100) re = '\u26a0\ufe0f'; else re = '\ud83d\udea8';
   if (t.volume > 100000) ve = '\ud83d\ude80'; else if (t.volume > 50000) ve = '\ud83d\udcc8'; else ve = '\ud83d\udcca';
@@ -505,10 +552,14 @@ function buildMsg(t, rug, grade, dex24h) {
   msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + '\n';
   msg += SEP + '\n';
 
-  var fibChange = dex24h && dex24h.priceChange24h ? dex24h.priceChange24h : t.price_change_percent1h;
-  var supportLabel = dex24h && dex24h.priceChange24h ? 'Fib Level (24h)' : 'Est. Fib Level';
-  msg += '\ud83d\udcca ' + supportLabel + ':\n';
-  var f = calculateFibonacci(t.price, fibChange, t.market_cap, t.history_highest_market_cap);
+  var f;
+  if (fibData) {
+    f = fibData;
+  } else {
+    f = calculateFibonacci(t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap);
+  }
+  var fibLabel = fibData && fibData.source === 'kline' ? 'Fib Level (Kline 24h)' : 'Est. Fib Level';
+  msg += '\ud83d\udcca ' + fibLabel + ':\n';
   msg += '\ud83d\udfe2 Support: $' + fmtPrice(f.support) + ' (referensi, cek chart)\n';
   msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
 
@@ -537,8 +588,8 @@ function buildMsg(t, rug, grade, dex24h) {
   return msg;
 }
 
-function buildMessage(t, rug, grade, dex24h) {
-  return buildMsg(t, rug, grade, dex24h);
+function buildMessage(t, rug, grade, dex24h, fibData) {
+  return buildMsg(t, rug, grade, dex24h, fibData);
 }
 
 function doHealthCheck() {
