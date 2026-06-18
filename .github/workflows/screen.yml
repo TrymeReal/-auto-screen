@@ -1,0 +1,39 @@
+name: Auto Screen
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore seen.json
+        id: cache-seen
+        uses: actions/cache@v4
+        with:
+          path: seen.json
+          key: seen-${{ github.run_id }}
+          restore-keys: seen-
+
+      - run: npm install
+
+      - run: npm install -g gmgn-cli
+
+      - run: node screen.js
+        env:
+          CI: 'true'
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          MIN_LP: ${{ secrets.MIN_LP }}
+          MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
+          MAX_RUG_SCORE: ${{ secrets.MAX_RUG_SCORE }}
+          MIN_BUY_RATIO: ${{ secrets.MIN_BUY_RATIO }}

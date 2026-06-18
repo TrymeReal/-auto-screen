@@ -1,0 +1,388 @@
+require('dotenv').config();
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const CFG = {
+  minLp: Number(process.env.MIN_LP) || 15000,
+  minVol: Number(process.env.MIN_VOL_5M) || 3000,
+  maxRugScore: Number(process.env.MAX_RUG_SCORE) || 100,
+  interval: Number(process.env.POLL_INTERVAL) || 60,
+  healthInterval: Number(process.env.HEALTH_INTERVAL) || 3600,
+  seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
+  tgToken: process.env.TG_TOKEN,
+  tgChatId: process.env.TG_CHAT_ID,
+  minBuyRatio: Number(process.env.MIN_BUY_RATIO) || 0,
+};
+
+if (!CFG.tgToken || !CFG.tgChatId) {
+  console.error('Isi TG_TOKEN dan TG_CHAT_ID di .env');
+  process.exit(1);
+}
+
+const TG_API = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
+const SEEN_FILE = path.join(__dirname, 'seen.json');
+const LOG_FILE = path.join(__dirname, 'screen.log');
+
+const SEEN = new Map();
+let startTime = Date.now();
+let totalNotified = 0;
+
+function timeNow() {
+  return new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+}
+
+function log(msg) {
+  const line = '[' + timeNow() + '] ' + msg;
+  console.log(line);
+  fs.appendFileSync(LOG_FILE, line + '\n');
+}
+
+function loadSeen() {
+  try {
+    const raw = fs.readFileSync(SEEN_FILE, 'utf8');
+    const data = JSON.parse(raw);
+    for (const [ca, entry] of Object.entries(data.entries || {})) {
+      SEEN.set(ca, entry);
+    }
+    log('Loaded ' + SEEN.size + ' seen tokens');
+  } catch {
+    log('No existing seen.json, starting fresh');
+  }
+}
+
+function saveSeen() {
+  try {
+    fs.writeFileSync(SEEN_FILE, JSON.stringify({
+      version: 2, savedAt: Date.now(), entries: Object.fromEntries(SEEN),
+    }));
+  } catch (e) {
+    log('Failed to save seen.json: ' + e.message);
+  }
+}
+
+function cleanupSeen() {
+  const cutoff = Date.now() - CFG.seenCleanupDays * 86400000;
+  let deleted = 0;
+  for (const [ca, entry] of SEEN) {
+    if (entry.firstSeen < cutoff) { SEEN.delete(ca); deleted++; }
+  }
+  if (deleted > 0) { log('Cleaned up ' + deleted + ' old entries'); saveSeen(); }
+}
+
+async function getWithRetry(url, opts, retries) {
+  const maxRetries = retries ?? 3;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await axios.get(url, { timeout: 10000, ...(opts || {}) });
+    } catch (e) {
+      if (i === maxRetries - 1) throw e;
+      await new Promise(r => setTimeout(r, (i + 1) * 1000));
+    }
+  }
+}
+
+function fetchGmgnTrending() {
+  try {
+    const out = execSync(
+      'npx gmgn-cli market trending --chain sol --interval 1h --limit 100 --raw',
+      {
+        encoding: 'utf8',
+        timeout: 30000,
+        env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' }
+      }
+    );
+    const d = JSON.parse(out);
+    if (!d.data || !d.data.rank) return [];
+    log('GMGN trending: ' + d.data.rank.length + ' tokens');
+    return d.data.rank;
+  } catch (e) {
+    log('GMGN trending error: ' + e.message);
+    return [];
+  }
+}
+
+function isMigratedDex(t) {
+  var ex = t.exchange;
+  return ex && ex !== 'pump';
+}
+
+function timeAgo(ts) {
+  if (!ts) return '?';
+  const diff = Date.now() - ts * 1000;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Baru saja';
+  if (mins < 60) return mins + 'm';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'j';
+  return Math.floor(hrs / 24) + 'h';
+}
+
+async function getRugCheck(ca) {
+  try {
+    const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
+    const d = res.data;
+    const riskNames = (d.risks || []).map(r => r.name);
+    const dangerFlags = riskNames.filter(n =>
+      /mint|freeze|owner|creator|authority|supply|single|concentrat/i.test(n)
+    );
+    return {
+      score: d.score || 0,
+      risks: riskNames.join(', '),
+      creator: d.creator || d.owner || '?',
+      topDangers: dangerFlags.slice(0, 3),
+    };
+  } catch { return { score: 999, risks: 'Fetch failed', creator: '?', topDangers: [] }; }
+}
+
+async function sendTelegram(msg) {
+  try {
+    await axios.post(TG_API, { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' }, { timeout: 10000 });
+  } catch (e) {
+    var desc = '';
+    if (e.response && e.response.data && e.response.data.description) desc = e.response.data.description;
+    else desc = e.message;
+    log('TG error: ' + desc);
+  }
+}
+
+function gradeToken(lp, vol, rugScore) {
+  let score = 0;
+  if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
+  if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
+  if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
+  if (score >= 80) return 'GOLD';
+  if (score >= 60) return 'POTENSIAL';
+  return 'SKIP';
+}
+
+function calculateFibonacci(price, changePct) {
+  var p = Number(price);
+  if (!p || p <= 0) p = 0.0001;
+  var ch = Number(changePct) || 0;
+  var h, l;
+  if (ch > 0) {
+    h = p;
+    l = p / (1 + ch / 100);
+  } else if (ch < 0) {
+    h = p / (1 + ch / 100);
+    l = p;
+  } else {
+    h = p * 1.5;
+    l = p * 0.3;
+  }
+  var range = h - l;
+  if (range < p * 0.05) range = p * 0.1;
+  return {
+    support: (h - range * 0.618).toFixed(10),
+    fair: (h - range * 0.5).toFixed(10),
+    resist: (h + range * 0.382).toFixed(10),
+    sl: (h - range * 0.85).toFixed(10),
+  };
+}
+
+async function processTokens() {
+  log('========== SCREENING ==========');
+  var tokens = fetchGmgnTrending();
+  if (tokens.length === 0) { log('No tokens from GMGN'); return; }
+
+  var dexTokens = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (!t.address || SEEN.has(t.address)) continue;
+    if (!isMigratedDex(t)) { log('SKIP ' + (t.symbol || '?') + ' (still ' + (t.exchange || 'pump') + ')'); continue; }
+    dexTokens.push(t);
+  }
+
+  log('DEX migrated & unseen: ' + dexTokens.length);
+
+  for (let i = 0; i < dexTokens.length; i++) {
+    const t = dexTokens[i];
+    const totalTxn = t.buys + t.sells;
+    if (totalTxn > 0) {
+      const buyPct = (t.buys / totalTxn) * 100;
+      if (buyPct < CFG.minBuyRatio) { log('SKIP ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '% < ' + CFG.minBuyRatio + '%)'); continue; }
+    }
+    if (t.volume < CFG.minVol) { log('SKIP ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
+    if (t.liquidity < CFG.minLp) { log('SKIP ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
+
+    SEEN.set(t.address, { firstSeen: Date.now() });
+
+    log('RugCheck: ' + t.symbol + ' (' + t.address + ')');
+    try {
+      const rug = await getRugCheck(t.address);
+      if (rug.score > CFG.maxRugScore) {
+        log('SKIP ' + t.symbol + ' (Rug ' + rug.score + ')');
+        continue;
+      }
+      const grade = gradeToken(t.liquidity, t.volume, rug.score);
+      if (grade === 'SKIP') {
+        log('SKIP ' + t.symbol);
+        continue;
+      }
+      log(grade + ' ' + t.symbol + ' (LP: $' + t.liquidity + ', Vol: $' + t.volume + ', Rug: ' + rug.score + ')');
+      await sendTelegram(buildMessage(t, rug, grade));
+      totalNotified++;
+    } catch (e) {
+      log('RugCheck error for ' + t.symbol + ': ' + e.message);
+    }
+  }
+  saveSeen();
+  cleanupSeen();
+  log('Cycle done. Total notified: ' + totalNotified);
+}
+
+function detectNarrative(name, symbol) {
+  var s = ((name || '') + ' ' + (symbol || '')).toLowerCase();
+  var cat = [], tag = [];
+
+  var animalKws = {dog: '🐕', cat: '🐱', frog: '🐸', pepe: '🐸', horse: '🐴', bird: '🐦', fish: '🐟', wolf: '🐺', bear: '🐻', bull: '🐂', dragon: '🐉', whale: '🐋', shark: '🦈', lion: '🦁', tiger: '🐯', panda: '🐼', snake: '🐍', rabbit: '🐇', turtle: '🐢', duck: '🦆', seal: '🦭', koala: '🐨', monkey: '🐵', gorilla: '🦍', hippo: '🦛', fox: '🦊', rat: '🐀', hamster: '🐹', owl: '🦉', eagle: '🦅', penguin: '🐧'};
+  for (var kw in animalKws) { if (s.includes(kw)) { cat.push(animalKws[kw] + ' Animal'); tag.push(kw.charAt(0).toUpperCase() + kw.slice(1)); break; } }
+
+  var celebKws = ['trump', 'musk', 'elon', 'kanye', 'biden', 'obama', 'hawk', 'pnut', 'taylor', 'kamala', 'vance', 'melania', 'barron'];
+  for (var i = 0; i < celebKws.length; i++) { if (s.includes(celebKws[i])) { cat.push('🎭 Celebrity'); tag.push(celebKws[i].charAt(0).toUpperCase() + celebKws[i].slice(1)); break; } }
+
+  var aiKws = ['ai', 'gpt', 'claude', 'agent', 'neural', 'deep', 'grok', 'chatbot', 'llm', 'tokenai', 'bot', 'predict'];
+  for (var j = 0; j < aiKws.length; j++) { if (s.includes(aiKws[j]) && !cat.length) { cat.push('🤖 AI/Agent'); tag.push('AI'); break; } }
+
+  var gameKws = ['game', 'play', 'guild', 'raid', 'arena', 'legends', 'gaming', 'rpg', 'pixel'];
+  for (var k = 0; k < gameKws.length; k++) { if (s.includes(gameKws[k])) { cat.push('🎮 Gaming'); tag.push('Gaming'); break; } }
+
+  var defiKws = ['swap', 'lend', 'borrow', 'stake', 'yield', 'vault', 'farm', 'defi', 'liquid'];
+  for (var l = 0; l < defiKws.length; l++) { if (s.includes(defiKws[l])) { cat.push('🏛️ DeFi'); tag.push('DeFi'); break; } }
+
+  var cultureKws = ['degen', 'based', 'wagmi', 'ngmi', 'fren', 'ser', 'dao', 'moon', 'lambo', 'wen', 'gm', 'chad', 'soy', 'normie'];
+  for (var m = 0; m < cultureKws.length; m++) { if (s.includes(cultureKws[m]) && !cat.length) { cat.push('💎 Culture'); tag.push('Culture'); break; } }
+
+  var infraKws = ['bridge', 'oracle', 'layer', 'protocol', 'infra', 'cross', 'inter'];
+  for (var n = 0; n < infraKws.length; n++) { if (s.includes(infraKws[n])) { cat.push('🔧 Infra'); tag.push('Infra'); break; } }
+
+  if (!cat.length) {
+    var symDigits = (symbol || '').replace(/[^a-zA-Z]/g, '');
+    if (symDigits !== (symbol || '')) { cat.push('🔄 Copycat'); tag.push('Copycat'); }
+    else { cat.push('🔷 Meme'); tag.push('Meme'); }
+  }
+
+  return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
+}
+
+function buildMsg(t, rug, grade) {
+  var re, ve, le;
+  if (rug.score < 50) re = '\u2705'; else if (rug.score < 100) re = '\u26a0\ufe0f'; else re = '\ud83d\udea8';
+  if (t.volume > 100000) ve = '\ud83d\ude80'; else if (t.volume > 50000) ve = '\ud83d\udcc8'; else ve = '\ud83d\udcca';
+  if (t.liquidity > 100000) le = '\ud83d\udfe2'; else if (t.liquidity > 50000) le = '\ud83d\udfe1'; else le = '\ud83d\udd35';
+
+  var ratio = '?';
+  var totalTxn = t.buys + t.sells;
+  if (totalTxn > 0) ratio = (t.buys / totalTxn * 100).toFixed(0) + '%';
+
+  var age = timeAgo(t.creation_timestamp);
+
+  var chg1h = '';
+  if (t.price_change_percent1h != null) {
+    if (t.price_change_percent1h > 0) chg1h = ' \ud83d\udcc8 +' + Number(t.price_change_percent1h).toFixed(1) + '%';
+    else chg1h = ' \ud83d\udcc9 ' + Number(t.price_change_percent1h).toFixed(1) + '%';
+  }
+
+  var linkParts = [];
+  if (t.twitter_username) linkParts.push(' <a href="' + t.twitter_username + '">Twitter</a>');
+  if (t.website) linkParts.push(' <a href="' + t.website + '">Web</a>');
+  if (t.telegram) linkParts.push(' <a href="' + t.telegram + '">TG</a>');
+  var linkList = linkParts.join(' | ');
+
+  var dangerText = '';
+  if (rug.topDangers.length > 0) {
+    dangerText = '\n\u26a0\ufe0f Dangers: ' + rug.topDangers.join(', ');
+  }
+
+  var mi = t.renounced_mint === 1 ? '\u2705' : '\u274c';
+  var fr = t.renounced_freeze_account === 1 ? '\u2705' : '\u274c';
+  var hp = t.is_honeypot === 1 ? '\ud83d\udea8' : '\u2705';
+  var burnPct = (t.burn_ratio * 100).toFixed(1);
+  var top10 = (t.top_10_holder_rate * 100).toFixed(1);
+  var bundler = (t.bundler_rate * 100).toFixed(1);
+  var snipers = (t.top70_sniper_hold_rate * 100).toFixed(1);
+  var creatorHold = (t.dev_team_hold_rate * 100).toFixed(1);
+
+  var SEP = '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501';
+
+  var nar = detectNarrative(t.name, t.symbol);
+  var msg = '';
+  msg += '<b>' + grade + '</b> | ' + nar.category + ' | ' + t.name + ' (<code>' + t.symbol + '</code>)\n';
+  msg += SEP + '\n';
+  msg += le + ' LP      : $' + Number(t.liquidity).toLocaleString() + '\n';
+  msg += ve + ' Vol 1h  : $' + Number(t.volume).toLocaleString() + '\n';
+  msg += re + ' RugCheck: ' + rug.score + ' ' + (rug.score < 100 ? 'Aman' : 'Bahaya!') + '\n';
+  msg += '\ud83d\udcb0 Harga   : $' + t.price + chg1h + '\n';
+  msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
+  msg += '\ud83d\udcca MC      : $' + Number(t.market_cap).toLocaleString() + '\n';
+  msg += '\u23f1\ufe0f Age     : ' + age + '\n';
+  msg += '\ud83d\udc64 Creator : <code>' + rug.creator + '</code>' + dangerText + '\n';
+  if (linkList) {
+    msg += '\ud83d\udd17 Links   : ' + linkList + '\n';
+  }
+  msg += SEP + '\n';
+
+  msg += '\ud83d\udee1\ufe0f GMGN:\n';
+  msg += '\ud83d\udccb Holders: ' + (t.holder_count || 0).toLocaleString() + '\n';
+  msg += '\ud83d\udd0d Top10: ' + top10 + '%\n';
+  msg += '\ud83d\udd17 Bundler: ' + bundler + '%\n';
+  msg += '\ud83e\udd16 Bots: ' + (t.bot_degen_count || 0) + '\n';
+  msg += '\ud83c\udfaf Snipers: ' + snipers + '%\n';
+  msg += '\ud83d\udc64 Creator: ' + creatorHold + '%\n';
+  msg += '\u267b\ufe0f Burn: ' + burnPct + '%\n';
+  msg += 'Mint: ' + mi + ' | Freeze: ' + fr + ' | Honeypot: ' + hp + '\n';
+  msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + ' | Fresh: 0' + '\n';
+  msg += SEP + '\n';
+
+  msg += '\ud83d\udcca Fib Level:\n';
+  var f = calculateFibonacci(t.price, t.price_change_percent1h);
+  msg += '\ud83d\udfe2 Support: $' + f.support + '\n';
+  msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
+  msg += SEP + '\n';
+
+  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '<code>' + t.address + '</code>';
+
+  return msg;
+}
+
+function buildMessage(t, rug, grade) {
+  return buildMsg(t, rug, grade);
+}
+
+function doHealthCheck() {
+  var u = Math.floor((Date.now() - startTime) / 1000);
+  var h = Math.floor(u / 3600);
+  var m = Math.floor((u % 3600) / 60);
+  var s = u % 60;
+  log('[HEALTH] ' + h + 'h ' + m + 'm ' + s + 's | Seen: ' + SEEN.size + ' | Notified: ' + totalNotified);
+}
+
+async function runLoop() {
+  try { await processTokens(); } catch (e) { log('FATAL: ' + e.message); }
+  setTimeout(runLoop, CFG.interval * 1000);
+}
+
+function shutdown(signal) { log('Saving...'); saveSeen(); process.exit(0); }
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+log('');
+log('╔══════════════════════════════════╗');
+log('║   AUTO SCREENING v4 (GMGN)      ║');
+log('╚══════════════════════════════════╝');
+log('');
+log('Source: GMGN Market Trending (100 token/1h, DEX only)');
+log('Filter: LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' | Buy > ' + CFG.minBuyRatio + '%');
+log('Interval: ' + CFG.interval + 's');
+log('');
+
+loadSeen();
+if (process.env.CI === 'true') {
+  processTokens().then(() => process.exit(0));
+} else {
+  runLoop();
+  setInterval(doHealthCheck, CFG.healthInterval * 1000);
+}
