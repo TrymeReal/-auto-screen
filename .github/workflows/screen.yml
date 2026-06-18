@@ -38,6 +38,7 @@ jobs:
           CI: 'true'
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}

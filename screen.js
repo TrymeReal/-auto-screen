@@ -13,6 +13,7 @@ const CFG = {
   seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
   tgToken: process.env.TG_TOKEN,
   tgChatId: process.env.TG_CHAT_ID,
+  tgThreadId: Number(process.env.TG_THREAD_ID) || undefined,
   minBuyRatio: Number(process.env.MIN_BUY_RATIO) || 0,
 };
 
@@ -185,6 +186,7 @@ async function getRugCheck(ca) {
 async function sendTelegram(msg, replyTo) {
   try {
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+    if (CFG.tgThreadId) payload.message_thread_id = CFG.tgThreadId;
     if (replyTo) payload.reply_to_message_id = replyTo;
     var res = await axios.post(TG_API, payload, { timeout: 10000 });
     return res.data.result?.message_id || null;
