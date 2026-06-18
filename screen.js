@@ -303,8 +303,9 @@ async function checkTrackedPositions(trendingTokens) {
       log(pos.symbol + ' dropped >80%, removing tracking');
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
+      var riskLabel = pos.grade === 'GOLD' ? 'Low Risk' : 'High Risk';
       await sendTelegram(
-        gradeEmoji + ' 🗑️ <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
+        gradeEmoji + ' 🗑️ ' + riskLabel + ' | <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
         'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10)
       );
       continue;
@@ -315,8 +316,9 @@ async function checkTrackedPositions(trendingTokens) {
       var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
+      var riskLabel = pos.grade === 'GOLD' ? 'Low Risk' : 'High Risk';
       await sendTelegram(
-        gradeEmoji + ' ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
+        gradeEmoji + ' ' + riskLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
         '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
         'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
         'Sekarang: $' + currentPrice.toFixed(10) + '\n' +
@@ -410,8 +412,9 @@ function buildMsg(t, rug, grade) {
 
   var nar = detectNarrative(t.name, t.symbol);
   var gradeEmoji = grade === 'GOLD' ? '🟢' : '🔴';
+  var riskLabel = grade === 'GOLD' ? 'Low Risk' : 'High Risk';
   var msg = '';
-  msg += gradeEmoji + ' <b>' + grade + '</b> | ' + nar.category + ' | ' + t.name + ' (<code>' + t.symbol + '</code>)\n';
+  msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + nar.category + ' | ' + t.name + ' (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
   msg += le + ' LP      : $' + Number(t.liquidity).toLocaleString() + '\n';
   msg += ve + ' Vol 1h  : $' + Number(t.volume).toLocaleString() + '\n';
