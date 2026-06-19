@@ -631,12 +631,14 @@ async function buildMsg(t, rug, grade, dex24h) {
 
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap);
   var fibLabel = f.source === 'kline' ? 'dari candle nyata' : 'estimasi, cek chart';
+  msg += '\ud83d\udcca Entry & Targets:\n';
+  msg += '\u23f0 Entry   : $' + fmtPrice(t.price) + '\n';
+  msg += '\ud83c\udfaf Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
   msg += '\ud83d\udcca Fib Level <i>(' + fibLabel + ')</i>:\n';
   msg += '\ud83d\udfe2 Support : $' + fmtPrice(f.support) + '\n';
   msg += '\u2696\ufe0f  Fair    : $' + fmtPrice(f.fair) + '\n';
   msg += '\ud83d\udd34 Resist  : $' + fmtPrice(f.resist) + '\n';
   msg += '\u26d4 SL      : $' + fmtPrice(f.sl) + '\n';
-  msg += '\u23f0 Entry Call: $' + fmtPrice(t.price) + ' <i>(harga saat call, bukan di support)</i>\n';
   var dynScore = calculateScore(t, rug, grade);
   msg += 'Score: ' + dynScore + '/100\n';
 
