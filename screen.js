@@ -260,8 +260,8 @@ async function calculateFibonacci(address, price, changePct, mc, athMc) {
           source: 'kline',
           swingHigh: swingHigh,
           swingLow: swingLow,
-          support:  Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-          fair:     Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+          support:  Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+          fair:     Math.max(swingHigh - range * 0.618, floor).toFixed(10),
           resist:   (swingHigh + range * 0.382).toFixed(10),
           sl:       Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
         };
@@ -289,8 +289,8 @@ async function calculateFibonacci(address, price, changePct, mc, athMc) {
     return {
       source: 'estimasi',
       swingHigh: h, swingLow: l,
-      support: Math.max(h - range * 0.618, floor).toFixed(10),
-      fair:    Math.max(h - range * 0.500, floor).toFixed(10),
+      support: Math.max(h - range * 0.500, floor).toFixed(10),
+      fair:    Math.max(h - range * 0.618, floor).toFixed(10),
       resist:  (h + range * 0.382).toFixed(10),
       sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
     };
