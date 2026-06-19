@@ -27,6 +27,7 @@ const TG_API = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
 const SEEN_FILE = path.join(__dirname, 'seen.json');
 const POSITIONS_FILE = path.join(__dirname, 'positions.json');
 const LOG_FILE = path.join(__dirname, 'screen.log');
+const TRACKING_LOG = path.join(__dirname, 'tracking_log.json');
 
 const SEEN = new Map();
 const TRACKED = new Map();
@@ -91,6 +92,15 @@ function cleanupSeen() {
     if (entry.firstSeen < cutoff) { SEEN.delete(ca); deleted++; }
   }
   if (deleted > 0) { log('Cleaned up ' + deleted + ' old entries'); saveSeen(); }
+}
+
+function logTrackingEvent(event) {
+  try {
+    const data = [];
+    try { const r = fs.readFileSync(TRACKING_LOG, 'utf8'); data.push(...JSON.parse(r)); } catch {}
+    data.push({ ...event, time: Date.now() });
+    fs.writeFileSync(TRACKING_LOG, JSON.stringify(data));
+  } catch {}
 }
 
 function loadPositions() {
@@ -200,38 +210,6 @@ async function fetchGMGNKline(address, resolution = '1h', fromMs, toMs) {
   }
 }
 
-function calculateFibFromKline(candles, currentPrice) {
-  if (!candles || candles.length < 6) return null;
-  var closes = candles.map(function(c) { return Number(c.close); }).filter(function(v) { return v > 0; });
-  if (closes.length < 6) return null;
-  var sorted = closes.slice().sort(function(a, b) { return a - b; });
-  var trimIdx = Math.max(1, Math.floor(sorted.length * 0.15));
-  var trimmed = sorted.slice(trimIdx, sorted.length - trimIdx);
-  var swingHigh = trimmed[trimmed.length - 1];
-  var swingLow = trimmed[0];
-  var range = swingHigh - swingLow;
-  if (range <= 0 || isNaN(range)) return null;
-  var midpoint = (swingHigh + swingLow) / 2;
-  var aboveMid = currentPrice >= midpoint;
-  var floor = currentPrice * 0.1;
-  if (aboveMid) {
-    return {
-      support: Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-      fair: Math.max(swingHigh - range * 0.382, floor).toFixed(10),
-      resist: (swingHigh + range * 0.382).toFixed(10),
-      sl: Math.max(swingHigh - range * 1.272, floor * 0.5).toFixed(10),
-      source: 'kline',
-    };
-  }
-  return {
-    support: Math.max(swingLow - range * 0.272, floor).toFixed(10),
-    fair: Math.max(swingLow + range * 0.382, floor).toFixed(10),
-    resist: (swingLow + range * 0.618).toFixed(10),
-    sl: Math.max(swingLow - range * 0.618, floor * 0.5).toFixed(10),
-    source: 'kline',
-  };
-}
-
 async function sendTelegram(msg, replyTo) {
   try {
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
@@ -258,39 +236,148 @@ function gradeToken(lp, vol, rugScore) {
   return 'SKIP';
 }
 
-function calculateFibonacci(price, changePct, mc, athMc) {
+// Hitung Fibonacci dari candle OHLCV nyata (kline GMGN)
+// Fallback ke estimasi jika kline tidak tersedia
+async function calculateFibonacci(address, price, changePct, mc, athMc) {
   var p = Number(price);
   if (!p || p <= 0) p = 0.0001;
+  var floor = p * 0.1;
+
+  // Coba ambil kline nyata dari GMGN (24 candle 1h ke belakang)
+  try {
+    var toMs = Date.now() / 1000;
+    var fromMs = toMs - 86400; // 24 jam
+    var klines = await fetchGMGNKline(address, '1h', fromMs, toMs);
+    if (klines && klines.length >= 3) {
+      var highs = klines.map(c => Number(c.high)).filter(v => v > 0);
+      var lows  = klines.map(c => Number(c.low)).filter(v => v > 0);
+      var swingHigh = Math.max(...highs);
+      var swingLow  = Math.min(...lows);
+      if (swingHigh > swingLow && swingHigh > 0) {
+        var range = swingHigh - swingLow;
+        log('Fib dari kline nyata: H=' + swingHigh + ' L=' + swingLow + ' (' + klines.length + ' candle)');
+        return {
+          source: 'kline',
+          swingHigh: swingHigh,
+          swingLow: swingLow,
+          support:  Math.max(swingHigh - range * 0.618, floor).toFixed(10),
+          fair:     Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+          resist:   (swingHigh + range * 0.382).toFixed(10),
+          sl:       Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
+        };
+      }
+    }
+  } catch (e) {
+    log('Kline fetch failed, fallback estimasi: ' + e.message);
+  }
+
+  // Fallback: estimasi dari % change & ATH MC (perilaku lama, diberi label jelas)
+  log('Fib fallback estimasi untuk ' + address);
   var h, l, priceIsHigh;
   if (athMc && mc && Number(athMc) > Number(mc)) {
     var ratio = Math.min(Number(athMc) / Number(mc), 20);
-    h = p * ratio;
-    l = p;
-    priceIsHigh = false;
+    h = p * ratio; l = p; priceIsHigh = false;
   } else {
     var ch = Number(changePct) || 0;
-    if (ch > 0) { h = p; l = p / (1 + ch / 100); priceIsHigh = true; }
+    if (ch > 0)      { h = p; l = p / (1 + ch / 100); priceIsHigh = true; }
     else if (ch < 0) { h = p / (1 + ch / 100); l = p; priceIsHigh = false; }
-    else { h = p * 1.2; l = p * 0.8; priceIsHigh = false; }
+    else             { h = p * 1.2; l = p * 0.8; priceIsHigh = false; }
   }
   var range = h - l;
   if (range < p * 0.05) range = p * 0.1;
-  var floor = p * 0.1;
   if (priceIsHigh) {
     return {
+      source: 'estimasi',
+      swingHigh: h, swingLow: l,
       support: Math.max(h - range * 0.618, floor).toFixed(10),
-      fair: Math.max(h - range * 0.5, floor).toFixed(10),
-      resist: (h + range * 0.382).toFixed(10),
-      sl: Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
+      fair:    Math.max(h - range * 0.500, floor).toFixed(10),
+      resist:  (h + range * 0.382).toFixed(10),
+      sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
     };
   } else {
     return {
+      source: 'estimasi',
+      swingHigh: h, swingLow: l,
       support: Math.max(l - range * 0.272, floor).toFixed(10),
-      fair: Math.max(l - range * 0.5, floor).toFixed(10),
-      resist: (l + range * 0.382).toFixed(10),
-      sl: Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
+      fair:    Math.max(l - range * 0.500, floor).toFixed(10),
+      resist:  (l + range * 0.382).toFixed(10),
+      sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
     };
   }
+}
+
+// Score dinamis 0-100 berdasarkan kondisi token nyata
+function calculateScore(t, rug, grade) {
+  var score = 0;
+
+  // LP (max 20)
+  var lp = t.liquidity || 0;
+  if (lp > 100000) score += 20;
+  else if (lp > 50000) score += 15;
+  else if (lp > 30000) score += 10;
+  else if (lp > 15000) score += 5;
+
+  // Volume 1h (max 20)
+  var vol = t.volume || 0;
+  if (vol > 200000) score += 20;
+  else if (vol > 100000) score += 15;
+  else if (vol > 50000) score += 10;
+  else if (vol > 10000) score += 5;
+
+  // Buy ratio (max 10)
+  var totalTxn = (t.buys || 0) + (t.sells || 0);
+  var buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 50;
+  if (buyRatio >= 65) score += 10;
+  else if (buyRatio >= 55) score += 7;
+  else if (buyRatio >= 45) score += 3;
+
+  // RugCheck score (max 15)
+  var rs = rug.score || 999;
+  if (rs < 20) score += 15;
+  else if (rs < 50) score += 10;
+  else if (rs < 100) score += 5;
+  else score -= 10;
+
+  // Mint & Freeze renounced (max 10)
+  if (t.renounced_mint === 1) score += 5;
+  if (t.renounced_freeze_account === 1) score += 5;
+
+  // Burn (max 5)
+  var burn = (t.burn_ratio || 0) * 100;
+  if (burn >= 50) score += 5;
+  else if (burn >= 20) score += 3;
+  else if (burn >= 5) score += 1;
+
+  // Bot ratio — penalti (max -15)
+  var holders = t.holder_count || 1;
+  var botRatio = (t.bot_degen_count || 0) / holders;
+  if (botRatio > 0.40) score -= 15;
+  else if (botRatio > 0.25) score -= 10;
+  else if (botRatio > 0.10) score -= 5;
+
+  // Bundler — penalti (max -10)
+  var bundler = (t.bundler_rate || 0) * 100;
+  if (bundler > 30) score -= 10;
+  else if (bundler > 20) score -= 7;
+  else if (bundler > 10) score -= 3;
+
+  // Creator hold — penalti (max -10)
+  var creatorHold = (t.dev_team_hold_rate || 0) * 100;
+  if (creatorHold > 10) score -= 10;
+  else if (creatorHold > 5) score -= 5;
+
+  // Top10 concentration — penalti (max -5)
+  var top10 = (t.top_10_holder_rate || 0) * 100;
+  if (top10 > 50) score -= 5;
+  else if (top10 > 35) score -= 3;
+
+  // Smart degen bonus (max 5)
+  var smart = t.smart_degen_count || 0;
+  if (smart >= 10) score += 5;
+  else if (smart >= 5) score += 3;
+  else if (smart >= 1) score += 1;
+
+  return Math.min(100, Math.max(0, score));
 }
 
 async function processTokens() {
@@ -334,19 +421,7 @@ async function processTokens() {
       }
       log(grade + ' ' + t.symbol + ' (LP: $' + t.liquidity + ', Vol: $' + t.volume + ', Rug: ' + rug.score + ')');
 
-      var fibData = null;
-      if (grade === 'GOLD' && t.price && Number(t.price) > 0) {
-        var now = Date.now();
-        var kline = await fetchGMGNKline(t.address, '1h', now - 86400000, now);
-        if (kline) {
-          fibData = calculateFibFromKline(kline, Number(t.price));
-        }
-      }
-      if (!fibData) {
-        log('Fib fallback (GMGN) for ' + t.symbol);
-      }
-
-      var msgId = await sendTelegram(buildMessage(t, rug, grade, null, fibData));
+      var msgId = await sendTelegram(await buildMessage(t, rug, grade, null));
       totalNotified++;
       if (grade !== 'SKIP' && t.price && Number(t.price) > 0) {
         TRACKED.set(t.address, {
@@ -400,6 +475,7 @@ async function checkTrackedPositions(trendingTokens) {
 
     if (gain <= -80) {
       log(pos.symbol + ' dropped >80%, removing tracking');
+      logTrackingEvent({ type: 'STOP_TRACK', symbol: pos.symbol, name: pos.name, grade: pos.grade, entryPrice: pos.entryPrice, currentPrice: currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
       var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : 'Grade B';
@@ -419,6 +495,7 @@ async function checkTrackedPositions(trendingTokens) {
       var target = TARGETS[highestIdx];
       var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
+      logTrackingEvent({ type: 'TERCAPAI', symbol: pos.symbol, name: pos.name, grade: pos.grade, entryPrice: pos.entryPrice, currentPrice: currentPrice, target: target, gain: gain.toFixed(1) });
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
       var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : 'Grade B';
       await sendTelegram(
@@ -475,7 +552,7 @@ function detectNarrative(name, symbol) {
   return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
 }
 
-function buildMsg(t, rug, grade, dex24h, fibData) {
+async function buildMsg(t, rug, grade, dex24h) {
   var re, ve, le;
   if (rug.score < 50) re = '\u2705'; else if (rug.score < 100) re = '\u26a0\ufe0f'; else re = '\ud83d\udea8';
   if (t.volume > 100000) ve = '\ud83d\ude80'; else if (t.volume > 50000) ve = '\ud83d\udcc8'; else ve = '\ud83d\udcca';
@@ -552,23 +629,25 @@ function buildMsg(t, rug, grade, dex24h, fibData) {
   msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + '\n';
   msg += SEP + '\n';
 
-  var f;
-  if (fibData) {
-    f = fibData;
-  } else {
-    f = calculateFibonacci(t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap);
-  }
-  var fibLabel = fibData && fibData.source === 'kline' ? 'Fib Level (Kline 24h)' : 'Est. Fib Level';
-  msg += '\ud83d\udcca ' + fibLabel + ':\n';
-  msg += '\ud83d\udfe2 Support: $' + fmtPrice(f.support) + ' (referensi, cek chart)\n';
-  msg += 'Score: ' + (grade === 'GOLD' ? 85 : 70) + '/100\n';
+  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap);
+  var fibLabel = f.source === 'kline' ? 'dari candle nyata' : 'estimasi, cek chart';
+  msg += '\ud83d\udcca Fib Level <i>(' + fibLabel + ')</i>:\n';
+  msg += '\ud83d\udfe2 Support : $' + fmtPrice(f.support) + '\n';
+  msg += '\u2696\ufe0f  Fair    : $' + fmtPrice(f.fair) + '\n';
+  msg += '\ud83d\udd34 Resist  : $' + fmtPrice(f.resist) + '\n';
+  msg += '\u26d4 SL      : $' + fmtPrice(f.sl) + '\n';
+  msg += '\u23f0 Entry Call: $' + fmtPrice(t.price) + ' <i>(harga saat call, bukan di support)</i>\n';
+  var dynScore = calculateScore(t, rug, grade);
+  msg += 'Score: ' + dynScore + '/100\n';
 
   var warnings = [];
   var currentPrice = Number(t.price);
   var supportPrice = Number(f.support);
+  var slPrice = Number(f.sl);
   if (currentPrice > 0 && supportPrice > 0) {
     var pctAbove = ((currentPrice - supportPrice) / supportPrice) * 100;
-    if (pctAbove > 50) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — rawan FOMO');
+    if (pctAbove > 100) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — sangat rawan FOMO, tunggu pullback');
+    else if (pctAbove > 50) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — rawan FOMO');
   }
   if (Number(creatorHold) > 5) warnings.push('👤 Creator hold ' + creatorHold + '% — rawan dump');
   if (Number(bundler) > 20 && Number(top10) > 30) warnings.push('🔄 Bundler ' + bundler + '% + Top10 ' + top10 + '% — rawan distribusi');
@@ -588,8 +667,8 @@ function buildMsg(t, rug, grade, dex24h, fibData) {
   return msg;
 }
 
-function buildMessage(t, rug, grade, dex24h, fibData) {
-  return buildMsg(t, rug, grade, dex24h, fibData);
+async function buildMessage(t, rug, grade, dex24h) {
+  return buildMsg(t, rug, grade, dex24h);
 }
 
 function doHealthCheck() {
@@ -611,7 +690,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 log('');
 log('╔══════════════════════════════════╗');
-log('║   AUTO SCREENING v4 (GMGN)      ║');
+log('║   AUTO SCREENING v5 (GMGN)      ║');
 log('╚══════════════════════════════════╝');
 log('');
 log('Source: GMGN Market Trending (100 token/1h, DEX only)');
