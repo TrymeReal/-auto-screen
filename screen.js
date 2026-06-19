@@ -402,7 +402,7 @@ async function checkTrackedPositions(trendingTokens) {
       log(pos.symbol + ' dropped >80%, removing tracking');
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
-      var riskLabel = pos.grade === 'GOLD' ? 'Low Risk' : 'High Risk';
+      var riskLabel = pos.grade === 'GOLD' ? 'GRADE A' : 'GRADE B';
       await sendTelegram(
         gradeEmoji + ' 🗑️ ' + riskLabel + ' | <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
         'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
@@ -420,7 +420,7 @@ async function checkTrackedPositions(trendingTokens) {
       var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
-      var riskLabel = pos.grade === 'GOLD' ? 'Low Risk' : 'High Risk';
+      var riskLabel = pos.grade === 'GOLD' ? 'GRADE A' : 'GRADE B';
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
         '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
@@ -517,7 +517,7 @@ function buildMsg(t, rug, grade, dex24h, fibData) {
 
   var nar = detectNarrative(t.name, t.symbol);
   var gradeEmoji = grade === 'GOLD' ? '🟢' : '🔴';
-  var riskLabel = grade === 'GOLD' ? 'Low Risk' : 'High Risk';
+  var riskLabel = grade === 'GOLD' ? 'GRADE A' : 'GRADE B';
   var msg = '';
   msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + nar.category + ' | ' + t.name + ' (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
