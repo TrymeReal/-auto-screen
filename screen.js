@@ -184,14 +184,16 @@ async function getRugCheck(ca) {
     );
     return {
       score: d.score || 0,
+      riskLevel: d.riskLevel || '',
       risks: riskNames.join(', '),
+      riskDetails: riskNames,
+      tokenType: d.tokenType || 'unknown',
+      deployPlatform: d.deployPlatform || '',
       creator: d.creator || d.owner || '?',
       topDangers: dangerFlags.slice(0, 3),
-      tokenType: d.tokenType || '',
       rugged: d.rugged || false,
-      deployPlatform: d.deployPlatform || '',
     };
-  } catch { return { score: 999, risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
+  } catch { return { score: 999, riskLevel: '', risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
 }
 
 async function fetchGMGNKline(address, resolution = '1h', fromMs, toMs) {
@@ -602,6 +604,8 @@ async function buildMsg(t, rug, grade, dex24h) {
   msg += ve + ' Vol 1h  : $' + fmt(t.volume) + '\n';
   var rugLabel = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
   msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
+  if (rug.riskDetails && rug.riskDetails.length > 0) msg += ' | Anomali: ' + rug.riskDetails.join(', ');
+  if (rug.riskLevel) msg += ' | ' + rug.riskLevel;
   if (rug.tokenType && rug.tokenType !== 'unknown') msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
