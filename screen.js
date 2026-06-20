@@ -607,7 +607,7 @@ async function buildMsg(t, rug, grade, dex24h) {
   var rugLabel = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
   msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
   if (rug.riskLevel) msg += ' | ' + rug.riskLevel;
-  if (rug.tokenType && rug.tokenType !== 'unknown' && rug.tokenType !== 'Unknown') msg += ' | ' + rug.tokenType;
+  if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
   msg += '\ud83d\udcb0 Harga   : $' + fmtPrice(t.price) + chg1h + '\n';
