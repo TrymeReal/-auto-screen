@@ -184,9 +184,12 @@ async function getRugCheck(ca) {
     if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
       d.insiderNetworks.forEach(function(net) {
         var totalSupply = d.token && d.token.supply ? Number(d.token.supply) : 0;
-        var pct = totalSupply > 0 ? ((net.tokenAmount / totalSupply) * 100).toFixed(0) : '?';
-        var amt = net.tokenAmount ? Math.round(net.tokenAmount / 1e6) + 'M' : '?';
-        riskNames.push('Insider Analysis: ' + amt + ' tokens (' + pct + '% supply) via ' + net.size + ' wallets');
+        var pct = totalSupply > 0 ? (net.tokenAmount / totalSupply) * 100 : 0;
+        if (pct >= 10) {
+          var pctStr = pct.toFixed(0);
+          var amt = Math.round(net.tokenAmount / 1e6) + 'M';
+          riskNames.push('Insider Analysis: ' + amt + ' tokens sent between insiders (' + pctStr + '% of supply) | ' + net.size + ' wallets');
+        }
       });
     }
     const dangerFlags = riskNames.filter(n =>
