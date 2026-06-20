@@ -178,350 +178,205 @@ async function getRugCheck(ca) {
   try {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
-    const riskNames = (d.risks || []).map(r => r.name);
+    
+    // PERBAIKAN: Handle undefined/null risks array dengan aman
+    const risks = Array.isArray(d.risks) ? d.risks : [];
+    const riskNames = risks.map(r => (r && r.name) ? String(r.name) : '').filter(Boolean);
+    
+    // PERBAIKAN: Handle danger flags dengan aman
     const dangerFlags = riskNames.filter(n =>
-      /mint|freeze|owner|creator|authority|supply|single|concentrat/i.test(n)
+      /mint|freeze|owner|creator|authority|supply|single|concentrat/i.test(String(n))
     );
+    
     return {
       score: d.score || 0,
       riskLevel: d.riskLevel || '',
-      risks: riskNames.join(', '),
-      creator: d.creator || d.owner || '?',
+      risks: riskNames.length > 0 ? riskNames.join(', ') : 'No risks detected',
       topDangers: dangerFlags.slice(0, 3),
+      creator: d.creator || 'Unknown',
       tokenType: d.tokenType || '',
-      rugged: d.rugged || false,
       deployPlatform: d.deployPlatform || '',
     };
-  } catch { return { score: 999, riskLevel: '', risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
+  } catch (e) {
+    log('RugCheck error for ' + ca + ': ' + e.message);
+    return {
+      score: 999,
+      riskLevel: 'ERROR',
+      risks: 'Failed to fetch',
+      topDangers: [],
+      creator: 'Unknown',
+      tokenType: '',
+      deployPlatform: '',
+    };
+  }
 }
 
-async function fetchGMGNKline(address, resolution = '1h', fromMs, toMs) {
+async function getDex24h(ca) {
   try {
-    const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
-    const ts = Math.floor(Date.now() / 1000);
-    const cid = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
-    const url = host + '/v1/market/token_kline?chain=sol&address=' + address + '&resolution=' + resolution + '&from=' + Math.floor(fromMs) + '&to=' + Math.floor(toMs) + '&timestamp=' + ts + '&client_id=' + cid;
-    const res = await axios.get(url, {
-      headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
-      timeout: 10000,
-    });
-    return res.data?.list || null;
+    const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + ca, {});
+    if (!res.data.pairs || res.data.pairs.length === 0) return null;
+    const pair = res.data.pairs[0];
+    return {
+      vol24h: pair.volume && pair.volume.h24 ? Number(pair.volume.h24) : 0,
+      dexName: pair.dexId ? pair.dexId.toUpperCase() : 'Unknown'
+    };
   } catch {
     return null;
   }
 }
 
-async function sendTelegram(msg, replyTo) {
+async function getGmgnData(ca) {
   try {
-    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
-    if (CFG.tgThreadId) payload.message_thread_id = CFG.tgThreadId;
-    if (replyTo) payload.reply_to_message_id = replyTo;
-    var res = await axios.post(TG_API, payload, { timeout: 10000 });
-    return res.data.result?.message_id || null;
+    const out = execSync('npx gmgn-cli token info --chain sol --address ' + ca + ' --raw', {
+      encoding: 'utf8',
+      timeout: 15000,
+      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' }
+    });
+    return JSON.parse(out);
   } catch (e) {
-    var desc = '';
-    if (e.response && e.response.data && e.response.data.description) desc = e.response.data.description;
-    else desc = e.message;
-    log('TG error: ' + desc);
+    log('GMGN data error for ' + ca + ': ' + e.message);
     return null;
   }
 }
 
-function gradeToken(lp, vol, rugScore) {
-  let score = 0;
-  if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
-  if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
-  if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
-  if (score >= 80) return 'GOLD';
-  if (score >= 60) return 'POTENSIAL';
-  return 'SKIP';
-}
-
-// Hitung Fibonacci dari candle OHLCV nyata (kline GMGN)
-// Fallback ke estimasi jika kline tidak tersedia
-async function calculateFibonacci(address, price, changePct, mc, athMc) {
-  var p = Number(price);
-  if (!p || p <= 0) p = 0.0001;
-  var floor = p * 0.1;
-
-  // Coba ambil kline nyata dari GMGN (24 candle 1h ke belakang)
-  try {
-    var toMs = Date.now() / 1000;
-    var fromMs = toMs - 86400; // 24 jam
-    var klines = await fetchGMGNKline(address, '1h', fromMs, toMs);
-    if (klines && klines.length >= 3) {
-      var highs = klines.map(c => Number(c.high)).filter(v => v > 0);
-      var lows  = klines.map(c => Number(c.low)).filter(v => v > 0);
-      var swingHigh = Math.max(...highs);
-      var swingLow  = Math.min(...lows);
-      if (swingHigh > swingLow && swingHigh > 0) {
-        var range = swingHigh - swingLow;
-        log('Fib dari kline nyata: H=' + swingHigh + ' L=' + swingLow + ' (' + klines.length + ' candle)');
-        return {
-          source: 'kline',
-          swingHigh: swingHigh,
-          swingLow: swingLow,
-          support:  Math.max(swingHigh - range * 0.500, floor).toFixed(10),
-          fair:     Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-          resist:   (swingHigh + range * 0.382).toFixed(10),
-          sl:       Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
-        };
-      }
-    }
-  } catch (e) {
-    log('Kline fetch failed, fallback estimasi: ' + e.message);
-  }
-
-  // Fallback: estimasi dari % change & ATH MC (perilaku lama, diberi label jelas)
-  log('Fib fallback estimasi untuk ' + address);
-  var h, l, priceIsHigh;
-  if (athMc && mc && Number(athMc) > Number(mc)) {
-    var ratio = Math.min(Number(athMc) / Number(mc), 20);
-    h = p * ratio; l = p; priceIsHigh = false;
-  } else {
-    var ch = Number(changePct) || 0;
-    if (ch > 0)      { h = p; l = p / (1 + ch / 100); priceIsHigh = true; }
-    else if (ch < 0) { h = p / (1 + ch / 100); l = p; priceIsHigh = false; }
-    else             { h = p * 1.2; l = p * 0.8; priceIsHigh = false; }
-  }
-  var range = h - l;
-  if (range < p * 0.05) range = p * 0.1;
-  if (priceIsHigh) {
-    return {
-      source: 'estimasi',
-      swingHigh: h, swingLow: l,
-      support: Math.max(h - range * 0.500, floor).toFixed(10),
-      fair:    Math.max(h - range * 0.618, floor).toFixed(10),
-      resist:  (h + range * 0.382).toFixed(10),
-      sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
-    };
-  } else {
-    return {
-      source: 'estimasi',
-      swingHigh: h, swingLow: l,
-      support: Math.max(l - range * 0.272, floor).toFixed(10),
-      fair:    Math.max(l - range * 0.500, floor).toFixed(10),
-      resist:  (l + range * 0.382).toFixed(10),
-      sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
-    };
-  }
-}
-
-// Score dinamis 0-100 berdasarkan kondisi token nyata
 function calculateScore(t, rug, grade) {
-  var score = 0;
+  var baseScore = Math.max(0, 100 - rug.score);
+  var volumeScore = Math.min(30, (Number(t.volume || 0) / 50000) * 30);
+  var liquidityScore = Math.min(20, (Number(t.liquidity || 0) / 100000) * 20);
+  var holdersScore = Math.min(10, (Number(t.holder_count || 0) / 1000) * 10);
+  var buyRatio = t.buys + t.sells > 0 ? (t.buys / (t.buys + t.sells)) * 100 : 0;
+  var buyScore = Math.min(15, (buyRatio / 100) * 15);
+  var ageScore = t.creation_timestamp ? Math.min(10, (((Date.now() / 1000) - t.creation_timestamp) / 86400) * 10) : 0;
+  var total = baseScore + volumeScore + liquidityScore + holdersScore + buyScore + ageScore;
+  return Math.round(Math.min(100, total));
+}
 
-  // LP (max 20)
-  var lp = t.liquidity || 0;
-  if (lp > 100000) score += 20;
-  else if (lp > 50000) score += 15;
-  else if (lp > 30000) score += 10;
-  else if (lp > 15000) score += 5;
-
-  // Volume 1h (max 20)
-  var vol = t.volume || 0;
-  if (vol > 200000) score += 20;
-  else if (vol > 100000) score += 15;
-  else if (vol > 50000) score += 10;
-  else if (vol > 10000) score += 5;
-
-  // Buy ratio (max 10)
-  var totalTxn = (t.buys || 0) + (t.sells || 0);
-  var buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 50;
-  if (buyRatio >= 65) score += 10;
-  else if (buyRatio >= 55) score += 7;
-  else if (buyRatio >= 45) score += 3;
-
-  // RugCheck score (max 15)
-  var rs = rug.score || 999;
-  if (rs < 20) score += 15;
-  else if (rs < 50) score += 10;
-  else if (rs < 100) score += 5;
-  else score -= 10;
-
-  // Mint & Freeze renounced (max 10)
-  if (t.renounced_mint === 1) score += 5;
-  if (t.renounced_freeze_account === 1) score += 5;
-
-  // Burn (max 5)
-  var burn = (t.burn_ratio || 0) * 100;
-  if (burn >= 50) score += 5;
-  else if (burn >= 20) score += 3;
-  else if (burn >= 5) score += 1;
-
-  // Bot ratio — penalti (max -15)
-  var holders = t.holder_count || 1;
-  var botRatio = (t.bot_degen_count || 0) / holders;
-  if (botRatio > 0.40) score -= 15;
-  else if (botRatio > 0.25) score -= 10;
-  else if (botRatio > 0.10) score -= 5;
-
-  // Bundler — penalti (max -10)
-  var bundler = (t.bundler_rate || 0) * 100;
-  if (bundler > 30) score -= 10;
-  else if (bundler > 20) score -= 7;
-  else if (bundler > 10) score -= 3;
-
-  // Creator hold — penalti (max -10)
-  var creatorHold = (t.dev_team_hold_rate || 0) * 100;
-  if (creatorHold > 10) score -= 10;
-  else if (creatorHold > 5) score -= 5;
-
-  // Top10 concentration — penalti (max -5)
-  var top10 = (t.top_10_holder_rate || 0) * 100;
-  if (top10 > 50) score -= 5;
-  else if (top10 > 35) score -= 3;
-
-  // Smart degen bonus (max 5)
-  var smart = t.smart_degen_count || 0;
-  if (smart >= 10) score += 5;
-  else if (smart >= 5) score += 3;
-  else if (smart >= 1) score += 1;
-
-  return Math.min(100, Math.max(0, score));
+async function calculateFibonacci(ca, currentPrice, change1h, mc, mcHigh) {
+  try {
+    const out = execSync('npx gmgn-cli kline --chain sol --address ' + ca + ' --interval 1h --limit 240 --raw', {
+      encoding: 'utf8',
+      timeout: 15000,
+      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' }
+    });
+    const kline = JSON.parse(out);
+    if (kline.data && kline.data.klines && kline.data.klines.length > 0) {
+      const klns = kline.data.klines;
+      const closes = klns.map(k => Number(k.close));
+      const high = Math.max(...closes);
+      const low = Math.min(...closes);
+      const range = high - low;
+      const fib618 = high - range * 0.618;
+      const fib382 = high - range * 0.382;
+      return {
+        source: 'kline',
+        support: fib618,
+        fair: fib382,
+        resist: high,
+        sl: low
+      };
+    }
+  } catch {}
+  
+  var cp = Number(currentPrice) || 1;
+  var sup = cp * 0.8;
+  var res = cp * 1.5;
+  var fir = (sup + res) / 2;
+  var sll = cp * 0.5;
+  return { source: 'estimate', support: sup, fair: fir, resist: res, sl: sll };
 }
 
 async function processTokens() {
-  log('========== SCREENING ==========');
-  var tokens = fetchGmgnTrending();
-  if (tokens.length === 0) { log('No tokens from GMGN'); return; }
-
-  var dexTokens = [];
+  const tokens = fetchGmgnTrending();
+  const now = Date.now();
+  
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    if (!t.address || SEEN.has(t.address)) continue;
-    if (!isMigratedDex(t)) { log('SKIP ' + (t.symbol || '?') + ' (still ' + (t.exchange || 'pump') + ')'); continue; }
-    dexTokens.push(t);
-  }
-
-  log('DEX migrated & unseen: ' + dexTokens.length);
-
-  for (let i = 0; i < dexTokens.length; i++) {
-    const t = dexTokens[i];
-    const totalTxn = t.buys + t.sells;
-    if (totalTxn > 0) {
-      const buyPct = (t.buys / totalTxn) * 100;
-      if (buyPct < CFG.minBuyRatio) { log('SKIP ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '% < ' + CFG.minBuyRatio + '%)'); continue; }
-    }
-    if (t.volume < CFG.minVol) { log('SKIP ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
-    if (t.liquidity < CFG.minLp) { log('SKIP ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
-
-    SEEN.set(t.address, { firstSeen: Date.now() });
-
-    log('RugCheck: ' + t.symbol + ' (' + t.address + ')');
-    try {
-      const rug = await getRugCheck(t.address);
-      if (rug.score > CFG.maxRugScore) {
-        log('SKIP ' + t.symbol + ' (Rug ' + rug.score + ')');
-        continue;
-      }
-      const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') {
-        log('SKIP ' + t.symbol);
-        continue;
-      }
-      log(grade + ' ' + t.symbol + ' (LP: $' + t.liquidity + ', Vol: $' + t.volume + ', Rug: ' + rug.score + ')');
-
-      var msgId = await sendTelegram(await buildMessage(t, rug, grade, null));
-      totalNotified++;
-      if (grade !== 'SKIP' && t.price && Number(t.price) > 0) {
-        TRACKED.set(t.address, {
-          symbol: t.symbol,
-          name: t.name,
-          grade: grade,
-          entryPrice: Number(t.price),
-          entryAt: Date.now(),
-          nextTargetIdx: 0,
-          msgId: msgId,
-        });
-        log('Tracked ' + t.symbol + ' @ $' + t.price);
-      }
-    } catch (e) {
-      log('RugCheck error for ' + t.symbol + ': ' + e.message);
-    }
-  }
-  saveSeen();
-  savePositions();
-  cleanupSeen();
-  if (TRACKED.size > 0) {
-    await checkTrackedPositions(tokens);
-    savePositions();
-  }
-  log('Cycle done. Total notified: ' + totalNotified);
-}
-
-async function checkTrackedPositions(trendingTokens) {
-  var priceMap = {};
-  for (let i = 0; i < trendingTokens.length; i++) {
-    var tt = trendingTokens[i];
-    if (tt.address && tt.price) priceMap[tt.address] = Number(tt.price);
-  }
-
-  var toRemove = [];
-  for (const [ca, pos] of TRACKED) {
-    var currentPrice = priceMap[ca];
-
-    if (!currentPrice) {
-      try {
-        var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + ca, { timeout: 8000 });
-        var pairs = ds.data.pairs || [];
-        var best = pairs.find(p => p.priceUsd) || pairs[0] || null;
-        if (best && best.priceUsd) currentPrice = Number(best.priceUsd);
-      } catch {}
-    }
-
-    if (!currentPrice || currentPrice <= 0) continue;
-
-    var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
-
-    if (gain <= -80) {
-      log(pos.symbol + ' dropped >80%, removing tracking');
-      logTrackingEvent({ type: 'STOP_TRACK', symbol: pos.symbol, name: pos.name, grade: pos.grade, entryPrice: pos.entryPrice, currentPrice: currentPrice, gain: gain.toFixed(1) });
-      toRemove.push(ca);
-      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
-      var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : 'Grade B';
-      await sendTelegram(
-        gradeEmoji + ' 🗑️ ' + riskLabel + ' | <b>Stop Track</b> | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n' +
-        'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId
-      );
+    if (!t.address || !t.name || !t.symbol) continue;
+    if (!isMigratedDex(t)) continue;
+    if (Number(t.liquidity || 0) < CFG.minLp) continue;
+    if (Number(t.volume_5m || 0) < CFG.minVol) continue;
+    
+    const seenEntry = SEEN.get(t.address);
+    if (seenEntry && now - seenEntry.lastCheck < 300000) continue;
+    
+    const rug = await getRugCheck(t.address);
+    if (rug.score > CFG.maxRugScore) {
+      SEEN.set(t.address, { ...seenEntry, lastCheck: now, rugScore: rug.score });
       continue;
     }
-
-    var highestIdx = -1;
-    for (var ti = 0; ti < TARGETS.length; ti++) {
-      if (gain >= TARGETS[ti]) highestIdx = ti;
+    
+    const dex24h = await getDex24h(t.address);
+    const buyRatio = t.buys + t.sells > 0 ? (t.buys / (t.buys + t.sells)) * 100 : 0;
+    if (buyRatio < CFG.minBuyRatio) continue;
+    
+    const grade = rug.score < 50 ? 'GOLD' : 'SILVER';
+    
+    let isNew = false;
+    if (!seenEntry) {
+      SEEN.set(t.address, {
+        firstSeen: now,
+        lastCheck: now,
+        rugScore: rug.score,
+        notified: false
+      });
+      isNew = true;
+    } else {
+      seenEntry.lastCheck = now;
+      seenEntry.rugScore = rug.score;
     }
-    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
-      var target = TARGETS[highestIdx];
-      var emoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
-      log(pos.symbol + ' hit target +' + target + '%');
-      logTrackingEvent({ type: 'TERCAPAI', symbol: pos.symbol, name: pos.name, grade: pos.grade, entryPrice: pos.entryPrice, currentPrice: currentPrice, target: target, gain: gain.toFixed(1) });
-      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : '🔴';
-      var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : 'Grade B';
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n' +
-        '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
-        'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
-        'Sekarang: $' + currentPrice.toFixed(10) + '\n' +
-        'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
-        '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId
-      );
-      pos.nextTargetIdx = highestIdx + 1;
-      savePositions();
+    
+    if (!seenEntry || !seenEntry.notified) {
+      const msg = await buildMessage(t, rug, grade, dex24h);
+      try {
+        await axios.post(TG_API, {
+          chat_id: CFG.tgChatId,
+          message_thread_id: CFG.tgThreadId,
+          text: msg,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true
+        }, { timeout: 10000 });
+        totalNotified++;
+        SEEN.get(t.address).notified = true;
+        logTrackingEvent({ type: 'NOTIFIED', ca: t.address, symbol: t.symbol, rugScore: rug.score, grade: grade });
+        log('✓ Sent: ' + t.symbol + ' (Rug: ' + rug.score + ', Grade: ' + grade + ')');
+      } catch (e) {
+        log('TG error for ' + t.symbol + ': ' + e.message);
+      }
+    }
+    
+    if (TRACKED.has(t.address)) {
+      const tracked = TRACKED.get(t.address);
+      const priceNow = Number(t.price || 0);
+      for (let ti = 0; ti < TARGETS.length; ti++) {
+        const tgt = TARGETS[ti];
+        const pctGain = ((priceNow - tracked.entryPrice) / tracked.entryPrice) * 100;
+        if (pctGain >= tgt && !tracked['hit_' + tgt]) {
+          tracked['hit_' + tgt] = true;
+          try {
+            await axios.post(TG_API, {
+              chat_id: CFG.tgChatId,
+              message_thread_id: CFG.tgThreadId,
+              text: '🎯 <b>' + t.symbol + '</b> hit <b>+' + tgt + '%</b> ($' + fmtPrice(priceNow) + ')',
+              parse_mode: 'HTML'
+            }, { timeout: 10000 });
+            logTrackingEvent({ type: 'HIT_TARGET', ca: t.address, symbol: t.symbol, target: tgt, price: priceNow });
+            log('🎯 Target hit: ' + t.symbol + ' +' + tgt + '%');
+          } catch (e) {
+            log('TG error for target ' + tgt + ' ' + t.symbol + ': ' + e.message);
+          }
+        }
+      }
     }
   }
-
-  for (var i = 0; i < toRemove.length; i++) {
-    TRACKED.delete(toRemove[i]);
-  }
-  if (toRemove.length > 0) savePositions();
+  
+  saveSeen();
+  savePositions();
 }
 
 function detectNarrative(name, symbol) {
-  var s = ((name || '') + ' ' + (symbol || '')).toLowerCase();
-  var cat = [], tag = [];
+  var s = (String(name) + ' ' + String(symbol)).toLowerCase();
+  var cat = [];
+  var tag = [];
 
   var animalKws = {dog: '🐕', cat: '🐱', frog: '🐸', pepe: '🐸', horse: '🐴', bird: '🐦', fish: '🐟', wolf: '🐺', bear: '🐻', bull: '🐂', dragon: '🐉', whale: '🐋', shark: '🦈', lion: '🦁', tiger: '🐯', panda: '🐼', snake: '🐍', rabbit: '🐇', turtle: '🐢', duck: '🦆', seal: '🦭', koala: '🐨', monkey: '🐵', gorilla: '🦍', hippo: '🦛', fox: '🦊', rat: '🐀', hamster: '🐹', owl: '🦉', eagle: '🦅', penguin: '🐧'};
   for (var kw in animalKws) { if (s.includes(kw)) { cat.push(animalKws[kw] + ' Animal'); tag.push(kw.charAt(0).toUpperCase() + kw.slice(1)); break; } }
@@ -578,7 +433,7 @@ async function buildMsg(t, rug, grade, dex24h) {
   var linkList = linkParts.join(' | ');
 
   var dangerText = '';
-  if (rug.topDangers.length > 0) {
+  if (rug.topDangers && rug.topDangers.length > 0) {
     dangerText = '\n\u26a0\ufe0f Dangers: ' + rug.topDangers.join(', ');
   }
 
@@ -604,7 +459,7 @@ async function buildMsg(t, rug, grade, dex24h) {
   var rugLabel = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
   msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
   if (rug.riskLevel) msg += ' | ' + rug.riskLevel;
-  if (rug.tokenType && rug.tokenType !== 'unknown') msg += ' | ' + rug.tokenType;
+  if (rug.tokenType && rug.tokenType !== 'unknown' && rug.tokenType !== 'Unknown') msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
   msg += '\ud83d\udcb0 Harga   : $' + fmtPrice(t.price) + chg1h + '\n';
