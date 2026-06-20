@@ -180,7 +180,7 @@ async function getRugCheck(ca) {
     const d = res.data;
     const riskNames = (d.risks || []).map(r => r.name);
     const dangerFlags = riskNames.filter(n =>
-      /mint|freeze|owner|creator|authority|supply|single|concentrat/i.test(n)
+      /mint|freeze|owner|creator|authority|supply|single|concentrat|insider|launch|anomal/i.test(n)
     );
     return {
       score: d.score || 0,
@@ -578,10 +578,16 @@ async function buildMsg(t, rug, grade, dex24h) {
   var linkList = linkParts.join(' | ');
 
   var dangerText = '';
-  if (rug.risks) {
+  if (rug.risks && rug.risks !== 'Fetch failed') {
     var allRisks = rug.risks.split(', ').filter(r => r);
-    if (allRisks.length > 0) {
-      dangerText = '\n\u26a0\ufe0f Risks: ' + allRisks.join(', ');
+    var flagEmojis = allRisks.map(function(r) {
+      if (/insider|launch|anomal/i.test(r)) return '🚨 ' + r;
+      if (/single holder/i.test(r)) return '🚨 ' + r;
+      if (/mint|freeze/i.test(r)) return '⚠️ ' + r;
+      return '⚠️ ' + r;
+    });
+    if (flagEmojis.length > 0) {
+      dangerText = '\n🚩 Flags: ' + flagEmojis.join(' | ');
     }
   }
 
