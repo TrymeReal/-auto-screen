@@ -626,8 +626,16 @@ async function buildMsg(t, rug, grade, dex24h) {
   if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
-  var flagText = rug.risks ? rug.risks : '';
-  msg += '🚩 Flags   : ' + (flagText || 'Tidak ada') + '\n';
+  var insiderFlags = [];
+  if (rug.risks) {
+    rug.risks.split(', ').forEach(function(r) {
+      if (/insider analysis/i.test(r)) insiderFlags.push(r);
+      if (/launch insights/i.test(r)) insiderFlags.push(r);
+    });
+  }
+  if (insiderFlags.length > 0) {
+    msg += '🚩 Flags   : ' + insiderFlags.join(' | ') + '\n';
+  }
   msg += '\ud83d\udcb0 Harga   : $' + fmtPrice(t.price) + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
   msg += '\ud83d\udcca MC      : $' + fmt(t.market_cap) + '\n';
