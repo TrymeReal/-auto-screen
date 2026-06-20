@@ -578,8 +578,11 @@ async function buildMsg(t, rug, grade, dex24h) {
   var linkList = linkParts.join(' | ');
 
   var dangerText = '';
-  if (rug.topDangers.length > 0) {
-    dangerText = '\n\u26a0\ufe0f Dangers: ' + rug.topDangers.join(', ');
+  if (rug.risks) {
+    var allRisks = rug.risks.split(', ').filter(r => r);
+    if (allRisks.length > 0) {
+      dangerText = '\n\u26a0\ufe0f Risks: ' + allRisks.join(', ');
+    }
   }
 
   var mi = t.renounced_mint === 1 ? '\u2705' : '\u274c';
