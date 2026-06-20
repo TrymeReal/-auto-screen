@@ -428,6 +428,10 @@ async function processTokens() {
         log('SKIP ' + t.symbol + ' (Rug ' + rug.score + ')');
         continue;
       }
+      if (rug.risks.toLowerCase().includes('insider analysis')) {
+        log('SKIP ' + t.symbol + ' (Insider ≥10%)');
+        continue;
+      }
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') {
         log('SKIP ' + t.symbol);
