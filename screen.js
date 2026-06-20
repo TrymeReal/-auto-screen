@@ -179,6 +179,8 @@ async function getRugCheck(ca) {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
     const riskNames = (d.risks || []).map(r => r.name);
+    log('[DEBUG] RugCheck risks for ' + ca + ': ' + JSON.stringify(d.risks || []));
+    log('[DEBUG] riskNames: ' + riskNames.join(', '));
 
     // Insider Analysis dari graphInsidersDetected
     if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
