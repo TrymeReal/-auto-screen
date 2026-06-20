@@ -179,6 +179,16 @@ async function getRugCheck(ca) {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
     const riskNames = (d.risks || []).map(r => r.name);
+
+    // Insider Analysis dari graphInsidersDetected
+    if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
+      d.insiderNetworks.forEach(function(net) {
+        var totalSupply = d.token && d.token.supply ? Number(d.token.supply) : 0;
+        var pct = totalSupply > 0 ? ((net.tokenAmount / totalSupply) * 100).toFixed(0) : '?';
+        var amt = net.tokenAmount ? Math.round(net.tokenAmount / 1e6) + 'M' : '?';
+        riskNames.push('Insider Analysis: ' + amt + ' tokens (' + pct + '% supply) via ' + net.size + ' wallets');
+      });
+    }
     const dangerFlags = riskNames.filter(n =>
       /mint|freeze|owner|creator|authority|supply|single|concentrat/i.test(n)
     );
