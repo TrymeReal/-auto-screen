@@ -178,9 +178,7 @@ async function getRugCheck(ca) {
   try {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
-    const riskNames = (d.risks || []).map(r => r.name);
-    log('[DEBUG] RugCheck risks for ' + ca + ': ' + JSON.stringify(d.risks || []));
-    log('[DEBUG] riskNames: ' + riskNames.join(', '));
+    const riskNames = (d.risks || []).map(r => '[' + (r.level || 'info').toUpperCase() + '] ' + r.name);
 
     // Insider Analysis dari graphInsidersDetected
     if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
@@ -190,7 +188,7 @@ async function getRugCheck(ca) {
         if (pct >= 10) {
           var pctStr = pct.toFixed(0);
           var amt = Math.round(net.tokenAmount / 1e6) + 'M';
-          riskNames.push('Insider Analysis: ' + amt + ' tokens sent between insiders (' + pctStr + '% of supply) | ' + net.size + ' wallets');
+          riskNames.push('[DANGER] Insider Analysis: ' + amt + ' tokens sent between insiders (' + pctStr + '% of supply) | ' + net.size + ' wallets');
         }
       });
     }
