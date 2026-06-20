@@ -614,7 +614,7 @@ async function buildMsg(t, rug, grade, dex24h) {
   msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
   if (riskLevel) msg += ' | ' + riskLevel;
   if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
-  if (rug.deployPlatform) msg += ' | ' + rug.deployPlatform;
+  if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
   msg += '\ud83d\udcb0 Harga   : $' + fmtPrice(t.price) + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
