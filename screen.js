@@ -7,7 +7,7 @@ const { execSync } = require('child_process');
 
 const CFG = {
   minLp: Number(process.env.MIN_LP) || 15000,
-  minVol: Number(process.env.MIN_VOL_5M) || 3000,
+  minVol: Number(process.env.MIN_VOL_5M) || 5000,
   maxRugScore: Number(process.env.MAX_RUG_SCORE) || 100,
   interval: Number(process.env.POLL_INTERVAL) || 60,
   healthInterval: Number(process.env.HEALTH_INTERVAL) || 3600,
@@ -178,7 +178,10 @@ async function getRugCheck(ca) {
   try {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
-    const riskNames = (d.risks || []).map(r => '[' + (r.level || 'info').toUpperCase() + '] ' + r.name);
+    const riskNames = (d.risks || []).map(r => {
+      const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
+      return lv + r.name;
+    });
 
     // Insider Analysis dari graphInsidersDetected
     if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
