@@ -179,6 +179,7 @@ async function getRugCheck(ca) {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
     const riskNames = (d.risks || []).map(r => '[' + (r.level || 'info').toUpperCase() + '] ' + r.name);
+    const insiderFlags = [];
 
     // Insider Analysis dari graphInsidersDetected
     if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
@@ -188,7 +189,7 @@ async function getRugCheck(ca) {
         if (pct >= 10) {
           var pctStr = pct.toFixed(0);
           var amt = Math.round(net.tokenAmount / 1e6) + 'M';
-          riskNames.push('[DANGER] Insider Analysis: ' + amt + ' tokens sent between insiders (' + pctStr + '% of supply) | ' + net.size + ' wallets');
+          insiderFlags.push('[DANGER] Insider Analysis: ' + amt + ' tokens sent between insiders (' + pctStr + '% of supply) | ' + net.size + ' wallets');
         }
       });
     }
@@ -199,6 +200,7 @@ async function getRugCheck(ca) {
       score: d.score || 0,
       scoreNormalised: d.score_normalised ?? -1,
       risks: riskNames.join(', '),
+      insiderFlags: insiderFlags,
       creator: d.creator || d.owner || '?',
       topDangers: dangerFlags.slice(0, 3),
       tokenType: d.tokenType || '',
@@ -424,8 +426,12 @@ async function processTokens() {
     log('RugCheck: ' + t.symbol + ' (' + t.address + ')');
     try {
       const rug = await getRugCheck(t.address);
-      if (rug.score > 9999) {
+      if (rug.score > CFG.maxRugScore) {
         log('SKIP ' + t.symbol + ' (Rug ' + rug.score + ')');
+        continue;
+      }
+      if (rug.insiderFlags && rug.insiderFlags.length > 0) {
+        log('SKIP ' + t.symbol + ' (Insider ≥10%)');
         continue;
       }
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
@@ -629,13 +635,7 @@ async function buildMsg(t, rug, grade, dex24h) {
   if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
-  var insiderFlags = [];
-  if (rug.risks) {
-    rug.risks.split(', ').forEach(function(r) {
-      if (/insider analysis/i.test(r)) insiderFlags.push(r);
-      if (/launch insights/i.test(r)) insiderFlags.push(r);
-    });
-  }
+  var insiderFlags = rug.insiderFlags || [];
   if (insiderFlags.length > 0) {
     msg += '🚩 Flags   : ' + insiderFlags.join(' | ') + '\n';
   }
@@ -645,7 +645,8 @@ async function buildMsg(t, rug, grade, dex24h) {
   if (dex24h && dex24h.vol24h > 0) msg += '\ud83d\udcca Vol 24h : $' + fmt(dex24h.vol24h) + '\n';
   if (dex24h && dex24h.dexName) msg += '\ud83d\udee1\ufe0f DEX     : ' + dex24h.dexName + '\n';
   msg += '\u23f1\ufe0f Age     : ' + age + '\n';
-  msg += '\ud83d\udc64 Creator : <code>' + rug.creator + '</code>' + dangerText + '\n';
+  msg += '\ud83d\udc64 Creator : <code>' + rug.creator + '</code>\n';
+  if (dangerText) msg += dangerText + '\n';
   if (linkList) {
     msg += '\ud83d\udd17 Links   : ' + linkList + '\n';
   }
