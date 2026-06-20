@@ -179,6 +179,18 @@ async function getRugCheck(ca) {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d = res.data;
     const riskNames = (d.risks || []).map(r => r.name);
+
+    // Insider Networks & Launch Insights
+    if (d.graphInsidersDetected && d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
+      d.insiderNetworks.forEach(function(net) {
+        var totalSupply = d.token && d.token.supply ? Number(d.token.supply) : 0;
+        var pct = totalSupply > 0 ? ((net.tokenAmount / totalSupply) * 100).toFixed(0) : '?';
+        var tokenAmt = net.tokenAmount ? (net.tokenAmount / 1e6).toFixed(0) + 'M' : '?';
+        riskNames.push('Insider Analysis BETA: ' + tokenAmt + ' tokens sent between insiders (' + pct + '% of supply). Network sent ' + pct + '% to ' + net.size + ' wallets (' + net.id + ')');
+      });
+      riskNames.push('Launch Insights BETA: Anomaly Found');
+    }
+
     const dangerFlags = riskNames.filter(n =>
       /mint|freeze|owner|creator|authority|supply|single|concentrat|insider|launch|anomal/i.test(n)
     );
@@ -580,14 +592,14 @@ async function buildMsg(t, rug, grade, dex24h) {
   var dangerText = '';
   if (rug.risks && rug.risks !== 'Fetch failed') {
     var allRisks = rug.risks.split(', ').filter(r => r);
-    var flagEmojis = allRisks.map(function(r) {
-      if (/insider|launch|anomal/i.test(r)) return '🚨 ' + r;
-      if (/single holder/i.test(r)) return '🚨 ' + r;
-      if (/mint|freeze/i.test(r)) return '⚠️ ' + r;
-      return '⚠️ ' + r;
-    });
-    if (flagEmojis.length > 0) {
-      dangerText = '\n🚩 Flags: ' + flagEmojis.join(' | ');
+    if (allRisks.length > 0) {
+      dangerText = '\n🚩 <b>Flags:</b>';
+      allRisks.forEach(function(r) {
+        if (/insider analysis/i.test(r)) dangerText += '\n🚨 ' + r;
+        else if (/launch insights/i.test(r)) dangerText += '\n🚨 ' + r;
+        else if (/single holder/i.test(r)) dangerText += '\n🚨 ' + r;
+        else dangerText += '\n⚠️ ' + r;
+      });
     }
   }
 
