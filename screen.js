@@ -405,14 +405,9 @@ async function checkSwingSignal(t) {
     }
 
   } else {
-    // Tidak ada kline 1D — pakai proxy dari data GMGN
-    // Estimasi volume spike dari vol1h vs threshold swing
-    const volEstSpike = vol1h / (CFG.swingMinVol1h * CFG.swingVolSpikeMin);
-    if (volEstSpike >= 1) {
-      signals.push('Vol 1h $' + fmt(vol1h) + ' (kline 1D tidak tersedia, estimasi)');
-    } else {
-      return { pass: false, reason: 'Kline 1D tidak tersedia & vol tidak cukup' };
-    }
+    // HARD SKIP: kline 1D tidak tersedia — tidak ada konfirmasi vol spike dari data nyata.
+    // Estimasi vol1h tidak cukup reliable untuk swing signal; lewati token ini.
+    return { pass: false, reason: 'Kline 1D tidak tersedia — hard skip (tidak ada data konfirmasi)' };
   }
 
   // Minimal 1 sinyal positif harus ada
@@ -700,11 +695,26 @@ async function processTokens() {
     }
 
     // Mode 2: Swing 1D — token yang sudah lebih tua, cek pre-pump signal
-    // Bisa re-check meski sudah di SEEN (karena kondisi bisa berubah)
+    // Guard tambahan: jika token sudah pernah masuk SEEN (via migration),
+    // pastikan sudah berlalu minimal swingMinAge jam sejak pertama kali dilihat.
+    // Ini mencegah token yang baru 16j lolos ke swing hanya karena sudah ada di SEEN.
     if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
-      // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
       const seenEntry = SEEN.get(t.address);
+
+      // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
       if (seenEntry && seenEntry.swingNotified) continue;
+
+      // Jika token pernah masuk SEEN sebelumnya, verifikasi usia SEEN juga sudah cukup.
+      // Ini guard terhadap celah: token masuk SEEN jam ke-16, lalu siklus berikutnya
+      // ageH sudah ≥ 24 dari creation_timestamp tapi belum cukup lama di SEEN.
+      if (seenEntry && seenEntry.seenAt) {
+        const seenAgeH = (Date.now() - seenEntry.seenAt) / 3600000;
+        if (seenAgeH < CFG.swingMinAge) {
+          log('SKIP [SWING] ' + (t.symbol || '?') + ' — sudah di SEEN tapi baru ' + seenAgeH.toFixed(1) + 'j (< ' + CFG.swingMinAge + 'j)');
+          continue;
+        }
+      }
+
       swingCandidates.push(t);
     }
   }
@@ -723,7 +733,7 @@ async function processTokens() {
     if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
     if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
 
-    SEEN.set(t.address, { firstSeen: Date.now(), mode: 'migration' });
+    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
     try {
       const rug = await getRugCheck(t.address);
@@ -770,7 +780,7 @@ async function processTokens() {
       if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
 
       // Mark sudah dinotif sebagai swing (update SEEN entry)
-      const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now() };
+      const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now(), seenAt: Date.now() };
       SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
