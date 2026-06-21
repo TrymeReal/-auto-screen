@@ -91,7 +91,7 @@ async function main() {
 
   console.log(p('  Price') + ': $' + price.toFixed(8));
   console.log(p('  MCap') + ': $' + fmt(mcap));
-  if (gmgn && gmgn.ath_price) console.log(p('  ATH MCap') + ': $' + fmt(mcap)); // estimate
+  if (gmgn && gmgn.history_highest_market_cap) console.log(p('  ATH MCap') + ': $' + fmt(Number(gmgn.history_highest_market_cap)));
   console.log(p('  Liquidity') + ': $' + fmt(liq));
   console.log(p('  Vol 1h') + ': $' + fmt(vol1h));
   console.log(p('  Vol 24h') + ': $' + fmt(vol24h));
@@ -114,15 +114,19 @@ async function main() {
   // ===== RUGCHECK =====
   console.log('\nRUGCHECK');
   if (rug) {
-    console.log(p('  Score') + ': ' + (rug.score || 0) + ' (' + (rug.risks ? rug.risks.length : 0) + ')');
-    const risks = (rug.risks || []).map(r => {
+    const riskNames = (rug.risks || []).map(r => {
       const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
       return lv + r.name;
-    }).join(', ');
-    console.log(p('  Risks') + ': ' + (risks || 'Tidak ada'));
+    });
+    const dangerFlags = riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, ''));
+    const warnFlags = riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, ''));
+    console.log(p('  Score') + ': ' + (rug.score || 0) + ' (' + riskNames.length + ' risks)');
+    console.log(p('  Danger') + ': ' + (dangerFlags.length > 0 ? dangerFlags.join(' | ') : 'Tidak ada'));
+    console.log(p('  Warning') + ': ' + (warnFlags.length > 0 ? warnFlags.join(' | ') : 'Tidak ada'));
   } else {
     console.log(p('  Score') + ': N/A');
-    console.log(p('  Risks') + ': -');
+    console.log(p('  Danger') + ': -');
+    console.log(p('  Warning') + ': -');
   }
 
   // ===== DEX SCREENER =====
@@ -161,7 +165,6 @@ async function main() {
     const top10 = Number(gmgn.stat?.top_10_holder_rate || 0);
     const bundlerPct = Number(gmgn.stat?.top_bundler_trader_percentage || 0);
     const freshPct = Number(gmgn.stat?.fresh_wallet_rate || 0);
-    const botPct = Number(gmgn.stat?.top_bot_degen_percentage || 0);
     const smartCount = wtt.smart_wallets || 0;
     const bundlerCount = wtt.bundler_wallets || 0;
     const freshCount = wtt.fresh_wallets || 0;
@@ -169,9 +172,9 @@ async function main() {
     const totalTagged = smartCount + bundlerCount + freshCount + sniperCount;
     
     // Simplified holder breakdown
-    console.log('    ' + 'AMM Pool  : ' + '~' + (top10 * 100).toFixed(2) + '%');
-    console.log('    ' + 'Bundler   : ' + bundlerCount + ' wallet | ' + (bundlerPct * 100).toFixed(2) + '%');
-    console.log('    ' + 'Fresh     : ' + freshCount + ' wallet | ' + (freshPct * 100).toFixed(2) + '%');
+    console.log('    ' + 'Top10     : ' + '~' + (top10 * 100).toFixed(2) + '%');
+    console.log('    ' + 'Bundler   : ' + bundlerCount + ' wallet | ' + pct(bundlerPct));
+    console.log('    ' + 'Fresh     : ' + freshCount + ' wallet | ' + pct(freshPct));
     console.log('    ' + 'Smart     : ' + smartCount + ' wallet');
     console.log('    ' + 'Sniper    : ' + sniperCount + ' wallet');
     console.log('    ' + 'Lainnya   : ' + (holders - totalTagged > 0 ? (holders - totalTagged).toLocaleString() : '0') + ' wallet');
