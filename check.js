@@ -115,7 +115,10 @@ async function main() {
   console.log('\nRUGCHECK');
   if (rug) {
     console.log(p('  Score') + ': ' + (rug.score || 0) + ' (' + (rug.risks ? rug.risks.length : 0) + ')');
-    const risks = (rug.risks || []).map(r => r.name).join(', ');
+    const risks = (rug.risks || []).map(r => {
+      const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
+      return lv + r.name;
+    }).join(', ');
     console.log(p('  Risks') + ': ' + (risks || 'Tidak ada'));
   } else {
     console.log(p('  Score') + ': N/A');
