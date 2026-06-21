@@ -195,20 +195,20 @@ async function getRugCheck(ca) {
         }
       });
     }
-    const dangerFlags = riskNames.filter(n =>
-      /mint|freeze|owner|creator|authority|supply|single|concentrat/i.test(n)
-    );
+    const dangerFlags = riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, ''));
+    const warnFlags = riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, ''));
     return {
       score: d.score || 0,
       scoreNormalised: d.score_normalised ?? -1,
       risks: riskNames.join(', '),
       creator: d.creator || d.owner || '?',
-      topDangers: dangerFlags.slice(0, 3),
+      topDangers: dangerFlags,
+      topWarns: warnFlags,
       tokenType: d.tokenType || '',
       rugged: d.rugged || false,
       deployPlatform: d.deployPlatform || '',
     };
-  } catch { return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?', topDangers: [], tokenType: '', rugged: false, deployPlatform: '' }; }
+  } catch { return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?', topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '' }; }
 }
 
 async function fetchGMGNKline(address, resolution = '1h', fromMs, toMs) {
@@ -597,13 +597,6 @@ async function buildMsg(t, rug, grade, dex24h) {
   if (t.telegram) linkParts.push(' <a href="' + t.telegram + '">TG</a>');
   var linkList = linkParts.join(' | ');
 
-  var dangerText = '';
-  if (rug.risks) {
-    var allRisks = rug.risks.split(', ').filter(r => r);
-    if (allRisks.length > 0) {
-      dangerText = '\n\u26a0\ufe0f Risks: ' + allRisks.join(', ');
-    }
-  }
 
   var mi = t.renounced_mint === 1 ? '\u2705' : '\u274c';
   var fr = t.renounced_freeze_account === 1 ? '\u2705' : '\u274c';
@@ -636,15 +629,11 @@ async function buildMsg(t, rug, grade, dex24h) {
   if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
   if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
   msg += '\n';
-  var insiderFlags = [];
-  if (rug.risks) {
-    rug.risks.split(', ').forEach(function(r) {
-      if (/insider analysis/i.test(r)) insiderFlags.push(r);
-      if (/launch insights/i.test(r)) insiderFlags.push(r);
-    });
+  if (rug.topDangers && rug.topDangers.length > 0) {
+    msg += '\ud83d\udea8 Danger  : ' + rug.topDangers.join(' | ') + '\n';
   }
-  if (insiderFlags.length > 0) {
-    msg += '🚩 Flags   : ' + insiderFlags.join(' | ') + '\n';
+  if (rug.topWarns && rug.topWarns.length > 0) {
+    msg += '\u26a0\ufe0f Warning : ' + rug.topWarns.join(' | ') + '\n';
   }
   msg += '\ud83d\udcb0 Harga   : $' + fmtPrice(t.price) + chg1h + '\n';
   msg += '\ud83d\udd04 Buy/Sell: ' + t.buys + '/' + t.sells + ' (' + ratio + ' Buy)\n';
@@ -652,7 +641,7 @@ async function buildMsg(t, rug, grade, dex24h) {
   if (dex24h && dex24h.vol24h > 0) msg += '\ud83d\udcca Vol 24h : $' + fmt(dex24h.vol24h) + '\n';
   if (dex24h && dex24h.dexName) msg += '\ud83d\udee1\ufe0f DEX     : ' + dex24h.dexName + '\n';
   msg += '\u23f1\ufe0f Age     : ' + age + '\n';
-  msg += '\ud83d\udc64 Creator : <code>' + rug.creator + '</code>' + dangerText + '\n';
+  msg += '\ud83d\udc64 Creator : <code>' + rug.creator + '</code>\n';
   if (linkList) {
     msg += '\ud83d\udd17 Links   : ' + linkList + '\n';
   }
