@@ -15,7 +15,7 @@ const CFG = {
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
   // Mode Swing 1D — filter lebih ketat
-  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 50000,
+  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
   swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 20000,
   swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 15,   // tidak sedang pump >15% per jam
   swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
