@@ -39,6 +39,8 @@ if (!CFG.tgToken || !CFG.tgChatId) {
   process.exit(1);
 }
 
+console.log('DEBUG thread SWING=' + process.env.TG_THREAD_ID + ' MIG=' + process.env.TG_THREAD_MIG);
+
 const TG_API        = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
 const SEEN_FILE     = path.join(__dirname, 'seen.json');
 const POSITIONS_FILE= path.join(__dirname, 'positions.json');
