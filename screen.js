@@ -772,6 +772,7 @@ async function processTokens() {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
           entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+          threadId: CFG.tgThreadMig,
         });
         log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
       }
@@ -812,6 +813,7 @@ async function processTokens() {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
           entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+          threadId: CFG.tgThreadId,
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
       }
@@ -864,7 +866,8 @@ async function checkTrackedPositions(trendingTokens) {
         gradeEmoji + ' 🗑️ ' + riskLabel + ' | ' + modeLabel + ' | <b>Stop Track</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
         + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId
+        pos.msgId,
+        pos.threadId
       );
       continue;
     }
@@ -888,7 +891,8 @@ async function checkTrackedPositions(trendingTokens) {
         + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
         + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
         + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId
+        pos.msgId,
+        pos.threadId
       );
       pos.nextTargetIdx = highestIdx + 1;
       savePositions();
