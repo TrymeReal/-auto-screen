@@ -361,6 +361,12 @@ async function checkSwingSignal(t) {
   if (holders > 0 && holders < CFG.swingMinHolders)
     return { pass: false, reason: 'Holder terlalu sedikit (' + holders + ')' };
 
+  // — Gate 6: Buy ratio minimal 50% —
+  const totalTxn = (t.buys || 0) + (t.sells || 0);
+  const buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 0;
+  if (totalTxn > 0 && buyRatio < 50)
+    return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy)' };
+
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = [];
   const klines  = await fetchSwingKlines(t.address);
