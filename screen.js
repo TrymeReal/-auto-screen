@@ -409,9 +409,14 @@ async function checkSwingSignal(t) {
     }
 
   } else {
-    // HARD SKIP: kline 1D tidak tersedia — tidak ada konfirmasi vol spike dari data nyata.
-    // Estimasi vol1h tidak cukup reliable untuk swing signal; lewati token ini.
-    return { pass: false, reason: 'Kline 1D tidak tersedia — hard skip (tidak ada data konfirmasi)' };
+    // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
+    log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
+    if (vol1h >= CFG.swingMinVol1h)
+      signals.push('Vol 1h cukup $' + fmt(vol1h));
+    if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
+      signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
+    if (change24h < 0)
+      signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
   }
 
   // Minimal 1 sinyal positif harus ada
