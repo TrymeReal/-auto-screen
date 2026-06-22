@@ -39,6 +39,8 @@ if (!CFG.tgToken || !CFG.tgChatId) {
   process.exit(1);
 }
 
+console.log('DEBUG thread SWING=' + process.env.TG_THREAD_ID + ' MIG=' + process.env.TG_THREAD_MIG);
+
 const TG_API        = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
 const SEEN_FILE     = path.join(__dirname, 'seen.json');
 const POSITIONS_FILE= path.join(__dirname, 'positions.json');
@@ -629,15 +631,17 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   }
 
   msg += '🛡️ GMGN:\n';
-  msg += '📋 Holders: ' + fmt(t.holder_count || 0) + '\n';
-  msg += '🔍 Top10: ' + top10 + '%\n';
-  msg += '🔗 Bundler: ' + bundlerPct + '%\n';
-  msg += '🤖 Bots: ' + (t.bot_degen_count || 0) + '\n';
-  msg += '🎯 Snipers: ' + snipers + '%\n';
-  msg += '👤 Creator: ' + creatorHold + '%\n';
-  msg += '♻️ Burn: ' + burnPct + '%\n';
+  msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
+  msg += '🔍 Top10   : ' + top10 + '%\n';
+  msg += '🔗 Bundler : ' + bundlerPct + '%\n';
+  msg += '🤖 Bots    : ' + (t.bot_degen_count || 0) + '\n';
+  msg += '🎯 Snipers : ' + snipers + '%\n';
+  msg += '👤 Creator : ' + creatorHold + '%\n';
+  msg += '♻️ Burn    : ' + burnPct + '%\n';
   msg += 'Mint: ' + mi + ' | Freeze: ' + fr + ' | Honeypot: ' + hp + '\n';
-  msg += 'Smart: ' + (t.smart_degen_count || 0) + ' | Sniper: ' + (t.sniper_count || 0) + ' | Bundler: ' + (t.renowned_count || 0) + '\n';
+  msg += '💎 Smart   : ' + (t.smart_degen_count || 0) + '\n';
+  msg += '🌟 KOL     : ' + (t.renowned_count || 0) + '\n';
+  msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
   msg += SEP + '\n';
 
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
@@ -768,7 +772,6 @@ async function processTokens() {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
           entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-          threadId: CFG.tgThreadMig,
         });
         log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
       }
@@ -809,7 +812,6 @@ async function processTokens() {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
           entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-          threadId: CFG.tgThreadId,
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
       }
@@ -862,8 +864,7 @@ async function checkTrackedPositions(trendingTokens) {
         gradeEmoji + ' 🗑️ ' + riskLabel + ' | ' + modeLabel + ' | <b>Stop Track</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
         + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId,
-        pos.threadId
+        pos.msgId
       );
       continue;
     }
@@ -887,8 +888,7 @@ async function checkTrackedPositions(trendingTokens) {
         + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
         + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
         + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId,
-        pos.threadId
+        pos.msgId
       );
       pos.nextTargetIdx = highestIdx + 1;
       savePositions();
