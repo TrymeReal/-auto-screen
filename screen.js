@@ -241,7 +241,7 @@ async function getRugCheck(ca) {
 
 async function sendTelegram(msg, replyTo, threadId) {
   try {
-    var resolvedThread = threadId !== undefined ? threadId : CFG.tgThreadId;
+    var resolvedThread = threadId !== undefined ? threadId : null;
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
     if (resolvedThread)  payload.message_thread_id  = resolvedThread;
     if (replyTo)         payload.reply_to_message_id = replyTo;
@@ -861,13 +861,14 @@ async function checkTrackedPositions(trendingTokens) {
       logTrackingEvent({ type: 'STOP_TRACK', ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : 'Grade B';
+      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
       await sendTelegram(
         gradeEmoji + ' 🗑️ ' + riskLabel + ' | ' + modeLabel + ' | <b>Stop Track</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
         + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
         pos.msgId,
-        pos.threadId
+        safeThread
       );
       continue;
     }
@@ -882,7 +883,8 @@ async function checkTrackedPositions(trendingTokens) {
       log(pos.symbol + ' hit target +' + target + '%');
       logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : 'Grade B';
+      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
         + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
@@ -892,7 +894,7 @@ async function checkTrackedPositions(trendingTokens) {
         + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
         + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
         pos.msgId,
-        pos.threadId
+        safeThread
       );
       pos.nextTargetIdx = highestIdx + 1;
       savePositions();
