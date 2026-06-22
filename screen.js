@@ -753,7 +753,7 @@ async function processTokens() {
     try {
       const rug = await getRugCheck(t.address);
       if (rug.score > CFG.maxRugScore) { log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
-      if (rug.risks.toLowerCase().includes('insider analysis')) { log('SKIP [MIG] ' + t.symbol + ' (Insider ≥10%)'); continue; }
+      if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [MIG] ' + t.symbol + ' (Insider ≥10%)'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol); continue; }
@@ -789,7 +789,7 @@ async function processTokens() {
     try {
       const rug = await getRugCheck(t.address);
       if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
-      if (rug.risks.toLowerCase().includes('insider analysis')) { log('SKIP [SWING] ' + t.symbol + ' (Insider)'); continue; }
+      if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [SWING] ' + t.symbol + ' (Insider)'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
