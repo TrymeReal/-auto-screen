@@ -1,24 +1,19 @@
 name: Auto Screen
-
 on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
-
 concurrency:
   group: screen
   cancel-in-progress: false
-
 jobs:
   screen:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Restore cache
         id: cache-data
         uses: actions/cache@v4
@@ -28,17 +23,15 @@ jobs:
             positions.json
           key: data-${{ github.run_id }}
           restore-keys: data-
-
       - run: npm install
-
       - run: npm install -g gmgn-cli
-
       - run: node screen.js
         env:
           CI: 'false'
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
+          TG_THREAD_MIG: ${{ secrets.TG_THREAD_MIG }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
