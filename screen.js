@@ -195,7 +195,10 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
       timeout: 10000,
     });
     return res.data?.list || null;
-  } catch { return null; }
+  } catch (e) {
+    log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
+    return null;
+  }
 }
 
 async function getRugCheck(ca) {
@@ -316,6 +319,7 @@ function calculateScore(t, rug) {
  * Return null jika gagal atau data tidak cukup.
  */
 async function fetchSwingKlines(address) {
+  await new Promise(r => setTimeout(r, 500));
   const nowSec  = Math.floor(Date.now() / 1000);
   const fromSec = nowSec - 7 * 86400; // 7 hari
   return await fetchGMGNKline(address, '1d', fromSec, nowSec);
