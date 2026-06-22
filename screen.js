@@ -30,7 +30,8 @@ const CFG = {
   seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
   tgToken:         process.env.TG_TOKEN,
   tgChatId:        process.env.TG_CHAT_ID,
-  tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,
+  tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
+  tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
 };
 
 if (!CFG.tgToken || !CFG.tgChatId) {
@@ -236,10 +237,11 @@ async function getRugCheck(ca) {
   }
 }
 
-async function sendTelegram(msg, replyTo) {
+async function sendTelegram(msg, replyTo, threadId) {
   try {
+    var resolvedThread = threadId !== undefined ? threadId : CFG.tgThreadId;
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
-    if (CFG.tgThreadId)  payload.message_thread_id  = CFG.tgThreadId;
+    if (resolvedThread)  payload.message_thread_id  = resolvedThread;
     if (replyTo)         payload.reply_to_message_id = replyTo;
     var res = await axios.post(TG_API, payload, { timeout: 10000 });
     return res.data.result?.message_id || null;
@@ -759,7 +761,7 @@ async function processTokens() {
       if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol); continue; }
 
       log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ')');
-      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'MIGRATION', null));
+      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'MIGRATION', null), null, CFG.tgThreadMig);
       totalNotified++;
 
       if (t.price && Number(t.price) > 0) {
@@ -799,7 +801,7 @@ async function processTokens() {
       SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
-      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals));
+      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals), null, CFG.tgThreadId);
       totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
