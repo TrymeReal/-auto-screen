@@ -403,8 +403,8 @@ async function checkSwingSignal(t) {
       if (posInRange <= 0.45) {
         signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
       } else if (posInRange >= 0.80) {
-        // Sudah terlalu tinggi di range
-        signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
+        // Sudah terlalu tinggi di range — reject, bukan pre-pump
+        return { pass: false, reason: 'Harga sudah di ' + (posInRange * 100).toFixed(0) + '% dari range 7h (terlalu tinggi, bukan pre-pump)' };
       }
     }
 
