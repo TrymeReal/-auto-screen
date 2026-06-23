@@ -11,8 +11,10 @@ const CFG = {
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
-  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
+  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 70,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
+  maxBundlerRate:  Number(process.env.MAX_BUNDLER_RATE)  || 50,  // reject jika bundler > 50%
+  rejectHoneypot:  process.env.REJECT_HONEYPOT !== 'false',       // default: reject honeypot
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -418,6 +420,13 @@ async function checkSwingSignal(t) {
       signals.push('Konsolidasi 7h (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
     }
 
+    // Sinyal 5: Smart money — KOL & Smart Degen sebagai boost konfirmasi
+    const kolSig   = t.renowned_count    || 0;
+    const smartSig = t.smart_degen_count || 0;
+    if (kolSig >= 1 || smartSig >= 1) {
+      signals.push('Smart money: KOL ' + kolSig + ' | Smart degen ' + smartSig);
+    }
+
   } else {
     // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
     log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
@@ -751,6 +760,9 @@ async function processTokens() {
       const buyPct = (t.buys / totalTxn) * 100;
       if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
     }
+    if (CFG.rejectHoneypot && t.is_honeypot === 1) { log('SKIP [MIG] ' + t.symbol + ' (Honeypot)'); continue; }
+    const bundlerPctMig = (t.bundler_rate || 0) * 100;
+    if (bundlerPctMig > CFG.maxBundlerRate) { log('SKIP [MIG] ' + t.symbol + ' (Bundler ' + bundlerPctMig.toFixed(0) + '%)'); continue; }
     if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
     if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
 
@@ -782,6 +794,19 @@ async function processTokens() {
   // — Proses Swing 1D —
   for (let i = 0; i < swingCandidates.length; i++) {
     const t = swingCandidates[i];
+
+    // Gate awal: honeypot & bundler sebelum checkSwingSignal (hemat API call)
+    if (CFG.rejectHoneypot && t.is_honeypot === 1) { log('SKIP [SWING] ' + t.symbol + ' (Honeypot)'); continue; }
+    const bundlerPctSwing = (t.bundler_rate || 0) * 100;
+    if (bundlerPctSwing > CFG.maxBundlerRate) { log('SKIP [SWING] ' + t.symbol + ' (Bundler ' + bundlerPctSwing.toFixed(0) + '%)'); continue; }
+
+    // Gate KOL + Smart Degen — token 24j+ harusnya minimal ada salah satu
+    const kolCount   = t.renowned_count    || 0;
+    const smartCount = t.smart_degen_count || 0;
+    if (kolCount === 0 && smartCount === 0) {
+      log('SKIP [SWING] ' + t.symbol + ' (KOL=0 & Smart=0, no smart money interest)');
+      continue;
+    }
 
     log('[SWING] Cek ' + t.symbol + ' (age ' + tokenAgeHours(t.creation_timestamp).toFixed(0) + 'j)');
     const swingResult = await checkSwingSignal(t);
@@ -931,11 +956,14 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
+log('  Bundler < ' + CFG.maxBundlerRate + '% | Honeypot reject: ' + CFG.rejectHoneypot);
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
 log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
 log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
+log('  Bundler < ' + CFG.maxBundlerRate + '% | Honeypot reject: ' + CFG.rejectHoneypot);
+log('  KOL=0 & Smart Degen=0 → skip (no smart money)');
 log('');
 log('Interval: ' + CFG.interval + 's');
 log('');
