@@ -13,6 +13,8 @@ const CFG = {
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
+  maxTop10Holder:  Number(process.env.MAX_TOP10_HOLDER)  || 25,   // tolak jika top 10 holder > 25%
+  maxBundler:      Number(process.env.MAX_BUNDLER)       || 25,   // tolak jika bundler > 25%
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -799,10 +801,14 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
 function checkBasic(t) {
   const totalTxn = (t.buys || 0) + (t.sells || 0);
   const buyPct   = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 100;
+  const top10    = (t.top_10_holder_rate || 0) * 100;
+  const bundler  = (t.bundler_rate || 0) * 100;
 
-  if (buyPct < CFG.minBuyRatio)  return { reason: 'Buy ' + buyPct.toFixed(0) + '%' };
-  if (t.volume    < CFG.minVol)  return { reason: 'Vol $' + t.volume };
-  if (t.liquidity < CFG.minLp)   return { reason: 'LP $' + t.liquidity };
+  if (buyPct < CFG.minBuyRatio)      return { reason: 'Buy ' + buyPct.toFixed(0) + '%' };
+  if (t.volume    < CFG.minVol)      return { reason: 'Vol $' + t.volume };
+  if (t.liquidity < CFG.minLp)       return { reason: 'LP $' + t.liquidity };
+  if (top10   > CFG.maxTop10Holder)  return { reason: 'Top10 ' + top10.toFixed(0) + '%' };
+  if (bundler > CFG.maxBundler)      return { reason: 'Bundler ' + bundler.toFixed(0) + '%' };
 
   return null;
 }
