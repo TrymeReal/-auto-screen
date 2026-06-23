@@ -806,7 +806,8 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '🎯 Snipers : ' + snipers + '%\n';
   msg += '👤 Creator : ' + creatorHold + '%\n';
   msg += '♻️ Burn    : ' + burnPct + '%\n';
-  msg += 'Mint: ' + mi + ' | Freeze: ' + fr + ' | Honeypot: ' + hp + '\n';
+  // Mint/Freeze/Honeypot tidak ditampilkan: di sumber trenches field renounce
+  // selalu kosong (tampil ❌) → misleading. Patokan keamanan pakai RugCheck.
   msg += '💎 Smart   : ' + (t.smart_degen_count || 0) + '\n';
   msg += '🌟 KOL     : ' + (t.renowned_count || 0) + '\n';
   msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
