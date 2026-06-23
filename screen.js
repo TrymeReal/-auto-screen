@@ -189,6 +189,11 @@ function fetchGmgnTrending() {
   }
 }
 
+// Terima berbagai bentuk "ya": true, 1, "1", "true", "yes".
+function isTruthyFlag(v) {
+  return v === true || v === 1 || v === '1' || v === 'true' || v === 'yes';
+}
+
 // Normalisasi item trenches → nama field yang dipakai sisa kode (sama spt trending).
 // Trenches tak punya `price`/`market_cap` langsung; diturunkan dari market cap / supply.
 function normalizeTrench(t) {
@@ -202,10 +207,10 @@ function normalizeTrench(t) {
     buys:               t.buys_24h,
     sells:              t.sells_24h,
     bundler_rate:       t.bundler_trader_amount_rate,   // nama beda di trenches
-    // Trenches kirim renounced sbg boolean (true/false), trending sbg angka (1/0).
-    // Gate cek `!== 1`, jadi samakan ke 1/0 biar token yg sudah renounced tidak ikut ke-skip.
-    renounced_mint:           (t.renounced_mint === true || t.renounced_mint === 1) ? 1 : 0,
-    renounced_freeze_account: (t.renounced_freeze_account === true || t.renounced_freeze_account === 1) ? 1 : 0,
+    // Trenches bisa kirim renounced dalam bentuk apa aja (true / 1 / "1" / "true").
+    // Gate cek `!== 1`, jadi samakan ke 1/0 supaya token yg sudah renounced tidak ke-skip.
+    renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
+    renounced_freeze_account: isTruthyFlag(t.renounced_freeze_account) ? 1 : 0,
   });
 }
 
@@ -232,6 +237,14 @@ function fetchGmgnTrenches() {
     const root = (d && d.completed) ? d : (d && d.data) ? d.data : {};
     const list = root.completed || [];
     log('GMGN trenches completed: ' + list.length + ' tokens (keys: ' + Object.keys(d || {}).join(',') + ')');
+    // DEBUG sementara: lihat nilai asli field renounce dari 1 token contoh.
+    if (list[0]) {
+      const s = list[0];
+      log('[DEBUG renounce] mint=' + JSON.stringify(s.renounced_mint) +
+          ' freeze=' + JSON.stringify(s.renounced_freeze_account) +
+          ' | bundler=' + JSON.stringify(s.bundler_trader_amount_rate) +
+          ' top10=' + JSON.stringify(s.top_10_holder_rate));
+    }
     return list.map(normalizeTrench);
   } catch (e) {
     log('GMGN trenches error: ' + e.message);
