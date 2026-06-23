@@ -269,7 +269,7 @@ async function sendTelegram(msg, replyTo, threadId) {
 }
 
 const GIST_ID_SCREEN = '7872aefdf9114d37a56a1e9187406800';
-const GITHUB_TOKEN_SCREEN = process.env.GITHUB_TOKEN || '';
+const GITHUB_TOKEN_SCREEN = process.env.GH_TOKEN || '';
 
 async function readGist() {
   if (!GITHUB_TOKEN_SCREEN || !GIST_ID_SCREEN) return [];
