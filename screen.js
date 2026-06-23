@@ -339,7 +339,7 @@ async function fetchSwingKlines(address) {
   await new Promise(r => setTimeout(r, 500));
   const nowSec  = Math.floor(Date.now() / 1000);
   const fromSec = nowSec - 7 * 86400; // 7 hari
-  return await fetchGMGNKline(address, '1d', fromSec, nowSec);
+  return await fetchGMGNKline(address, '1D', fromSec, nowSec);
 }
 
 /**
