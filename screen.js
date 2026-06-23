@@ -789,6 +789,39 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
 }
 
 // ─────────────────────────────────────────────
+//  FILTER NEW MIGRATION
+//  Tiap fungsi return null kalau lolos, atau { reason, lock? } kalau di-skip.
+//  `lock` diisi hanya untuk red flag struktural yang aman dikunci permanen.
+// ─────────────────────────────────────────────
+
+// Cek murah — tanpa panggilan API. Dipakai duluan biar token yang gugur di
+// buy/vol/LP tidak buang-buang call RugCheck.
+function checkBasic(t) {
+  const totalTxn = (t.buys || 0) + (t.sells || 0);
+  const buyPct   = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 100;
+
+  if (buyPct < CFG.minBuyRatio)  return { reason: 'Buy ' + buyPct.toFixed(0) + '%' };
+  if (t.volume    < CFG.minVol)  return { reason: 'Vol $' + t.volume };
+  if (t.liquidity < CFG.minLp)   return { reason: 'LP $' + t.liquidity };
+
+  return null;
+}
+
+// Cek berdasarkan hasil RugCheck. Dipanggil hanya setelah checkBasic lolos.
+function checkRug(t, rug) {
+  if (rug.risks === 'Fetch failed') return { reason: 'RugCheck API gagal, dicoba lagi cycle berikutnya' };
+
+  if (rug.score > CFG.maxRugScore)  return { reason: 'Rug ' + rug.score, lock: 'rug_score' };
+  if (rug.topDangers.some(d => d.toLowerCase().includes('insider')))
+    return { reason: 'Insider ≥10%', lock: 'insider' };
+
+  if (gradeToken(t.liquidity, t.volume, rug.score) === 'SKIP')
+    return { reason: 'Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya' };
+
+  return null;
+}
+
+// ─────────────────────────────────────────────
 //  MAIN PROCESSING LOOP
 // ─────────────────────────────────────────────
 async function processTokens() {
@@ -851,45 +884,27 @@ async function processTokens() {
   // — Proses New Migration —
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
-    const totalTxn = (t.buys || 0) + (t.sells || 0);
-    if (totalTxn > 0) {
-      const buyPct = (t.buys / totalTxn) * 100;
-      if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
-    }
-    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
-    if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
+
+    // Cek murah dulu (buy/vol/LP) — gugur di sini = tidak buang call RugCheck.
+    const basic = checkBasic(t);
+    if (basic) { log('SKIP [MIG] ' + t.symbol + ' (' + basic.reason + ')'); continue; }
 
     try {
-      const rug = await getRugCheck(t.address);
+      const rug  = await getRugCheck(t.address);
+      const fail = checkRug(t, rug);
 
-      // RugCheck API gagal (timeout/error) ≠ token-nya beneran rug. Jangan kunci
-      // ke SEEN — biar dicoba lagi cycle berikutnya selama masih < swingMinAge.
-      if (rug.risks === 'Fetch failed') {
-        log('SKIP [MIG] ' + t.symbol + ' (RugCheck API gagal, dicoba lagi cycle berikutnya)');
-        continue;
-      }
-
-      // Rug score & insider itu karakteristik yang jarang berubah → aman dikunci
-      // permanen, sekalian biar gak nge-spam rug-check API ke token yang udah
-      // jelas red flag tiap cycle.
-      if (rug.score > CFG.maxRugScore) {
-        log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ')');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
-        continue;
-      }
-      if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) {
-        log('SKIP [MIG] ' + t.symbol + ' (Insider ≥10%)');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'insider' });
+      if (fail) {
+        log('SKIP [MIG] ' + t.symbol + ' (' + fail.reason + ')');
+        // Hanya red flag struktural (rug/insider) yang dikunci permanen ke SEEN.
+        // Sisanya (Grade belum cukup, RugCheck gagal) tidak dikunci →
+        // dicoba lagi cycle berikutnya selama token masih < swingMinAge.
+        if (fail.lock) {
+          SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: fail.lock });
+        }
         continue;
       }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') {
-        // LP/Vol masih belum cukup buat dapet grade — JANGAN kunci, kasih
-        // kesempatan token ini tumbuh (LP/Vol bisa naik jam-jam berikutnya).
-        log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya)');
-        continue;
-      }
 
       // — Lolos semua syarat → baru resmi dicatet & dinotif —
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
