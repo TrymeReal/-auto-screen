@@ -11,10 +11,8 @@ const CFG = {
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
-  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 70,
+  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
-  maxBundlerRate:  Number(process.env.MAX_BUNDLER_RATE)  || 50,  // reject jika bundler > 50%
-  rejectHoneypot:  process.env.REJECT_HONEYPOT !== 'false',       // default: reject honeypot
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -93,7 +91,7 @@ function timeAgo(ts) {
   if (mins < 60) return mins + 'm';
   const hrs = Math.floor(mins / 60);
   if (hrs < 24)  return hrs + 'j';
-  return Math.floor(hrs / 24) + 'd';
+  return Math.floor(hrs / 24) + 'h';
 }
 
 function tokenAgeHours(ts) {
@@ -264,19 +262,12 @@ function isMigratedDex(t) {
 }
 
 function gradeToken(lp, vol, rugScore) {
-  // Legacy — masih dipakai sebagai fallback jika calculateScore belum tersedia
   let score = 0;
   if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
   if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
   if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
   if (score >= 80) return 'GOLD';
   if (score >= 60) return 'POTENSIAL';
-  return 'SKIP';
-}
-
-function gradeFromScore(dynScore) {
-  if (dynScore >= 70) return 'GOLD';       // Grade A
-  if (dynScore >= 50) return 'POTENSIAL';  // Grade B
   return 'SKIP';
 }
 
@@ -348,7 +339,10 @@ async function checkSwingSignal(t) {
   const change24h = Number(t.price_change_percent24h) || 0;
   const lp        = t.liquidity || 0;
   const vol1h     = t.volume    || 0;
-  const holders   = t.holder_count || 0;
+  // Bedakan "data holder gak tersedia" (null) vs "beneran 0 holder" — sebelumnya
+  // dua-duanya numpuk jadi 0 dan gate holder jadi silently bypass tiap kali API
+  // gak ngirim field ini.
+  const holders   = (typeof t.holder_count === 'number') ? t.holder_count : null;
 
   // — Gate 1: usia token —
   if (ageH < CFG.swingMinAge)
@@ -371,8 +365,10 @@ async function checkSwingSignal(t) {
     return { pass: false, reason: 'Vol 1h terlalu kecil ($' + fmt(vol1h) + ')' };
 
   // — Gate 5: Holder cukup (likuiditas sosial) —
-  if (holders > 0 && holders < CFG.swingMinHolders)
+  if (holders !== null && holders < CFG.swingMinHolders)
     return { pass: false, reason: 'Holder terlalu sedikit (' + holders + ')' };
+  if (holders === null)
+    log('[SWING] ' + (t.symbol || '?') + ': holder_count tidak tersedia dari API, gate holder di-skip');
 
   // — Gate 6: Buy ratio minimal 50% —
   const totalTxn = (t.buys || 0) + (t.sells || 0);
@@ -385,53 +381,87 @@ async function checkSwingSignal(t) {
   const klines  = await fetchSwingKlines(t.address);
 
   if (klines && klines.length >= 3) {
-    const closes  = klines.map(c => Number(c.close)).filter(v => v > 0);
-    const volumes = klines.map(c => Number(c.volume)).filter(v => v > 0);
-    const highs   = klines.map(c => Number(c.high)).filter(v => v > 0);
-    const lows    = klines.map(c => Number(c.low)).filter(v => v > 0);
+    // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
+    // masing-masing array) — kalau satu candle datanya bolong di salah satu field,
+    // array jadi geser dan index gak nyambung lagi (closes[i] bisa beda hari sama
+    // volumes[i]). Sekarang digabung jadi satu objek per candle dulu, baru di-filter
+    // sebagai satu kesatuan, dan di-sort by time supaya gak asumsi urutan dari API
+    // (kalau API ternyata ngirim terbaru-duluan, sort ini yang nyelametin logikanya).
+    const candles = klines
+      .map(c => ({
+        time:   Number(c.time ?? c.timestamp ?? c.t ?? 0),
+        close:  Number(c.close),
+        high:   Number(c.high),
+        low:    Number(c.low),
+        volume: Number(c.volume) || 0,
+      }))
+      .filter(c => c.close > 0 && c.high > 0 && c.low > 0)
+      .sort((a, b) => a.time - b.time);
 
-    const lastClose   = closes[closes.length - 1];
-    const prevClose   = closes[closes.length - 2] || lastClose;
-    const lastVol     = volumes[volumes.length - 1] || 0;
-    const avgVol      = volumes.slice(0, -1).reduce((a, b) => a + b, 0) / Math.max(volumes.slice(0, -1).length, 1);
-    const swingHigh   = Math.max(...highs);
-    const swingLow    = Math.min(...lows);
-    const priceRange  = swingHigh - swingLow;
+    if (!candles.some(c => c.time > 0)) {
+      log('[SWING] WARNING ' + (t.symbol || '?') + ': kline gak ada field time, urutan candle gak bisa divalidasi — cek manual response GMGN kline');
+    }
 
-    // Sinyal 1: Volume spike di hari ini vs rata-rata
-    const volSpike = avgVol > 0 ? lastVol / avgVol : 1;
-    if (volSpike >= CFG.swingVolSpikeMin) {
-      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata 7h');
+    if (candles.length < 3) {
+      log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
+      if (vol1h >= CFG.swingMinVol1h)
+        signals.push('Vol 1h cukup $' + fmt(vol1h));
+      if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
+        signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
+      if (change24h < 0)
+        signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
     } else {
-      return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x)' };
-    }
+      const lastCandle = candles[candles.length - 1];
+      const prevCandle = candles[candles.length - 2];
+      const histVols   = candles.slice(0, -1).map(c => c.volume).filter(v => v > 0);
+      const avgVol      = histVols.length > 0 ? histVols.reduce((a, b) => a + b, 0) / histVols.length : 0;
 
-    // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
-    if (priceRange > 0) {
-      const posInRange = (lastClose - swingLow) / priceRange; // 0=bawah, 1=atas
-      if (posInRange <= 0.45) {
-        signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
-      } else if (posInRange >= 0.80) {
-        // Sudah terlalu tinggi di range — reject, bukan pre-pump
-        return { pass: false, reason: 'Harga sudah di ' + (posInRange * 100).toFixed(0) + '% dari range 7h (terlalu tinggi, bukan pre-pump)' };
+      // Candle hari ini biasanya belum closed (masih real-time) — volumenya cuma
+      // ngitung dari jam 00:00 sampai sekarang, bukan sehari penuh. Kalau gak
+      // dinormalisasi, hasilnya tergantung jam berapa script jalan: kepagian bisa
+      // ke-skip walau lagi beneran ada momentum, kemaleman bisa keliatan "spike"
+      // padahal cuma akumulasi volume semalaman.
+      const nowSec        = Math.floor(Date.now() / 1000);
+      const dayElapsedSec = lastCandle.time ? Math.max(nowSec - lastCandle.time, 0) : 86400;
+      const dayFraction   = Math.min(Math.max(dayElapsedSec / 86400, 0.1), 1); // floor 10% biar gak diekstrapolasi gila-gilaan pas hari baru mulai
+      const normLastVol   = lastCandle.volume / dayFraction;
+
+      const highs       = candles.map(c => c.high);
+      const lows         = candles.map(c => c.low);
+      const swingHigh   = Math.max(...highs);
+      const swingLow    = Math.min(...lows);
+      const priceRange  = swingHigh - swingLow;
+
+      // Sinyal 1 (GATE wajib, bukan opsional): Volume hari ini (ternormalisasi)
+      // harus spike vs rata-rata candle sebelumnya. Kalau gak ada spike, langsung
+      // gagal — jadi sinyal 2/3/4 di bawah itu cuma konfirmasi tambahan, bukan
+      // pengganti gate ini.
+      const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
+      if (volSpike < CFG.swingVolSpikeMin) {
+        return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x, hari baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
       }
-    }
+      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
 
-    // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
-    if (lastClose > prevClose) {
-      signals.push('Green candle 1D (' + ((lastClose / prevClose - 1) * 100).toFixed(1) + '%)');
-    }
+      // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
+      if (priceRange > 0) {
+        const posInRange = (lastCandle.close - swingLow) / priceRange; // 0=bawah, 1=atas
+        if (posInRange <= 0.45) {
+          signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
+        } else if (posInRange >= 0.80) {
+          // Sudah terlalu tinggi di range
+          signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
+        }
+      }
 
-    // Sinyal 4: Konsolidasi — range harga 7 hari tidak lebih dari 80% dari low
-    if (swingLow > 0 && priceRange / swingLow < 0.80) {
-      signals.push('Konsolidasi 7h (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
-    }
+      // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
+      if (lastCandle.close > prevCandle.close) {
+        signals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
+      }
 
-    // Sinyal 5: Smart money — KOL & Smart Degen sebagai boost konfirmasi
-    const kolSig   = t.renowned_count    || 0;
-    const smartSig = t.smart_degen_count || 0;
-    if (kolSig >= 1 || smartSig >= 1) {
-      signals.push('Smart money: KOL ' + kolSig + ' | Smart degen ' + smartSig);
+      // Sinyal 4: Konsolidasi — range harga gak lebih dari 80% dari low
+      if (swingLow > 0 && priceRange / swingLow < 0.80) {
+        signals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+      }
     }
 
   } else {
@@ -443,11 +473,6 @@ async function checkSwingSignal(t) {
       signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
     if (change24h < 0)
       signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
-    // Smart money tetap ditampilkan walau kline tidak tersedia
-    const kolFb   = t.renowned_count    || 0;
-    const smartFb = t.smart_degen_count || 0;
-    if (kolFb >= 1 || smartFb >= 1)
-      signals.push('Smart money: KOL ' + kolFb + ' | Smart degen ' + smartFb);
   }
 
   // Minimal 1 sinyal positif harus ada
@@ -571,7 +596,7 @@ function detectNarrative(name, symbol) {
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
-async function buildMsg(t, rug, grade, dex24h, mode, swingSignals, dynScore) {
+async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
   var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
   var le = t.liquidity > 100000 ? '🟢' : t.liquidity > 50000 ? '🟡' : '🔵';
@@ -676,7 +701,7 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals, dynScore) {
   msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
   msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
 
-  if (dynScore === undefined) dynScore = calculateScore(t, rug); // fallback
+  var dynScore = calculateScore(t, rug);
   msg += 'Score: ' + dynScore + '/100\n';
 
   // Auto-warnings
@@ -772,9 +797,6 @@ async function processTokens() {
       const buyPct = (t.buys / totalTxn) * 100;
       if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
     }
-    if (CFG.rejectHoneypot && t.is_honeypot === 1) { log('SKIP [MIG] ' + t.symbol + ' (Honeypot)'); continue; }
-    const bundlerPctMig = (t.bundler_rate || 0) * 100;
-    if (bundlerPctMig > CFG.maxBundlerRate) { log('SKIP [MIG] ' + t.symbol + ' (Bundler ' + bundlerPctMig.toFixed(0) + '%)'); continue; }
     if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
     if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
 
@@ -785,12 +807,11 @@ async function processTokens() {
       if (rug.score > CFG.maxRugScore) { log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [MIG] ' + t.symbol + ' (Insider ≥10%)'); continue; }
 
-      const dynScore = calculateScore(t, rug);
-      const grade = gradeFromScore(dynScore);
-      if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol + ' (Score ' + dynScore + ')'); continue; }
+      const grade = gradeToken(t.liquidity, t.volume, rug.score);
+      if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol); continue; }
 
-      log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ' Score:' + dynScore + ')');
-      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'MIGRATION', null, dynScore), null, CFG.tgThreadMig);
+      log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ')');
+      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'MIGRATION', null), null, CFG.tgThreadMig);
       totalNotified++;
 
       if (t.price && Number(t.price) > 0) {
@@ -808,19 +829,6 @@ async function processTokens() {
   for (let i = 0; i < swingCandidates.length; i++) {
     const t = swingCandidates[i];
 
-    // Gate awal: honeypot & bundler sebelum checkSwingSignal (hemat API call)
-    if (CFG.rejectHoneypot && t.is_honeypot === 1) { log('SKIP [SWING] ' + t.symbol + ' (Honeypot)'); continue; }
-    const bundlerPctSwing = (t.bundler_rate || 0) * 100;
-    if (bundlerPctSwing > CFG.maxBundlerRate) { log('SKIP [SWING] ' + t.symbol + ' (Bundler ' + bundlerPctSwing.toFixed(0) + '%)'); continue; }
-
-    // Gate KOL + Smart Degen — token 24j+ harusnya minimal ada salah satu
-    const kolCount   = t.renowned_count    || 0;
-    const smartCount = t.smart_degen_count || 0;
-    if (kolCount === 0 && smartCount === 0) {
-      log('SKIP [SWING] ' + t.symbol + ' (KOL=0 & Smart=0, no smart money interest)');
-      continue;
-    }
-
     log('[SWING] Cek ' + t.symbol + ' (age ' + tokenAgeHours(t.creation_timestamp).toFixed(0) + 'j)');
     const swingResult = await checkSwingSignal(t);
 
@@ -836,16 +844,15 @@ async function processTokens() {
       if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [SWING] ' + t.symbol + ' (Insider)'); continue; }
 
-      const dynScore = calculateScore(t, rug);
-      const grade = gradeFromScore(dynScore);
-      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Score ' + dynScore + ')'); continue; }
+      const grade = gradeToken(t.liquidity, t.volume, rug.score);
+      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
 
       // Mark sudah dinotif sebagai swing (update SEEN entry)
       const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now(), seenAt: Date.now() };
       SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
-      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals, dynScore), null, CFG.tgThreadId);
+      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals), null, CFG.tgThreadId);
       totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
@@ -970,14 +977,11 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
-log('  Bundler < ' + CFG.maxBundlerRate + '% | Honeypot reject: ' + CFG.rejectHoneypot);
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
 log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
 log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
-log('  Bundler < ' + CFG.maxBundlerRate + '% | Honeypot reject: ' + CFG.rejectHoneypot);
-log('  KOL=0 & Smart Degen=0 → skip (no smart money)');
 log('');
 log('Interval: ' + CFG.interval + 's');
 log('');
