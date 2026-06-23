@@ -202,6 +202,10 @@ function normalizeTrench(t) {
     buys:               t.buys_24h,
     sells:              t.sells_24h,
     bundler_rate:       t.bundler_trader_amount_rate,   // nama beda di trenches
+    // Trenches kirim renounced sbg boolean (true/false), trending sbg angka (1/0).
+    // Gate cek `!== 1`, jadi samakan ke 1/0 biar token yg sudah renounced tidak ikut ke-skip.
+    renounced_mint:           (t.renounced_mint === true || t.renounced_mint === 1) ? 1 : 0,
+    renounced_freeze_account: (t.renounced_freeze_account === true || t.renounced_freeze_account === 1) ? 1 : 0,
   });
 }
 
