@@ -311,7 +311,6 @@ async function sendEntrySignal(t, rug, grade, f) {
   await sendTelegram(msg, null, CFG.tgThreadEntry);
   log('[ENTRY] ' + t.symbol + ' — signal dikirim ke thread entry');
 }
-
 // ─────────────────────────────────────────────
 //  KLASIFIKASI & SCORING
 // ─────────────────────────────────────────────
@@ -952,7 +951,6 @@ async function processTokens() {
         const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'SWING');
         await sendEntrySignal(t, rug, grade, f);
       }
-
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
