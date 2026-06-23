@@ -183,8 +183,6 @@ function fetchGmgnTrending() {
   }
 }
 
-let _klineDebugLogged = false;
-
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
   try {
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
@@ -206,10 +204,10 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
     // Coba dua kemungkinan struktur sekaligus:
     const list = res.data?.list ?? res.data?.data?.list ?? null;
 
-    if (!list && !_klineDebugLogged) {
-      _klineDebugLogged = true;
-      log('[DEBUG KLINE] Response gak ketemu .list maupun .data.list. Raw shape (1x log doang): '
-        + JSON.stringify(res.data).slice(0, 600));
+    if (!list || list.length < 3) {
+      log('[DEBUG KLINE] ' + address.slice(0, 8)
+        + ' — list: ' + (list ? list.length + ' candle' : 'null')
+        + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
     }
 
     return list;
