@@ -9,12 +9,15 @@ const { execSync } = require('child_process');
 // ─────────────────────────────────────────────
 const CFG = {
   // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 15000,
+  minLp:           Number(process.env.MIN_LP)           || 5000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
-  maxTop10Holder:  Number(process.env.MAX_TOP10_HOLDER)  || 35,   // tolak jika top 10 holder > 35%
-  maxBundler:      Number(process.env.MAX_BUNDLER)       || 30,   // tolak jika bundler > 30% (preset 'safe' GMGN)
+
+  // New Migration extra gates
+  maxBundlerPct:   Number(process.env.MAX_BUNDLER_PCT)    || 25,
+  maxTop10Holders: Number(process.env.MAX_TOP10_HOLDERS)  || 25,
+  maxInsiderPct:   Number(process.env.MAX_INSIDER_PCT)    || 20,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -186,53 +189,6 @@ function fetchGmgnTrending() {
   }
 }
 
-// Normalisasi item trenches → nama field yang dipakai sisa kode (sama spt trending).
-// Trenches tidak punya `price`/`market_cap` langsung, jadi diturunkan dari market cap / supply.
-function normalizeTrench(t) {
-  const supply = Number(t.total_supply) || 0;
-  const mc     = Number(t.usd_market_cap) || 0;
-  return Object.assign({}, t, {
-    price:              supply > 0 ? mc / supply : 0,
-    market_cap:         mc,
-    creation_timestamp: t.created_timestamp,
-    volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
-    buys:               t.buys_24h,
-    sells:              t.sells_24h,
-    bundler_rate:       t.bundler_trader_amount_rate,
-  });
-}
-
-// Sumber khusus New Migration: token yang sudah graduate ke DEX (`completed`).
-// Sebagian filter dikerjakan server-side (lebih cepat & hemat) lewat flag CLI.
-function fetchGmgnTrenches() {
-  try {
-    const args = [
-      'market trenches',
-      '--chain sol',
-      '--type completed',
-      '--limit 80',
-      '--sort-by created_timestamp',
-      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
-      '--min-liquidity ' + CFG.minLp,
-      '--max-rug-ratio 0.3',
-      // NOTE: filter top-holder & bundler sengaja TIDAK dipakai (terlalu ketat,
-      // memotong hampir semua token fresh-migrasi saat peak).
-      '--raw',
-    ].join(' ');
-    const out = execSync('npx gmgn-cli ' + args, {
-      encoding: 'utf8', timeout: 30000,
-      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' },
-    });
-    const d = JSON.parse(out);
-    const list = (d.data && d.data.completed) || [];
-    log('GMGN trenches completed: ' + list.length + ' tokens');
-    return list.map(normalizeTrench);
-  } catch (e) {
-    log('GMGN trenches error: ' + e.message);
-    return [];
-  }
-}
-
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
   try {
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
@@ -267,7 +223,7 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
   }
 }
 
-async function getRugCheck(ca) {
+async function getRugCheck(ca, insiderThreshold) {
   try {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d   = res.data;
@@ -275,11 +231,14 @@ async function getRugCheck(ca) {
       const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
       return lv + r.name;
     });
+    let maxInsiderPct = 0;
+    const insThreshold = insiderThreshold || 10;
     if (d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
       d.insiderNetworks.forEach(net => {
         const totalSupply = d.token?.supply ? Number(d.token.supply) : 0;
         const pct = totalSupply > 0 ? (net.tokenAmount / totalSupply) * 100 : 0;
-        if (pct >= 10) {
+        if (pct > maxInsiderPct) maxInsiderPct = pct;
+        if (pct >= insThreshold) {
           riskNames.push('[DANGER] Insider Analysis: ' + Math.round(net.tokenAmount / 1e6) + 'M tokens ('
             + pct.toFixed(0) + '% of supply) | ' + net.size + ' wallets');
         }
@@ -295,10 +254,12 @@ async function getRugCheck(ca) {
       tokenType:       d.tokenType || '',
       rugged:          d.rugged || false,
       deployPlatform:  d.deployPlatform || '',
+      insiderPct:      maxInsiderPct,
     };
   } catch {
     return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
-             topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '' };
+             topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
+             insiderPct: 0 };
   }
 }
 
@@ -838,78 +799,41 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
 }
 
 // ─────────────────────────────────────────────
-//  FILTER NEW MIGRATION
-//  Tiap fungsi return null kalau lolos, atau { reason, lock? } kalau di-skip.
-//  `lock` diisi hanya untuk red flag struktural yang aman dikunci permanen.
-// ─────────────────────────────────────────────
-
-// Cek murah — tanpa panggilan API. Dipakai duluan biar token yang gugur di
-// buy/vol/LP tidak buang-buang call RugCheck.
-function checkBasic(t) {
-  const totalTxn = (t.buys || 0) + (t.sells || 0);
-  const buyPct   = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 100;
-
-  if (buyPct < CFG.minBuyRatio)  return { reason: 'Buy ' + buyPct.toFixed(0) + '%' };
-  if (t.volume    < CFG.minVol)  return { reason: 'Vol $' + t.volume };
-  if (t.liquidity < CFG.minLp)   return { reason: 'LP $' + t.liquidity };
-  // top-holder & bundler TIDAK difilter — cuma ditampilkan di notif (lihat buildMsg).
-
-  return null;
-}
-
-// Cek berdasarkan hasil RugCheck. Dipanggil hanya setelah checkBasic lolos.
-function checkRug(t, rug) {
-  if (rug.risks === 'Fetch failed') return { reason: 'RugCheck API gagal, dicoba lagi cycle berikutnya' };
-
-  if (rug.score > CFG.maxRugScore)  return { reason: 'Rug ' + rug.score, lock: 'rug_score' };
-  if (rug.topDangers.some(d => d.toLowerCase().includes('insider')))
-    return { reason: 'Insider ≥10%', lock: 'insider' };
-
-  if (gradeToken(t.liquidity, t.volume, rug.score) === 'SKIP')
-    return { reason: 'Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya' };
-
-  return null;
-}
-
-// ─────────────────────────────────────────────
 //  MAIN PROCESSING LOOP
 // ─────────────────────────────────────────────
 async function processTokens() {
   log('========== SCREENING ==========');
   const confirmedBandars = await readGist();
   log('Confirmed bandars dari Gist: ' + confirmedBandars.length);
-  // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
-  var migrationTokens = fetchGmgnTrenches();
-  var swingTokens     = fetchGmgnTrending();
+  var tokens = fetchGmgnTrending();
+  if (tokens.length === 0) { log('No tokens from GMGN'); return; }
 
   var newMigration = [];
   var swingCandidates = [];
 
-  // — Klasifikasi New Migration (sumber: trenches completed) —
-  for (let i = 0; i < migrationTokens.length; i++) {
-    const t = migrationTokens[i];
-    if (!t.address) continue;
-    if (SEEN.has(t.address)) continue;          // belum pernah dilihat
-    if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-    // umur < swingMinAge sudah dijamin server (--max-created), cek lagi sbg pengaman
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.swingMinAge) continue;
-    newMigration.push(t);
-  }
-
-  // — Klasifikasi Swing 1D (sumber: trending) —
-  for (let i = 0; i < swingTokens.length; i++) {
-    const t = swingTokens[i];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
     if (!t.address) continue;
 
-    const isDex = isMigratedDex(t);
-    const ageH  = tokenAgeHours(t.creation_timestamp);
+    const alreadySeen = SEEN.has(t.address);
+    const isDex       = isMigratedDex(t);
+    const ageH        = tokenAgeHours(t.creation_timestamp);
 
     if (!isDex) {
       log('SKIP ' + (t.symbol || '?') + ' (still ' + (t.exchange || 'pump') + ')');
       continue;
     }
 
-    // Token yang sudah lebih tua (≥ swingMinAge), cek pre-pump signal.
+    // Mode 1: New Migration — token baru (< swingMinAge jam) yang belum pernah dilihat
+    if (!alreadySeen && ageH < CFG.swingMinAge) {
+      newMigration.push(t);
+      continue;
+    }
+
+    // Mode 2: Swing 1D — token yang sudah lebih tua, cek pre-pump signal
+    // Guard tambahan: jika token sudah pernah masuk SEEN (via migration),
+    // pastikan sudah berlalu minimal swingMinAge jam sejak pertama kali dilihat.
+    // Ini mencegah token yang baru 16j lolos ke swing hanya karena sudah ada di SEEN.
     if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
       const seenEntry = SEEN.get(t.address);
 
@@ -937,27 +861,61 @@ async function processTokens() {
   // — Proses New Migration —
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
+    const totalTxn = (t.buys || 0) + (t.sells || 0);
+    if (totalTxn > 0) {
+      const buyPct = (t.buys / totalTxn) * 100;
+      if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
+    }
+    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
+    if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
 
-    // Cek murah dulu (buy/vol/LP) — gugur di sini = tidak buang call RugCheck.
-    const basic = checkBasic(t);
-    if (basic) { log('SKIP [MIG] ' + t.symbol + ' (' + basic.reason + ')'); continue; }
+    // GMGN gates (sebelum RugCheck)
+    var bundlerPct = (t.bundler_rate || 0) * 100;
+    if (bundlerPct > CFG.maxBundlerPct) {
+      log('SKIP [MIG] ' + t.symbol + ' (Bundler ' + bundlerPct.toFixed(0) + '% > ' + CFG.maxBundlerPct + '%)');
+      continue;
+    }
+    var top10 = (t.top_10_holder_rate || 0) * 100;
+    if (top10 > CFG.maxTop10Holders) {
+      log('SKIP [MIG] ' + t.symbol + ' (Top10 ' + top10.toFixed(0) + '% > ' + CFG.maxTop10Holders + '%)');
+      continue;
+    }
+    if (t.renounced_mint !== 1 || t.renounced_freeze_account !== 1) {
+      log('SKIP [MIG] ' + t.symbol + ' (Mint/Freeze not renounced)');
+      continue;
+    }
 
     try {
-      const rug  = await getRugCheck(t.address);
-      const fail = checkRug(t, rug);
+      const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
 
-      if (fail) {
-        log('SKIP [MIG] ' + t.symbol + ' (' + fail.reason + ')');
-        // Hanya red flag struktural (rug/insider) yang dikunci permanen ke SEEN.
-        // Sisanya (Grade belum cukup, RugCheck gagal) tidak dikunci →
-        // dicoba lagi cycle berikutnya selama token masih < swingMinAge.
-        if (fail.lock) {
-          SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: fail.lock });
-        }
+      // RugCheck API gagal (timeout/error) ≠ token-nya beneran rug. Jangan kunci
+      // ke SEEN — biar dicoba lagi cycle berikutnya selama masih < swingMinAge.
+      if (rug.risks === 'Fetch failed') {
+        log('SKIP [MIG] ' + t.symbol + ' (RugCheck API gagal, dicoba lagi cycle berikutnya)');
+        continue;
+      }
+
+      // Rug score & insider itu karakteristik yang jarang berubah → aman dikunci
+      // permanen, sekalian biar gak nge-spam rug-check API ke token yang udah
+      // jelas red flag tiap cycle.
+      if (rug.score > CFG.maxRugScore) {
+        log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ')');
+        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
+        continue;
+      }
+      if (rug.insiderPct > CFG.maxInsiderPct) {
+        log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
+        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'insider' });
         continue;
       }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
+      if (grade === 'SKIP') {
+        // LP/Vol masih belum cukup buat dapet grade — JANGAN kunci, kasih
+        // kesempatan token ini tumbuh (LP/Vol bisa naik jam-jam berikutnya).
+        log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya)');
+        continue;
+      }
 
       // — Lolos semua syarat → baru resmi dicatet & dinotif —
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
@@ -999,9 +957,9 @@ async function processTokens() {
     log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
 
     try {
-      const rug = await getRugCheck(t.address);
+      const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
       if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
-      if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [SWING] ' + t.symbol + ' (Insider)'); continue; }
+      if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
@@ -1141,6 +1099,8 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
+log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
+log('  Mint/Freeze: Wajib Renounced');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
