@@ -93,7 +93,7 @@ function timeAgo(ts) {
   if (mins < 60) return mins + 'm';
   const hrs = Math.floor(mins / 60);
   if (hrs < 24)  return hrs + 'j';
-  return Math.floor(hrs / 24) + 'h';
+  return Math.floor(hrs / 24) + 'd';
 }
 
 function tokenAgeHours(ts) {
@@ -436,6 +436,11 @@ async function checkSwingSignal(t) {
       signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
     if (change24h < 0)
       signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+    // Smart money tetap ditampilkan walau kline tidak tersedia
+    const kolFb   = t.renowned_count    || 0;
+    const smartFb = t.smart_degen_count || 0;
+    if (kolFb >= 1 || smartFb >= 1)
+      signals.push('Smart money: KOL ' + kolFb + ' | Smart degen ' + smartFb);
   }
 
   // Minimal 1 sinyal positif harus ada
