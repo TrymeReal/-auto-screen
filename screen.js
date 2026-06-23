@@ -13,8 +13,8 @@ const CFG = {
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
-  maxTop10Holder:  Number(process.env.MAX_TOP10_HOLDER)  || 25,   // tolak jika top 10 holder > 25%
-  maxBundler:      Number(process.env.MAX_BUNDLER)       || 25,   // tolak jika bundler > 25%
+  maxTop10Holder:  Number(process.env.MAX_TOP10_HOLDER)  || 35,   // tolak jika top 10 holder > 35%
+  maxBundler:      Number(process.env.MAX_BUNDLER)       || 30,   // tolak jika bundler > 30% (preset 'safe' GMGN)
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
