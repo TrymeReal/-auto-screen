@@ -214,9 +214,9 @@ function fetchGmgnTrenches() {
       '--sort-by created_timestamp',
       '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
       '--min-liquidity ' + CFG.minLp,
-      '--max-top-holder-rate ' + (CFG.maxTop10Holder / 100),
-      '--max-bundler-rate ' + (CFG.maxBundler / 100),
       '--max-rug-ratio 0.3',
+      // NOTE: filter top-holder & bundler sengaja TIDAK dipakai (terlalu ketat,
+      // memotong hampir semua token fresh-migrasi saat peak).
       '--raw',
     ].join(' ');
     const out = execSync('npx gmgn-cli ' + args, {
@@ -848,14 +848,11 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
 function checkBasic(t) {
   const totalTxn = (t.buys || 0) + (t.sells || 0);
   const buyPct   = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 100;
-  const top10    = (t.top_10_holder_rate || 0) * 100;
-  const bundler  = (t.bundler_rate || 0) * 100;
 
-  if (buyPct < CFG.minBuyRatio)      return { reason: 'Buy ' + buyPct.toFixed(0) + '%' };
-  if (t.volume    < CFG.minVol)      return { reason: 'Vol $' + t.volume };
-  if (t.liquidity < CFG.minLp)       return { reason: 'LP $' + t.liquidity };
-  if (top10   > CFG.maxTop10Holder)  return { reason: 'Top10 ' + top10.toFixed(0) + '%' };
-  if (bundler > CFG.maxBundler)      return { reason: 'Bundler ' + bundler.toFixed(0) + '%' };
+  if (buyPct < CFG.minBuyRatio)  return { reason: 'Buy ' + buyPct.toFixed(0) + '%' };
+  if (t.volume    < CFG.minVol)  return { reason: 'Vol $' + t.volume };
+  if (t.liquidity < CFG.minLp)   return { reason: 'LP $' + t.liquidity };
+  // top-holder & bundler TIDAK difilter — cuma ditampilkan di notif (lihat buildMsg).
 
   return null;
 }
