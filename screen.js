@@ -236,15 +236,7 @@ function fetchGmgnTrenches() {
     // Utamakan d.completed (CLI sudah unwrap). Fallback d.data.completed kalau masih terbungkus.
     const root = (d && d.completed) ? d : (d && d.data) ? d.data : {};
     const list = root.completed || [];
-    log('GMGN trenches completed: ' + list.length + ' tokens (keys: ' + Object.keys(d || {}).join(',') + ')');
-    // DEBUG sementara: lihat nilai asli field renounce dari 1 token contoh.
-    if (list[0]) {
-      const s = list[0];
-      log('[DEBUG renounce] mint=' + JSON.stringify(s.renounced_mint) +
-          ' freeze=' + JSON.stringify(s.renounced_freeze_account) +
-          ' | bundler=' + JSON.stringify(s.bundler_trader_amount_rate) +
-          ' top10=' + JSON.stringify(s.top_10_holder_rate));
-    }
+    log('GMGN trenches completed: ' + list.length + ' tokens');
     return list.map(normalizeTrench);
   } catch (e) {
     log('GMGN trenches error: ' + e.message);
@@ -944,10 +936,13 @@ async function processTokens() {
       log('SKIP [MIG] ' + t.symbol + ' (Top10 ' + top10.toFixed(0) + '% > ' + CFG.maxTop10Holders + '%)');
       continue;
     }
-    if (t.renounced_mint !== 1 || t.renounced_freeze_account !== 1) {
-      log('SKIP [MIG] ' + t.symbol + ' (Mint/Freeze not renounced)');
-      continue;
-    }
+    // Gate Mint/Freeze DIMATIKAN untuk sumber trenches: endpoint trenches tidak
+    // mengisi field renounce (selalu false), jadi gate ini menolak SEMUA token.
+    // Keamanan renounce sebagian masih dicek via getRugCheck (rugcheck.xyz).
+    // if (t.renounced_mint !== 1 || t.renounced_freeze_account !== 1) {
+    //   log('SKIP [MIG] ' + t.symbol + ' (Mint/Freeze not renounced)');
+    //   continue;
+    // }
 
     try {
       const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
