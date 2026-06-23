@@ -183,6 +183,8 @@ function fetchGmgnTrending() {
   }
 }
 
+let _klineDebugLogged = false;
+
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
   try {
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
@@ -197,7 +199,20 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
       headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
       timeout: 10000,
     });
-    return res.data?.list || null;
+
+    // Dulu cuma coba res.data.list — kalau API-nya bungkus payload di level
+    // "data" (kayak endpoint trending: d.data.rank), .list bakal selalu
+    // undefined dan fungsi ini diam-diam balik null tanpa error sama sekali.
+    // Coba dua kemungkinan struktur sekaligus:
+    const list = res.data?.list ?? res.data?.data?.list ?? null;
+
+    if (!list && !_klineDebugLogged) {
+      _klineDebugLogged = true;
+      log('[DEBUG KLINE] Response gak ketemu .list maupun .data.list. Raw shape (1x log doang): '
+        + JSON.stringify(res.data).slice(0, 600));
+    }
+
+    return list;
   } catch (e) {
     log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
     return null;
