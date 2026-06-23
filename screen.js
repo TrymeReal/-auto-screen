@@ -186,6 +186,53 @@ function fetchGmgnTrending() {
   }
 }
 
+// Normalisasi item trenches → nama field yang dipakai sisa kode (sama spt trending).
+// Trenches tidak punya `price`/`market_cap` langsung, jadi diturunkan dari market cap / supply.
+function normalizeTrench(t) {
+  const supply = Number(t.total_supply) || 0;
+  const mc     = Number(t.usd_market_cap) || 0;
+  return Object.assign({}, t, {
+    price:              supply > 0 ? mc / supply : 0,
+    market_cap:         mc,
+    creation_timestamp: t.created_timestamp,
+    volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
+    buys:               t.buys_24h,
+    sells:              t.sells_24h,
+    bundler_rate:       t.bundler_trader_amount_rate,
+  });
+}
+
+// Sumber khusus New Migration: token yang sudah graduate ke DEX (`completed`).
+// Sebagian filter dikerjakan server-side (lebih cepat & hemat) lewat flag CLI.
+function fetchGmgnTrenches() {
+  try {
+    const args = [
+      'market trenches',
+      '--chain sol',
+      '--type completed',
+      '--limit 80',
+      '--sort-by created_timestamp',
+      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
+      '--min-liquidity ' + CFG.minLp,
+      '--max-top-holder-rate ' + (CFG.maxTop10Holder / 100),
+      '--max-bundler-rate ' + (CFG.maxBundler / 100),
+      '--max-rug-ratio 0.3',
+      '--raw',
+    ].join(' ');
+    const out = execSync('npx gmgn-cli ' + args, {
+      encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' },
+    });
+    const d = JSON.parse(out);
+    const list = (d.data && d.data.completed) || [];
+    log('GMGN trenches completed: ' + list.length + ' tokens');
+    return list.map(normalizeTrench);
+  } catch (e) {
+    log('GMGN trenches error: ' + e.message);
+    return [];
+  }
+}
+
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
   try {
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
@@ -834,35 +881,38 @@ async function processTokens() {
   log('========== SCREENING ==========');
   const confirmedBandars = await readGist();
   log('Confirmed bandars dari Gist: ' + confirmedBandars.length);
-  var tokens = fetchGmgnTrending();
-  if (tokens.length === 0) { log('No tokens from GMGN'); return; }
+  // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
+  var migrationTokens = fetchGmgnTrenches();
+  var swingTokens     = fetchGmgnTrending();
 
   var newMigration = [];
   var swingCandidates = [];
 
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
+  // — Klasifikasi New Migration (sumber: trenches completed) —
+  for (let i = 0; i < migrationTokens.length; i++) {
+    const t = migrationTokens[i];
+    if (!t.address) continue;
+    if (SEEN.has(t.address)) continue;          // belum pernah dilihat
+    if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
+    // umur < swingMinAge sudah dijamin server (--max-created), cek lagi sbg pengaman
+    if (tokenAgeHours(t.creation_timestamp) >= CFG.swingMinAge) continue;
+    newMigration.push(t);
+  }
+
+  // — Klasifikasi Swing 1D (sumber: trending) —
+  for (let i = 0; i < swingTokens.length; i++) {
+    const t = swingTokens[i];
     if (!t.address) continue;
 
-    const alreadySeen = SEEN.has(t.address);
-    const isDex       = isMigratedDex(t);
-    const ageH        = tokenAgeHours(t.creation_timestamp);
+    const isDex = isMigratedDex(t);
+    const ageH  = tokenAgeHours(t.creation_timestamp);
 
     if (!isDex) {
       log('SKIP ' + (t.symbol || '?') + ' (still ' + (t.exchange || 'pump') + ')');
       continue;
     }
 
-    // Mode 1: New Migration — token baru (< swingMinAge jam) yang belum pernah dilihat
-    if (!alreadySeen && ageH < CFG.swingMinAge) {
-      newMigration.push(t);
-      continue;
-    }
-
-    // Mode 2: Swing 1D — token yang sudah lebih tua, cek pre-pump signal
-    // Guard tambahan: jika token sudah pernah masuk SEEN (via migration),
-    // pastikan sudah berlalu minimal swingMinAge jam sejak pertama kali dilihat.
-    // Ini mencegah token yang baru 16j lolos ke swing hanya karena sudah ada di SEEN.
+    // Token yang sudah lebih tua (≥ swingMinAge), cek pre-pump signal.
     if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
       const seenEntry = SEEN.get(t.address);
 
