@@ -264,12 +264,19 @@ function isMigratedDex(t) {
 }
 
 function gradeToken(lp, vol, rugScore) {
+  // Legacy — masih dipakai sebagai fallback jika calculateScore belum tersedia
   let score = 0;
   if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
   if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
   if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
   if (score >= 80) return 'GOLD';
   if (score >= 60) return 'POTENSIAL';
+  return 'SKIP';
+}
+
+function gradeFromScore(dynScore) {
+  if (dynScore >= 70) return 'GOLD';       // Grade A
+  if (dynScore >= 50) return 'POTENSIAL';  // Grade B
   return 'SKIP';
 }
 
@@ -564,7 +571,7 @@ function detectNarrative(name, symbol) {
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
-async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
+async function buildMsg(t, rug, grade, dex24h, mode, swingSignals, dynScore) {
   var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
   var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
   var le = t.liquidity > 100000 ? '🟢' : t.liquidity > 50000 ? '🟡' : '🔵';
@@ -669,7 +676,7 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
   msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
 
-  var dynScore = calculateScore(t, rug);
+  if (dynScore === undefined) dynScore = calculateScore(t, rug); // fallback
   msg += 'Score: ' + dynScore + '/100\n';
 
   // Auto-warnings
@@ -778,11 +785,12 @@ async function processTokens() {
       if (rug.score > CFG.maxRugScore) { log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [MIG] ' + t.symbol + ' (Insider ≥10%)'); continue; }
 
-      const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol); continue; }
+      const dynScore = calculateScore(t, rug);
+      const grade = gradeFromScore(dynScore);
+      if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol + ' (Score ' + dynScore + ')'); continue; }
 
-      log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ')');
-      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'MIGRATION', null), null, CFG.tgThreadMig);
+      log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ' Score:' + dynScore + ')');
+      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'MIGRATION', null, dynScore), null, CFG.tgThreadMig);
       totalNotified++;
 
       if (t.price && Number(t.price) > 0) {
@@ -828,15 +836,16 @@ async function processTokens() {
       if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.topDangers.some(d => d.toLowerCase().includes('insider'))) { log('SKIP [SWING] ' + t.symbol + ' (Insider)'); continue; }
 
-      const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
+      const dynScore = calculateScore(t, rug);
+      const grade = gradeFromScore(dynScore);
+      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Score ' + dynScore + ')'); continue; }
 
       // Mark sudah dinotif sebagai swing (update SEEN entry)
       const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now(), seenAt: Date.now() };
       SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
-      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals), null, CFG.tgThreadId);
+      const msgId = await sendTelegram(await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals, dynScore), null, CFG.tgThreadId);
       totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
