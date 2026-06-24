@@ -56,7 +56,6 @@ const CFG = {
   signalMinHolders:   Number(process.env.SIGNAL_MIN_HOLDERS)|| 100,
   signalMaxMc:        Number(process.env.SIGNAL_MAX_MC)     || 300000,
   signalMaxTop10Rate: Number(process.env.SIGNAL_MAX_TOP10)  || 35,
-  signalMaxTriggerAgeMin: Number(process.env.SIGNAL_MAX_TRIGGER_AGE_MIN) || 30,
 
   // Umum
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
@@ -1217,54 +1216,53 @@ async function processTokens() {
     var t = uniqueSignal[i];
     if (!t.address) continue;
 
-    // Gate 1: signal basi — buang duluan sebelum cek yang lain
-    if (t.trigger_at > 0) {
-      var triggerAgeMin = (Date.now() / 1000 - t.trigger_at) / 60;
-      if (triggerAgeMin > CFG.signalMaxTriggerAgeMin) {
-        log('SKIP [SIGNAL] ' + t.symbol + ' (Signal basi ' + triggerAgeMin.toFixed(0) + 'm lalu, max ' + CFG.signalMaxTriggerAgeMin + 'm)');
-        continue;
-      }
-    }
-    // Gate 2: SM masih pegang — cek awal karena paling sering kena
-    if (t.smart_degen_count < 1) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
+    // Gate trigger age (skip signal yang sudah basi > 30 menit)
+    var triggerAgeMin = (Date.now() / 1000 - t.trigger_at) / 60;
+    if (triggerAgeMin > 30) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (trigger ' + triggerAgeMin.toFixed(0) + 'm yang lalu > 30m)');
       continue;
     }
-    // Gate 3: trigger_mc (cegah token udah pump)
+
+    // Gate trigger_mc (cegah token udah pump)
     if (t.trigger_mc > CFG.signalMaxMc) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (MC trig $' + fmt(t.trigger_mc) + ' > $' + fmt(CFG.signalMaxMc) + ')');
       continue;
     }
-    // Gate 4: liquidity
+    // Gate liquidity
     if (t.liquidity < CFG.signalMinLiquidity) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (LP $' + fmt(t.liquidity) + ' < $' + fmt(CFG.signalMinLiquidity) + ')');
       continue;
     }
-    // Gate 5: holder count
+    // Gate holder count
     if (t.holder_count < CFG.signalMinHolders) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Holders ' + t.holder_count + ' < ' + CFG.signalMinHolders + ')');
       continue;
     }
-    // Gate 6: top10 holder
+    // Gate top10 holder
     var top10Pct = (t.top_10_holder_rate || 0) * 100;
     if (top10Pct > CFG.signalMaxTop10Rate) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
       continue;
     }
-    // Gate 7: rug ratio
+    // Gate rug ratio
     var rugScore = Math.round((t.rug_ratio || 0) * 100);
     if (rugScore > CFG.maxRugScore) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
       continue;
     }
-    // Gate 8: bot degen rate
+    // Gate smart_degen_count (SM masih pegang atau udah kabur)
+    if (t.smart_degen_count < 1) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
+      continue;
+    }
+    // Gate bot degen rate
     var botPct = (t.bot_degen_rate || 0) * 100;
     if (botPct > 50) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Bot ' + botPct.toFixed(1) + '% dari holders > 50%)');
       continue;
     }
-    // Gate 9: serial creator
+    // Gate serial creator (langsung dari data signal, tanpa API call)
     if (t.creator_created_count > CFG.maxCreatorTokens) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Creator bikin ' + t.creator_created_count + ' token > ' + CFG.maxCreatorTokens + ')');
       continue;
@@ -1414,7 +1412,6 @@ if (CFG.signalEnabled) {
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
   log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
   log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
-  log('  Signal max age: ' + CFG.signalMaxTriggerAgeMin + 'm');
 }
 log('');
 log('Interval: ' + CFG.interval + 's');
