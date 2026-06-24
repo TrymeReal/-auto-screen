@@ -22,7 +22,7 @@ const CFG = {
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
-  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 5,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
