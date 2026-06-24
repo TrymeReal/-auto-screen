@@ -33,6 +33,8 @@ jobs:
           TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
           TG_THREAD_MIG: ${{ secrets.TG_THREAD_MIG }}
           TG_THREAD_ENTRY: ${{ secrets.TG_THREAD_ENTRY }}
+          TG_THREAD_SIGNAL: ${{ secrets.TG_THREAD_SIGNAL }}
+          SIGNAL_ENABLED: ${{ secrets.SIGNAL_ENABLED }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           MIN_LP: ${{ secrets.MIN_LP }}
