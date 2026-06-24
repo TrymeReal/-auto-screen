@@ -35,6 +35,14 @@ const CFG = {
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
   swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
 
+  // Smart Money Signal
+  signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
+  tgThreadSignal:     Number(process.env.TG_THREAD_SIGNAL) || undefined,
+  signalMinLiquidity: Number(process.env.SIGNAL_MIN_LIQ)   || 5000,
+  signalMinHolders:   Number(process.env.SIGNAL_MIN_HOLDERS)|| 50,
+  signalMaxMc:        Number(process.env.SIGNAL_MAX_MC)     || 500000,
+  signalMaxTop10Rate: Number(process.env.SIGNAL_MAX_TOP10)  || 25,
+
   // Umum
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
   healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
@@ -264,6 +272,63 @@ function getCreatorTokenCount(walletAddress) {
   } catch (e) {
     return 0;
   }
+}
+
+function fetchGmgnSignal() {
+  try {
+    const out = execSync(
+      'npx gmgn-cli market signal --chain sol --signal-type 12 --raw',
+      { encoding: 'utf8', timeout: 30000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    const d = JSON.parse(out);
+    if (!Array.isArray(d) || d.length === 0) return [];
+    log('GMGN signal: ' + d.length + ' events');
+    return d;
+  } catch (e) {
+    log('GMGN signal error: ' + e.message);
+    return [];
+  }
+}
+
+function normalizeSignal(signals) {
+  var grouped = new Map();
+  for (var i = 0; i < signals.length; i++) {
+    var s = signals[i];
+    if (!s.token_address || !s.data) continue;
+    var existing = grouped.get(s.token_address);
+    if (!existing || s.trigger_at > existing.trigger_at) {
+      grouped.set(s.token_address, s);
+    }
+  }
+  var result = [];
+  for (var s of grouped.values()) {
+    var d = s.data;
+    var supply = Number(d.total_supply) || 0;
+    var mc = Number(s.market_cap) || Number(d.usd_market_cap) || 0;
+    result.push({
+      address:       d.address,
+      symbol:        d.symbol,
+      name:          d.name,
+      price:         supply > 0 ? mc / supply : 0,
+      market_cap:    mc,
+      liquidity:     Number(d.liquidity) || 0,
+      volume:        Number(d.volume_1h) || 0,
+      holder_count:  Number(d.holder_count) || 0,
+      top_10_holder_rate: Number(d.top_10_holder_rate) || 0,
+      rug_ratio:     Number(d.rug_ratio) || 0,
+      creator:       d.creator || '',
+      trigger_mc:    Number(s.trigger_mc) || 0,
+      trigger_at:    Number(s.trigger_at) || 0,
+      signal_times:  Number(s.signal_times) || 0,
+      smart_degen_wallets: d.smart_degen_wallets || [],
+      suspected_insider_hold_rate: Number(d.suspected_insider_hold_rate) || 0,
+      bundler_rate:  Number(d.bundler_trader_amount_rate) || 0,
+      sniper_count:  Number(d.sniper_count) || 0,
+      dev_team_hold_rate: Number(d.dev_team_hold_rate) || 0,
+      creator_created_count: Number(d.creator_created_count) || 0,
+    });
+  }
+  return result;
 }
 
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
@@ -876,6 +941,29 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   return msg;
 }
 
+function buildSignalMsg(t) {
+  var SEP = '━━━━━━━━━━━━━━━━━━━━';
+  var re = (t.rug_ratio || 0) * 100 < 50 ? '✅' : '🚨';
+  var le = t.liquidity > 50000 ? '🟢' : t.liquidity > 10000 ? '🟡' : '🔵';
+  var smCount = t.smart_degen_wallets ? t.smart_degen_wallets.length : 0;
+  var msg = '';
+  msg += '🔔 <b>SMART MONEY SIGNAL</b>\n';
+  msg += '<b>' + (t.name || t.symbol) + '</b> (<code>' + t.symbol + '</code>)\n';
+  msg += SEP + '\n';
+  msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
+  msg += re + ' Rug     : ' + Math.round((t.rug_ratio || 0) * 100) + '\n';
+  msg += '👥 Holders : ' + (t.holder_count || 0) + '\n';
+  msg += '🔍 Top10   : ' + ((t.top_10_holder_rate || 0) * 100).toFixed(1) + '%\n';
+  msg += '💎 SM Buy  : ' + smCount + ' wallets\n';
+  msg += '📊 MC trig : $' + fmt(t.trigger_mc) + '\n';
+  msg += '📊 MC skrg : $' + fmt(t.market_cap) + '\n';
+  msg += SEP + '\n';
+  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>';
+  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '<code>' + t.address + '</code>';
+  return msg;
+}
+
 // ─────────────────────────────────────────────
 //  MAIN PROCESSING LOOP
 // ─────────────────────────────────────────────
@@ -934,8 +1022,18 @@ async function processTokens() {
     }
   }
 
+  // — Smart Money Signal (sumber: signal endpoint) —
+  var signalTokens = CFG.signalEnabled ? fetchGmgnSignal() : [];
+  var signalCandidates = normalizeSignal(signalTokens);
+  // Skip token yg udah pernah dilihat (dari mode manapun)
+  var uniqueSignal = [];
+  for (var i = 0; i < signalCandidates.length; i++) {
+    if (!SEEN.has(signalCandidates[i].address)) uniqueSignal.push(signalCandidates[i]);
+  }
+
   log('New Migration candidates: ' + newMigration.length);
   log('Swing 1D candidates: ' + swingCandidates.length);
+  log('Signal candidates: ' + uniqueSignal.length);
 
   // — Proses New Migration —
   for (let i = 0; i < newMigration.length; i++) {
@@ -1122,6 +1220,57 @@ async function processTokens() {
     } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
   }
 
+  // — Proses Smart Money Signal —
+  for (var i = 0; i < uniqueSignal.length; i++) {
+    var t = uniqueSignal[i];
+    if (!t.address) continue;
+
+    // Gate trigger_mc (cegah token udah pump)
+    if (t.trigger_mc > CFG.signalMaxMc) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (MC trig $' + fmt(t.trigger_mc) + ' > $' + fmt(CFG.signalMaxMc) + ')');
+      continue;
+    }
+    // Gate liquidity
+    if (t.liquidity < CFG.signalMinLiquidity) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (LP $' + fmt(t.liquidity) + ' < $' + fmt(CFG.signalMinLiquidity) + ')');
+      continue;
+    }
+    // Gate holder count
+    if (t.holder_count < CFG.signalMinHolders) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Holders ' + t.holder_count + ' < ' + CFG.signalMinHolders + ')');
+      continue;
+    }
+    // Gate top10 holder
+    var top10Pct = (t.top_10_holder_rate || 0) * 100;
+    if (top10Pct > CFG.signalMaxTop10Rate) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
+      continue;
+    }
+    // Gate rug ratio
+    var rugScore = Math.round((t.rug_ratio || 0) * 100);
+    if (rugScore > CFG.maxRugScore) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
+      continue;
+    }
+
+    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal' });
+
+    log('[SIGNAL] ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Holders:' + t.holder_count + ' Rug:' + rugScore + ')');
+    var fullMsg = buildSignalMsg(t);
+    var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
+    totalNotified++;
+
+    if (t.price && Number(t.price) > 0) {
+      TRACKED.set(t.address, {
+        symbol: t.symbol, name: t.name, grade: 'SIGNAL', mode: 'SIGNAL',
+        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+        threadId: CFG.tgThreadSignal,
+      });
+      log('Tracked [SIGNAL] ' + t.symbol + ' @ $' + t.price);
+    }
+  }
+
   saveSeen();
   savePositions();
   cleanupSeen();
@@ -1228,7 +1377,7 @@ process.on('SIGTERM', () => { log('Saving...'); saveSeen(); process.exit(0); });
 
 log('');
 log('╔══════════════════════════════════════╗');
-log('║   AUTO SCREENING v6 — DUAL MODE     ║');
+log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
@@ -1242,6 +1391,11 @@ log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMin
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
 log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
 log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
+if (CFG.signalEnabled) {
+  log('[ Mode 3: Smart Money Signal ]');
+  log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
+  log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
+}
 log('');
 log('Interval: ' + CFG.interval + 's');
 log('');
