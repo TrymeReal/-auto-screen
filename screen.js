@@ -24,8 +24,6 @@ const CFG = {
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
   maxMarketCapMig:   Number(process.env.MAX_MARKET_CAP_MIG)  || 1000000,
-  min5mTxnsMig:      Number(process.env.MIN_5M_TXNS_MIG)     || 40,
-  min5mVolMig:       Number(process.env.MIN_5M_VOL_MIG)      || 5000,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -850,7 +848,12 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var holdCount = t.holder_count || 0;
   if (holdCount > 0 && (t.bot_degen_count / holdCount) > 0.05)
     warnings.push('🤖 Bots ' + (t.bot_degen_count / holdCount * 100).toFixed(1) + '% dari holders');
-  if (t.volume && t.volume < CFG.minVol * 2)
+  // PENTING: buildMsg() dipakai bareng MIGRATION & SWING. Threshold warning ini
+  // dulu ikut CFG.minVol tanpa cek mode — pas CFG.minVol dinaikin khusus utk
+  // Migration (5000→60000), Swing ikut kena imbasnya kalau gak dipisah di sini.
+  // Swing dikunci tetap ke angka lama (10000) biar perilakunya gak berubah.
+  var volWarnThreshold = mode === 'SWING' ? 10000 : CFG.minVol * 2;
+  if (t.volume && t.volume < volWarnThreshold)
     warnings.push('📊 Volume tipis ($' + fmt(t.volume) + ') — rawan manipulasi');
   warnings.forEach(w => { msg += '⚠️ ' + w + '\n'; });
 
@@ -941,26 +944,10 @@ async function processTokens() {
       continue;
     }
 
-    // — Gate 5M txns & volume (momentum jangka pendek) —
-    // Nama field GMGN ikut pola yg udah ada di kode ini (volume_1h/buys_24h dst):
-    // buys_5m, sells_5m, volume_5m. Kalau trenches API ternyata gak ngirim field ini,
-    // gate ini otomatis di-skip (gak nge-block semua kandidat) — cek log [DEBUG 5M]
-    // buat pastiin field-nya ada/gak sebelum dipercaya penuh.
-    var has5mData = typeof t.buys_5m === 'number' || typeof t.sells_5m === 'number' || typeof t.volume_5m === 'number';
-    if (has5mData) {
-      var txns5m = (Number(t.buys_5m) || 0) + (Number(t.sells_5m) || 0);
-      if (txns5m < CFG.min5mTxnsMig) {
-        log('SKIP [MIG] ' + t.symbol + ' (5m txns ' + txns5m + ' < ' + CFG.min5mTxnsMig + ')');
-        continue;
-      }
-      var vol5m = Number(t.volume_5m) || 0;
-      if (vol5m < CFG.min5mVolMig) {
-        log('SKIP [MIG] ' + t.symbol + ' (5m vol $' + fmt(vol5m) + ' < $' + fmt(CFG.min5mVolMig) + ')');
-        continue;
-      }
-    } else {
-      log('[DEBUG 5M] ' + t.symbol + ': field buys_5m/sells_5m/volume_5m gak ada di data GMGN, gate 5m di-skip');
-    }
+    // — Gate 5M txns & volume: DICABUT — trenches GMGN gak ngirim field
+    // buys_5m/sells_5m/volume_5m (sudah dikonfirmasi dari log live run, semua
+    // kandidat selalu kena "field gak ada"). Kalau suatu saat field-nya kebukti
+    // ada di response GMGN, gate ini bisa ditambahin lagi.
 
     // GMGN gates (sebelum RugCheck)
     var bundlerPct = (t.bundler_rate || 0) * 100;
@@ -1236,7 +1223,7 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol1h > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
-log('  MC < $' + CFG.maxMarketCapMig.toLocaleString() + ' | 5mTxns > ' + CFG.min5mTxnsMig + ' | 5mVol > $' + CFG.min5mVolMig.toLocaleString());
+log('  MC < $' + CFG.maxMarketCapMig.toLocaleString());
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
