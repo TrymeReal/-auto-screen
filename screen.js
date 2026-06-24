@@ -3,11 +3,25 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const {
+  shouldSkipNewMigration,
+  checkBaseLiquidity,
+  checkBaseAgeHours,
+  checkVol1h,
+  checkSwaps5m,
+  checkVol5m,
+} = require('./filters');
 
 // ─────────────────────────────────────────────
 //  CONFIG
 // ─────────────────────────────────────────────
 const CFG = {
+  // New Migration V2 — base gates
+  minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
+  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
+  minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
+  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
+
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 5000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
@@ -256,6 +270,38 @@ function fetchGmgnTrenches() {
   } catch (e) {
     log('GMGN trenches error: ' + e.message);
     return [];
+  }
+}
+
+function fetchTokenInfo(address) {
+  try {
+    const out = execSync(
+      'npx gmgn-cli token info --chain sol --address ' + address + ' --raw',
+      { encoding: 'utf8', timeout: 15000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    const d = JSON.parse(out);
+    return d;
+  } catch (e) {
+    log('Token info error ' + (address || '').slice(0, 8) + ': ' + e.message);
+    return null;
+  }
+}
+
+async function fetchPaidDex(address) {
+  try {
+    const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + address, { timeout: 8000 }, 2);
+    const pairs = res.data?.pairs;
+    if (!pairs || pairs.length === 0) return false;
+    var hasBoost = false;
+    for (var i = 0; i < pairs.length; i++) {
+      var p = pairs[i];
+      if (p.boosts && Number(p.boosts.active) > 0) { hasBoost = true; break; }
+      if (p.labels && Array.isArray(p.labels) && p.labels.length > 0) hasBoost = true;
+    }
+    return hasBoost;
+  } catch (e) {
+    log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
+    return false;
   }
 }
 
@@ -990,8 +1036,8 @@ async function processTokens() {
     if (!t.address) continue;
     if (SEEN.has(t.address)) continue;          // belum pernah dilihat
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-    // umur < swingMinAge sudah dijamin server (--max-created), cek lagi sbg pengaman
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.swingMinAge) continue;
+    // umur < maxAgeHours sudah dijamin server (--max-created), cek lagi sbg pengaman
+    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
     newMigration.push(t);
   }
 
@@ -1041,103 +1087,43 @@ async function processTokens() {
   log('Swing 1D candidates: ' + swingCandidates.length);
   log('Signal candidates: ' + uniqueSignal.length);
 
-  // — Proses New Migration —
+  // — Proses New Migration V2 (6 base gates only) —
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
-    const totalTxn = (t.buys || 0) + (t.sells || 0);
-    if (totalTxn > 0) {
-      const buyPct = (t.buys / totalTxn) * 100;
-      if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
-    }
-    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
-    if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
 
-    // GMGN gates (sebelum RugCheck)
-    var bundlerPct = (t.bundler_rate || 0) * 100;
-    if (bundlerPct > CFG.maxBundlerPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Bundler ' + bundlerPct.toFixed(0) + '% > ' + CFG.maxBundlerPct + '%)');
-      continue;
-    }
-    var top10 = (t.top_10_holder_rate || 0) * 100;
-    if (top10 > CFG.maxTop10Holders) {
-      log('SKIP [MIG] ' + t.symbol + ' (Top10 ' + top10.toFixed(0) + '% > ' + CFG.maxTop10Holders + '%)');
+    // Fetch token info untuk data 5m/1h
+    log('[MIG] Fetch info ' + t.symbol + '...');
+    const tokenInfo = fetchTokenInfo(t.address);
+    if (!tokenInfo) {
+      log('SKIP [MIG] ' + t.symbol + ' (Gagal fetch token info)');
       continue;
     }
 
-    // — Gate Creator Hold (cegah dev dump) —
-    var creatorHold = (t.dev_team_hold_rate || 0) * 100;
-    if (creatorHold > CFG.maxDevHold) {
-      log('SKIP [MIG] ' + t.symbol + ' (Creator hold ' + creatorHold.toFixed(0) + '% > ' + CFG.maxDevHold + '%)');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'dev_hold' });
+    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m
+    var migCfg = {
+      minLp:        CFG.minLp,
+      maxAgeHours:  CFG.maxAgeHours,
+      minVol1h:     CFG.minVol1h,
+      minSwaps5m:   CFG.minSwaps5m,
+      minVol5m:     CFG.minVol5m,
+    };
+    var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
+    if (migResult.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
       continue;
     }
 
-    // — Gate Price Change 1h (cegah FOMO entry) —
-    var chg1h = Number(t.price_change_percent1h) || 0;
-    if (chg1h > CFG.maxPriceChange1h) {
-      log('SKIP [MIG] ' + t.symbol + ' (Harga naik ' + chg1h.toFixed(0) + '% dalam 1 jam > ' + CFG.maxPriceChange1h + '%)');
+    // Cek paid DEX via DEX Screener API
+    log('[MIG] Cek paid DEX ' + t.symbol + '...');
+    var paidDex = await fetchPaidDex(t.address);
+    if (!paidDex) {
+      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
       continue;
     }
 
-    // — Gate Minimal Holder (cegah likuiditas sosial rendah) —
-    if (typeof t.holder_count === 'number' && t.holder_count < CFG.minHoldersMig) {
-      log('SKIP [MIG] ' + t.symbol + ' (Holder ' + t.holder_count + ' < ' + CFG.minHoldersMig + ')');
-      continue;
-    }
-
-    // — Gate Sniper Rate (cegah sniper jual di awal) —
-    var sniperPct = (t.top70_sniper_hold_rate || 0) * 100;
-    if (sniperPct > CFG.maxSniperPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Sniper ' + sniperPct.toFixed(0) + '% > ' + CFG.maxSniperPct + '%)');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'sniper' });
-      continue;
-    }
-
-    // — Gate Vol/LP Ratio (cegah wash trading) —
-    var lpAmt = Number(t.liquidity) || 0;
-    var volAmt = Number(t.volume) || 0;
-    if (lpAmt > 0 && volAmt > 0) {
-      var volLpRatio = volAmt / lpAmt;
-      if (volLpRatio > CFG.maxVolLpRatio) {
-        log('SKIP [MIG] ' + t.symbol + ' (Vol/LP ' + volLpRatio.toFixed(1) + 'x > ' + CFG.maxVolLpRatio + 'x — wash trading)');
-        continue;
-      }
-    }
-
-    // Gate Mint/Freeze DIMATIKAN untuk sumber trenches: endpoint trenches tidak
-    // mengisi field renounce (selalu false), jadi gate ini menolak SEMUA token.
-    // Renounce & keamanan lain sudah tercover via rug_ratio dari GMGN.
-    // if (t.renounced_mint !== 1 || t.renounced_freeze_account !== 1) {
-    //   log('SKIP [MIG] ' + t.symbol + ' (Mint/Freeze not renounced)');
-    //   continue;
-    // }
-
-    // — GMGN rug_ratio & insider (native, no external API) —
+    // Data untuk notifikasi (old filter fields tetap dikumpulkan dari t)
     var rugScoreGMGN = Math.round((t.rug_ratio || 0) * 100);
     var insiderPctGMGN = (t.suspected_insider_hold_rate || 0) * 100;
-
-    if (rugScoreGMGN > CFG.maxRugScore) {
-      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rugScoreGMGN + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
-      continue;
-    }
-    if (insiderPctGMGN > CFG.maxInsiderPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + insiderPctGMGN.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'insider' });
-      continue;
-    }
-
-    // — Gate Serial Creator (cegah creator yg sering bikin token dump) —
-    var creatorAddr = t.creator || t.owner || t.dev_address || '';
-    if (creatorAddr && creatorAddr.length > 28) {
-      var creatorTokenCount = getCreatorTokenCount(creatorAddr);
-      if (creatorTokenCount > CFG.maxCreatorTokens) {
-        log('SKIP [MIG] ' + t.symbol + ' (Creator bikin ' + creatorTokenCount + ' token lain > ' + CFG.maxCreatorTokens + ')');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'serial_creator' });
-        continue;
-      }
-    }
-
     var rug = {
       score: rugScoreGMGN,
       scoreNormalised: -1,
@@ -1151,15 +1137,14 @@ async function processTokens() {
       insiderPct: insiderPctGMGN,
     };
 
-    const grade = gradeToken(t.liquidity, t.volume, rug.score);
-    if (grade === 'SKIP') {
-      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya)');
-      continue;
-    }
+    var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
+    // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
+    t.volume = vol1h;
+    const grade = gradeToken(t.liquidity, t.volume, rug.score); // hanya untuk display, tidak blocking
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ')');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Paid:✅)');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
