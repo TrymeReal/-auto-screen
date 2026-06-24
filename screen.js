@@ -8,9 +8,9 @@ const { execSync } = require('child_process');
 //  CONFIG
 // ─────────────────────────────────────────────
 const CFG = {
-  // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 5000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
+  // Mode New Migration — filter diperketat sesuai screener form (Liquidity/MCap/Vol1h/5m)
+  minLp:           Number(process.env.MIN_LP)           || 15000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 60000,  // = gate Vol 1H (t.volume di trenches = volume_1h)
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
@@ -23,6 +23,9 @@ const CFG = {
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
+  maxMarketCapMig:   Number(process.env.MAX_MARKET_CAP_MIG)  || 1000000,
+  min5mTxnsMig:      Number(process.env.MIN_5M_TXNS_MIG)     || 40,
+  min5mVolMig:       Number(process.env.MIN_5M_VOL_MIG)      || 5000,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -928,8 +931,36 @@ async function processTokens() {
       const buyPct = (t.buys / totalTxn) * 100;
       if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
     }
-    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
+    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol1h $' + t.volume + ')'); continue; }
     if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
+
+    // — Gate Market Cap (hindari token yg udah kemahalan buat entry baru) —
+    var mcMig = Number(t.market_cap) || 0;
+    if (mcMig > CFG.maxMarketCapMig) {
+      log('SKIP [MIG] ' + t.symbol + ' (MC $' + fmt(mcMig) + ' > $' + fmt(CFG.maxMarketCapMig) + ')');
+      continue;
+    }
+
+    // — Gate 5M txns & volume (momentum jangka pendek) —
+    // Nama field GMGN ikut pola yg udah ada di kode ini (volume_1h/buys_24h dst):
+    // buys_5m, sells_5m, volume_5m. Kalau trenches API ternyata gak ngirim field ini,
+    // gate ini otomatis di-skip (gak nge-block semua kandidat) — cek log [DEBUG 5M]
+    // buat pastiin field-nya ada/gak sebelum dipercaya penuh.
+    var has5mData = typeof t.buys_5m === 'number' || typeof t.sells_5m === 'number' || typeof t.volume_5m === 'number';
+    if (has5mData) {
+      var txns5m = (Number(t.buys_5m) || 0) + (Number(t.sells_5m) || 0);
+      if (txns5m < CFG.min5mTxnsMig) {
+        log('SKIP [MIG] ' + t.symbol + ' (5m txns ' + txns5m + ' < ' + CFG.min5mTxnsMig + ')');
+        continue;
+      }
+      var vol5m = Number(t.volume_5m) || 0;
+      if (vol5m < CFG.min5mVolMig) {
+        log('SKIP [MIG] ' + t.symbol + ' (5m vol $' + fmt(vol5m) + ' < $' + fmt(CFG.min5mVolMig) + ')');
+        continue;
+      }
+    } else {
+      log('[DEBUG 5M] ' + t.symbol + ': field buys_5m/sells_5m/volume_5m gak ada di data GMGN, gate 5m di-skip');
+    }
 
     // GMGN gates (sebelum RugCheck)
     var bundlerPct = (t.bundler_rate || 0) * 100;
@@ -1204,7 +1235,8 @@ log('║   AUTO SCREENING v6 — DUAL MODE     ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
+log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol1h > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
+log('  MC < $' + CFG.maxMarketCapMig.toLocaleString() + ' | 5mTxns > ' + CFG.min5mTxnsMig + ' | 5mVol > $' + CFG.min5mVolMig.toLocaleString());
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
