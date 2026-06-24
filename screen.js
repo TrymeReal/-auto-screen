@@ -1216,53 +1216,46 @@ async function processTokens() {
     var t = uniqueSignal[i];
     if (!t.address) continue;
 
-    // Gate trigger age (skip signal yang sudah basi > 30 menit)
-    var triggerAgeMin = (Date.now() / 1000 - t.trigger_at) / 60;
-    if (triggerAgeMin > 30) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (trigger ' + triggerAgeMin.toFixed(0) + 'm yang lalu > 30m)');
+    // Gate 1: SM masih pegang — cek awal karena paling sering kena
+    if (t.smart_degen_count < 1) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
       continue;
     }
-
-    // Gate trigger_mc (cegah token udah pump)
+    // Gate 3: trigger_mc (cegah token udah pump)
     if (t.trigger_mc > CFG.signalMaxMc) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (MC trig $' + fmt(t.trigger_mc) + ' > $' + fmt(CFG.signalMaxMc) + ')');
       continue;
     }
-    // Gate liquidity
+    // Gate 4: liquidity
     if (t.liquidity < CFG.signalMinLiquidity) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (LP $' + fmt(t.liquidity) + ' < $' + fmt(CFG.signalMinLiquidity) + ')');
       continue;
     }
-    // Gate holder count
+    // Gate 5: holder count
     if (t.holder_count < CFG.signalMinHolders) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Holders ' + t.holder_count + ' < ' + CFG.signalMinHolders + ')');
       continue;
     }
-    // Gate top10 holder
+    // Gate 6: top10 holder
     var top10Pct = (t.top_10_holder_rate || 0) * 100;
     if (top10Pct > CFG.signalMaxTop10Rate) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
       continue;
     }
-    // Gate rug ratio
+    // Gate 7: rug ratio
     var rugScore = Math.round((t.rug_ratio || 0) * 100);
     if (rugScore > CFG.maxRugScore) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
       continue;
     }
-    // Gate smart_degen_count (SM masih pegang atau udah kabur)
-    if (t.smart_degen_count < 1) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
-      continue;
-    }
-    // Gate bot degen rate
+    // Gate 8: bot degen rate
     var botPct = (t.bot_degen_rate || 0) * 100;
     if (botPct > 50) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Bot ' + botPct.toFixed(1) + '% dari holders > 50%)');
       continue;
     }
-    // Gate serial creator (langsung dari data signal, tanpa API call)
+    // Gate 9: serial creator
     if (t.creator_created_count > CFG.maxCreatorTokens) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Creator bikin ' + t.creator_created_count + ' token > ' + CFG.maxCreatorTokens + ')');
       continue;
