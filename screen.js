@@ -1260,6 +1260,8 @@ async function processTokens() {
     var fullMsg = buildSignalMsg(t);
     var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
     totalNotified++;
+    // Delay 1.5s antar notif signal biar gak kena TG rate limit
+    await new Promise(r => setTimeout(r, 1500));
 
     if (t.price && Number(t.price) > 0) {
       TRACKED.set(t.address, {
