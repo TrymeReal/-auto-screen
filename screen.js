@@ -23,6 +23,7 @@ const CFG = {
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
+  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -247,6 +248,21 @@ function fetchGmgnTrenches() {
   } catch (e) {
     log('GMGN trenches error: ' + e.message);
     return [];
+  }
+}
+
+function getCreatorTokenCount(walletAddress) {
+  if (!walletAddress || walletAddress === '?' || walletAddress.length < 30) return 0;
+  try {
+    var out = execSync(
+      'npx gmgn-cli portfolio created-tokens --chain sol --wallet ' + walletAddress + ' --raw',
+      { encoding: 'utf8', timeout: 10000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    var data = JSON.parse(out);
+    var tokens = Array.isArray(data) ? data : (data.data || []);
+    return tokens.length;
+  } catch (e) {
+    return 0;
   }
 }
 
@@ -1007,6 +1023,17 @@ async function processTokens() {
       continue;
     }
 
+    // — Gate Serial Creator (cegah creator yg sering bikin token dump) —
+    var creatorAddr = t.creator || t.owner || t.dev_address || '';
+    if (creatorAddr && creatorAddr.length > 28) {
+      var creatorTokenCount = getCreatorTokenCount(creatorAddr);
+      if (creatorTokenCount > CFG.maxCreatorTokens) {
+        log('SKIP [MIG] ' + t.symbol + ' (Creator bikin ' + creatorTokenCount + ' token lain > ' + CFG.maxCreatorTokens + ')');
+        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'serial_creator' });
+        continue;
+      }
+    }
+
     var rug = {
       score: rugScoreGMGN,
       scoreNormalised: -1,
@@ -1209,6 +1236,7 @@ log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocale
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
+log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
