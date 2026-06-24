@@ -8,9 +8,9 @@ const { execSync } = require('child_process');
 //  CONFIG
 // ─────────────────────────────────────────────
 const CFG = {
-  // Mode New Migration — filter diperketat sesuai screener form (Liquidity/MCap/Vol1h/5m)
-  minLp:           Number(process.env.MIN_LP)           || 15000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 60000,  // = gate Vol 1H (t.volume di trenches = volume_1h)
+  // Mode New Migration (sama seperti sebelumnya)
+  minLp:           Number(process.env.MIN_LP)           || 5000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
@@ -23,7 +23,6 @@ const CFG = {
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
-  maxMarketCapMig:   Number(process.env.MAX_MARKET_CAP_MIG)  || 1000000,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -212,9 +211,9 @@ function normalizeTrench(t) {
     volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
     buys:               t.buys_24h,
     sells:              t.sells_24h,
-    bundler_rate:       t.bundler_trader_amount_rate,   // nama beda di trenches
-    // Trenches bisa kirim renounced dalam bentuk apa aja (true / 1 / "1" / "true").
-    // Gate cek `!== 1`, jadi samakan ke 1/0 supaya token yg sudah renounced tidak ke-skip.
+    bundler_rate:       t.bundler_trader_amount_rate,
+    rug_ratio:          Number(t.rug_ratio) || 0,
+    suspected_insider_hold_rate: Number(t.suspected_insider_hold_rate) || 0,
     renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
     renounced_freeze_account: isTruthyFlag(t.renounced_freeze_account) ? 1 : 0,
   });
@@ -228,8 +227,9 @@ function fetchGmgnTrenches() {
       'market trenches',
       '--chain sol',
       '--type completed',
-      '--limit 80',
-      '--sort-by created_timestamp',
+      '--limit 50',
+      '--min-smart-degen-count 1',
+      '--sort-by smart_degen_count',
       '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
       '--min-liquidity ' + CFG.minLp,
       '--raw',
@@ -848,12 +848,7 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var holdCount = t.holder_count || 0;
   if (holdCount > 0 && (t.bot_degen_count / holdCount) > 0.05)
     warnings.push('🤖 Bots ' + (t.bot_degen_count / holdCount * 100).toFixed(1) + '% dari holders');
-  // PENTING: buildMsg() dipakai bareng MIGRATION & SWING. Threshold warning ini
-  // dulu ikut CFG.minVol tanpa cek mode — pas CFG.minVol dinaikin khusus utk
-  // Migration (5000→60000), Swing ikut kena imbasnya kalau gak dipisah di sini.
-  // Swing dikunci tetap ke angka lama (10000) biar perilakunya gak berubah.
-  var volWarnThreshold = mode === 'SWING' ? 10000 : CFG.minVol * 2;
-  if (t.volume && t.volume < volWarnThreshold)
+  if (t.volume && t.volume < CFG.minVol * 2)
     warnings.push('📊 Volume tipis ($' + fmt(t.volume) + ') — rawan manipulasi');
   warnings.forEach(w => { msg += '⚠️ ' + w + '\n'; });
 
@@ -934,20 +929,8 @@ async function processTokens() {
       const buyPct = (t.buys / totalTxn) * 100;
       if (buyPct < CFG.minBuyRatio) { log('SKIP [MIG] ' + t.symbol + ' (Buy ' + buyPct.toFixed(0) + '%)'); continue; }
     }
-    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol1h $' + t.volume + ')'); continue; }
+    if (t.volume < CFG.minVol)    { log('SKIP [MIG] ' + t.symbol + ' (Vol $' + t.volume + ')'); continue; }
     if (t.liquidity < CFG.minLp)  { log('SKIP [MIG] ' + t.symbol + ' (LP $' + t.liquidity + ')'); continue; }
-
-    // — Gate Market Cap (hindari token yg udah kemahalan buat entry baru) —
-    var mcMig = Number(t.market_cap) || 0;
-    if (mcMig > CFG.maxMarketCapMig) {
-      log('SKIP [MIG] ' + t.symbol + ' (MC $' + fmt(mcMig) + ' > $' + fmt(CFG.maxMarketCapMig) + ')');
-      continue;
-    }
-
-    // — Gate 5M txns & volume: DICABUT — trenches GMGN gak ngirim field
-    // buys_5m/sells_5m/volume_5m (sudah dikonfirmasi dari log live run, semua
-    // kandidat selalu kena "field gak ada"). Kalau suatu saat field-nya kebukti
-    // ada di response GMGN, gate ini bisa ditambahin lagi.
 
     // GMGN gates (sebelum RugCheck)
     var bundlerPct = (t.bundler_rate || 0) * 100;
@@ -1003,66 +986,66 @@ async function processTokens() {
 
     // Gate Mint/Freeze DIMATIKAN untuk sumber trenches: endpoint trenches tidak
     // mengisi field renounce (selalu false), jadi gate ini menolak SEMUA token.
-    // Keamanan renounce sebagian masih dicek via getRugCheck (rugcheck.xyz).
+    // Renounce & keamanan lain sudah tercover via rug_ratio dari GMGN.
     // if (t.renounced_mint !== 1 || t.renounced_freeze_account !== 1) {
     //   log('SKIP [MIG] ' + t.symbol + ' (Mint/Freeze not renounced)');
     //   continue;
     // }
 
-    try {
-      const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
+    // — GMGN rug_ratio & insider (native, no external API) —
+    var rugScoreGMGN = Math.round((t.rug_ratio || 0) * 100);
+    var insiderPctGMGN = (t.suspected_insider_hold_rate || 0) * 100;
 
-      // RugCheck API gagal (timeout/error) ≠ token-nya beneran rug. Jangan kunci
-      // ke SEEN — biar dicoba lagi cycle berikutnya selama masih < swingMinAge.
-      if (rug.risks === 'Fetch failed') {
-        log('SKIP [MIG] ' + t.symbol + ' (RugCheck API gagal, dicoba lagi cycle berikutnya)');
-        continue;
-      }
+    if (rugScoreGMGN > CFG.maxRugScore) {
+      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rugScoreGMGN + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
+      continue;
+    }
+    if (insiderPctGMGN > CFG.maxInsiderPct) {
+      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + insiderPctGMGN.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'insider' });
+      continue;
+    }
 
-      // Rug score & insider itu karakteristik yang jarang berubah → aman dikunci
-      // permanen, sekalian biar gak nge-spam rug-check API ke token yang udah
-      // jelas red flag tiap cycle.
-      if (rug.score > CFG.maxRugScore) {
-        log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ')');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
-        continue;
-      }
-      if (rug.insiderPct > CFG.maxInsiderPct) {
-        log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'insider' });
-        continue;
-      }
+    var rug = {
+      score: rugScoreGMGN,
+      scoreNormalised: -1,
+      risks: '',
+      creator: t.creator || t.owner || t.dev_address || '?',
+      topDangers: [],
+      topWarns: [],
+      tokenType: '',
+      rugged: false,
+      deployPlatform: '',
+      insiderPct: insiderPctGMGN,
+    };
 
-      const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') {
-        // LP/Vol masih belum cukup buat dapet grade — JANGAN kunci, kasih
-        // kesempatan token ini tumbuh (LP/Vol bisa naik jam-jam berikutnya).
-        log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya)');
-        continue;
-      }
+    const grade = gradeToken(t.liquidity, t.volume, rug.score);
+    if (grade === 'SKIP') {
+      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP, LP/Vol belum cukup — dicek lagi cycle berikutnya)');
+      continue;
+    }
 
-      // — Lolos semua syarat → baru resmi dicatet & dinotif —
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
+    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-      log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ')');
-      const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-      const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
-      totalNotified++;
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + t.liquidity + ' Vol:$' + t.volume + ' Rug:' + rug.score + ')');
+    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
+    const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    totalNotified++;
 
-      if (confirmedBandars.includes(t.address)) {
-        const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'MIGRATION');
-        await sendEntrySignal(t, rug, grade, f);
-      }
+    if (confirmedBandars.includes(t.address)) {
+      const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'MIGRATION');
+      await sendEntrySignal(t, rug, grade, f);
+    }
 
-      if (t.price && Number(t.price) > 0) {
-        TRACKED.set(t.address, {
-          symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
-          entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-          threadId: CFG.tgThreadMig,
-        });
-        log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
-      }
-    } catch (e) { log('Error [MIG] ' + t.symbol + ': ' + e.message); }
+    if (t.price && Number(t.price) > 0) {
+      TRACKED.set(t.address, {
+        symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
+        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+        threadId: CFG.tgThreadMig,
+      });
+      log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
+    }
   }
 
 
@@ -1222,8 +1205,7 @@ log('║   AUTO SCREENING v6 — DUAL MODE     ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol1h > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
-log('  MC < $' + CFG.maxMarketCapMig.toLocaleString());
+log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
