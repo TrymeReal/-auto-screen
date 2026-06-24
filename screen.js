@@ -38,15 +38,10 @@ const CFG = {
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
   tgThreadSignal:     Number(process.env.TG_THREAD_SIGNAL) || undefined,
-  signalMinLiquidity: Number(process.env.SIGNAL_MIN_LIQ)      || 15000,   // naik dari 5K -> 15K
-  signalMinHolders:   Number(process.env.SIGNAL_MIN_HOLDERS)  || 50,
-  signalMaxMc:        Number(process.env.SIGNAL_MAX_MC)        || 500000,
-  signalMaxTop10Rate: Number(process.env.SIGNAL_MAX_TOP10)     || 25,
-  signalMinVol1h:     Number(process.env.SIGNAL_MIN_VOL1H)     || 1000,   // vol 1h min $1K
-  signalMaxMcMultiple:Number(process.env.SIGNAL_MAX_MC_MULT)   || 2.5,    // max 2.5x dari first_trigger_mc
-  signalMaxBotRate:   Number(process.env.SIGNAL_MAX_BOT_RATE)  || 0.30,   // max 30% bot holders
-  signalMinSmWallets: Number(process.env.SIGNAL_MIN_SM_WALLETS)|| 2,      // minimal 2 SM wallet
-  signalMaxCreatorTokens: Number(process.env.SIGNAL_MAX_CREATOR)|| 50,    // serial creator check
+  signalMinLiquidity: Number(process.env.SIGNAL_MIN_LIQ)   || 5000,
+  signalMinHolders:   Number(process.env.SIGNAL_MIN_HOLDERS)|| 50,
+  signalMaxMc:        Number(process.env.SIGNAL_MAX_MC)     || 500000,
+  signalMaxTop10Rate: Number(process.env.SIGNAL_MAX_TOP10)  || 25,
 
   // Umum
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
@@ -314,6 +309,7 @@ function normalizeSignal(signals) {
       address:       d.address,
       symbol:        d.symbol,
       name:          d.name,
+      exchange:      d.exchange || '',
       price:         supply > 0 ? mc / supply : 0,
       market_cap:    mc,
       liquidity:     Number(d.liquidity) || 0,
@@ -326,16 +322,14 @@ function normalizeSignal(signals) {
       trigger_at:    Number(s.trigger_at) || 0,
       signal_times:  Number(s.signal_times) || 0,
       smart_degen_wallets: d.smart_degen_wallets || [],
+      smart_degen_count: Number(d.smart_degen_count) || 0,
+      bot_degen_rate: Number(d.bot_degen_rate) || 0,
+      bot_degen_count: Number(d.bot_degen_count) || 0,
       suspected_insider_hold_rate: Number(d.suspected_insider_hold_rate) || 0,
       bundler_rate:  Number(d.bundler_trader_amount_rate) || 0,
       sniper_count:  Number(d.sniper_count) || 0,
       dev_team_hold_rate: Number(d.dev_team_hold_rate) || 0,
       creator_created_count: Number(d.creator_created_count) || 0,
-      // Field tambahan untuk filter Signal
-      exchange:      d.exchange || '',
-      bot_degen_rate: Number(d.bot_degen_rate) || 0,
-      volume_1h:     Number(d.volume_1h) || 0,
-      first_trigger_mc: Number(s.first_trigger_mc) || Number(s.trigger_mc) || 0,
     });
   }
   return result;
@@ -955,18 +949,20 @@ function buildSignalMsg(t) {
   var SEP = '━━━━━━━━━━━━━━━━━━━━';
   var re = (t.rug_ratio || 0) * 100 < 50 ? '✅' : '🚨';
   var le = t.liquidity > 50000 ? '🟢' : t.liquidity > 10000 ? '🟡' : '🔵';
-  var smCount = t.smart_degen_wallets ? t.smart_degen_wallets.length : 0;
+  var smWallets = t.smart_degen_wallets || [];
+  var totalSol = smWallets.reduce(function(a, b) { return a + (b.buy_amount || 0); }, 0);
+  var avgSol = smWallets.length > 0 ? (totalSol / smWallets.length).toFixed(1) : '0';
   var msg = '';
   msg += '🔔 <b>SMART MONEY SIGNAL</b>\n';
   msg += '<b>' + (t.name || t.symbol) + '</b> (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
   msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
-  msg += re + ' Rug     : ' + Math.round((t.rug_ratio || 0) * 100) + '\n';
-  msg += '👥 Holders : ' + (t.holder_count || 0) + '\n';
-  msg += '🔍 Top10   : ' + ((t.top_10_holder_rate || 0) * 100).toFixed(1) + '%\n';
-  msg += '💎 SM Buy  : ' + smCount + ' wallets\n';
+  msg += '💎 SM Buy  : ' + smWallets.length + ' wallets (total ' + totalSol.toFixed(0) + ' SOL, rata2 ' + avgSol + ' SOL)\n';
   msg += '📊 MC trig : $' + fmt(t.trigger_mc) + '\n';
   msg += '📊 MC skrg : $' + fmt(t.market_cap) + '\n';
+  msg += re + ' Rug     : ' + Math.round((t.rug_ratio || 0) * 100) + '\n';
+  msg += '👥 Holders : ' + (t.holder_count || 0) + ' | 🤖 Bot ' + ((t.bot_degen_rate || 0) * 100).toFixed(0) + '%\n';
+  msg += '🔍 Top10   : ' + ((t.top_10_holder_rate || 0) * 100).toFixed(1) + '%\n';
   msg += SEP + '\n';
   msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>';
   msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
@@ -1235,93 +1231,48 @@ async function processTokens() {
     var t = uniqueSignal[i];
     if (!t.address) continue;
 
-    // Gate 1: Wajib sudah graduate ke DEX, bukan masih di pump.fun
-    if (t.exchange === 'pump') {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (masih di pump.fun, belum grad ke DEX)');
-      continue;
-    }
-
-    // Gate 2: Serial creator — creator yang terlalu banyak bikin token
-    if (t.creator_created_count > CFG.signalMaxCreatorTokens) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Creator bikin ' + t.creator_created_count + ' token > ' + CFG.signalMaxCreatorTokens + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'serial_creator' });
-      continue;
-    }
-
-    // Gate 3: Minimal smart wallet yang masuk
-    var smWalletCount = (t.smart_degen_wallets || []).length;
-    if (smWalletCount < CFG.signalMinSmWallets) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (SM wallets ' + smWalletCount + ' < ' + CFG.signalMinSmWallets + ')');
-      continue;
-    }
-
-    // Gate 4: MC sekarang vs first_trigger_mc (cegah late entry / exit liquidity)
-    if (t.first_trigger_mc > 0 && t.market_cap > 0) {
-      var mcMultiple = t.market_cap / t.first_trigger_mc;
-      if (mcMultiple > CFG.signalMaxMcMultiple) {
-        log('SKIP [SIGNAL] ' + t.symbol + ' (MC udah ' + mcMultiple.toFixed(1) + 'x dari trigger $' + fmt(t.first_trigger_mc) + ')');
-        continue;
-      }
-    }
-
-    // Gate 5: trigger_mc tidak boleh terlalu besar (token sudah kemahalan saat SM masuk)
+    // Gate trigger_mc (cegah token udah pump)
     if (t.trigger_mc > CFG.signalMaxMc) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (MC trig $' + fmt(t.trigger_mc) + ' > $' + fmt(CFG.signalMaxMc) + ')');
       continue;
     }
-
-    // Gate 6: Liquidity minimal
+    // Gate liquidity
     if (t.liquidity < CFG.signalMinLiquidity) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (LP $' + fmt(t.liquidity) + ' < $' + fmt(CFG.signalMinLiquidity) + ')');
       continue;
     }
-
-    // Gate 7: Volume 1h harus ada aktivitas
-    if (t.volume_1h < CFG.signalMinVol1h) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Vol1h $' + fmt(t.volume_1h) + ' < $' + fmt(CFG.signalMinVol1h) + ')');
-      continue;
-    }
-
-    // Gate 8: Holder count minimal
+    // Gate holder count
     if (t.holder_count < CFG.signalMinHolders) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Holders ' + t.holder_count + ' < ' + CFG.signalMinHolders + ')');
       continue;
     }
-
-    // Gate 9: Bot rate — kalau mayoritas holder itu bot, bukan organic
-    if (t.bot_degen_rate > CFG.signalMaxBotRate) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Bot rate ' + (t.bot_degen_rate * 100).toFixed(0) + '% > ' + (CFG.signalMaxBotRate * 100) + '%)');
-      continue;
-    }
-
-    // Gate 10: Top10 holder concentration
+    // Gate top10 holder
     var top10Pct = (t.top_10_holder_rate || 0) * 100;
     if (top10Pct > CFG.signalMaxTop10Rate) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
       continue;
     }
-
-    // Gate 11: Bundler
-    var bundlerPctSig = (t.bundler_rate || 0) * 100;
-    if (bundlerPctSig > CFG.maxBundlerPct) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Bundler ' + bundlerPctSig.toFixed(0) + '% > ' + CFG.maxBundlerPct + '%)');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'bundler' });
-      continue;
-    }
-
-    // Gate 12: Insider
-    var insiderPctSig = (t.suspected_insider_hold_rate || 0) * 100;
-    if (insiderPctSig > CFG.maxInsiderPct) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Insider ' + insiderPctSig.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'insider' });
-      continue;
-    }
-
-    // Gate 13: Rug ratio
+    // Gate rug ratio
     var rugScore = Math.round((t.rug_ratio || 0) * 100);
     if (rugScore > CFG.maxRugScore) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
+      continue;
+    }
+    // Gate smart_degen_count (SM masih pegang atau udah kabur)
+    if (t.smart_degen_count < 1) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
+      continue;
+    }
+    // Gate bot degen rate
+    var botPct = (t.bot_degen_rate || 0) * 100;
+    if (botPct > 50) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Bot ' + botPct.toFixed(1) + '% dari holders > 50%)');
+      continue;
+    }
+    // Gate serial creator (langsung dari data signal, tanpa API call)
+    if (t.creator_created_count > CFG.maxCreatorTokens) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Creator bikin ' + t.creator_created_count + ' token > ' + CFG.maxCreatorTokens + ')');
       continue;
     }
 
@@ -1468,6 +1419,7 @@ if (CFG.signalEnabled) {
   log('[ Mode 3: Smart Money Signal ]');
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
   log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
+  log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
 }
 log('');
 log('Interval: ' + CFG.interval + 's');
