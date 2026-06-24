@@ -22,6 +22,7 @@ const CFG = {
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 5,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -971,6 +972,17 @@ async function processTokens() {
       continue;
     }
 
+    // — Gate Vol/LP Ratio (cegah wash trading) —
+    var lpAmt = Number(t.liquidity) || 0;
+    var volAmt = Number(t.volume) || 0;
+    if (lpAmt > 0 && volAmt > 0) {
+      var volLpRatio = volAmt / lpAmt;
+      if (volLpRatio > CFG.maxVolLpRatio) {
+        log('SKIP [MIG] ' + t.symbol + ' (Vol/LP ' + volLpRatio.toFixed(1) + 'x > ' + CFG.maxVolLpRatio + 'x — wash trading)');
+        continue;
+      }
+    }
+
     // Gate Mint/Freeze DIMATIKAN untuk sumber trenches: endpoint trenches tidak
     // mengisi field renounce (selalu false), jadi gate ini menolak SEMUA token.
     // Keamanan renounce sebagian masih dicek via getRugCheck (rugcheck.xyz).
@@ -1195,7 +1207,7 @@ log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
-log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '%');
+log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
