@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Auto Screen Dashboard</title>
+<title>GM2H</title>
 <style>
   :root {
     --bg:     #0d0f14;
@@ -25,51 +25,51 @@
   body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;line-height:1.5;overflow:hidden}
 
   /* HEADER */
-  .hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100;height:48px}
-  .hdr-l{display:flex;align-items:center;gap:10px}
-  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:pulse 2s infinite}
-  .live-dot.off{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.2);animation:none}
-  .live-dot.connecting{background:var(--yellow);box-shadow:0 0 0 3px rgba(234,179,8,.2)}
+  .hdr{display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100;height:32px}
+  .hdr-l{display:flex;align-items:center;gap:8px}
+  .live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 2px rgba(34,197,94,.2);animation:pulse 2s infinite}
+  .live-dot.off{background:var(--red);box-shadow:0 0 0 2px rgba(239,68,68,.2);animation:none}
+  .live-dot.connecting{background:var(--yellow);box-shadow:0 0 0 2px rgba(234,179,8,.2)}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-  .logo{font-size:14px;font-weight:600;color:var(--text)}
+  .logo{font-size:11px;font-weight:600;color:var(--text)}
   .logo span{color:var(--accent)}
-  .upd{font-size:11px;color:var(--muted)}
-  .hdr-r{display:flex;align-items:center;gap:8px}
-  .badge-live{padding:3px 9px;border-radius:20px;font-size:11px;background:var(--green-d);border:1px solid rgba(34,197,94,.25);color:var(--green)}
+  .upd{font-size:10px;color:var(--muted)}
+  .hdr-r{display:flex;align-items:center;gap:6px}
+  .badge-live{padding:2px 7px;border-radius:20px;font-size:10px;background:var(--green-d);border:1px solid rgba(34,197,94,.25);color:var(--green)}
   .badge-live.off{background:var(--red-d);border-color:rgba(239,68,68,.25);color:var(--red)}
   .badge-live.connecting{background:var(--yellow-d);border-color:rgba(234,179,8,.25);color:var(--yellow)}
-  .btn-r{display:flex;align-items:center;gap:5px;padding:5px 12px;background:transparent;border:1px solid var(--bord2);border-radius:var(--rs);color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s}
+  .btn-r{display:flex;align-items:center;gap:4px;padding:3px 8px;background:transparent;border:1px solid var(--bord2);border-radius:var(--rs);color:var(--muted);cursor:pointer;font-size:10px;transition:all .15s}
   .btn-r:hover{border-color:var(--accent);color:var(--accent)}
 
   /* STATS */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:64px}
-  .sc{background:var(--bg2);padding:0 20px;display:flex;align-items:center;gap:12px}
-  .si{width:32px;height:32px;border-radius:var(--rs);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:44px}
+  .sc{background:var(--bg2);padding:0 10px;display:flex;align-items:center;gap:8px}
+  .si{width:24px;height:24px;border-radius:var(--rs);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
   .si.w{background:var(--blue-d)} .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
-  .sl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  .sv{font-size:20px;font-weight:700;margin-top:1px}
+  .sl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .sv{font-size:16px;font-weight:700;margin-top:0}
   .sv.b{color:var(--blue)} .sv.p{color:var(--purple)} .sv.g{color:var(--green)} .sv.r{color:var(--red)}
 
   /* MAIN GRID — 4 kolom sejajar */
-  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 48px - 64px);overflow:hidden}
+  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 32px - 44px);overflow:hidden}
   .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
   .panel:last-child{border-right:none}
 
-  .ph{display:flex;align-items:center;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0;height:34px}
-  .pt{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.6px}
-  .dot{width:6px;height:6px;border-radius:50%}
+  .ph{display:flex;align-items:center;justify-content:space-between;padding:5px 9px;border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0;height:28px}
+  .pt{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.6px}
+  .dot{width:5px;height:5px;border-radius:50%}
   .db{background:var(--blue)} .dp{background:var(--purple)} .dg{background:var(--green)} .dr{background:var(--red)}
 
-  .cnt{padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600}
+  .cnt{padding:1px 6px;border-radius:20px;font-size:10px;font-weight:600}
   .cnt.b{background:var(--blue-d);color:var(--blue)} .cnt.p{background:var(--purple-d);color:var(--purple)}
   .cnt.g{background:var(--green-d);color:var(--green)} .cnt.r{background:var(--red-d);color:var(--red)}
 
-  .pb{flex:1;overflow-y:auto;padding:5px}
-  .pb::-webkit-scrollbar{width:3px}
-  .pb::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:3px}
+  .pb{flex:1;overflow-y:auto;padding:4px}
+  .pb::-webkit-scrollbar{width:2px}
+  .pb::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:2px}
 
   /* TOKEN CARDS */
-  .tc{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:9px 11px;margin-bottom:4px;cursor:pointer;transition:border-color .15s;border-left:3px solid transparent}
+  .tc{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:7px 9px;margin-bottom:3px;cursor:pointer;transition:border-color .15s;border-left:3px solid transparent}
   .tc:hover{border-color:var(--bord2)}
   .tc.gold{border-left-color:var(--green)}
   .tc.pot{border-left-color:var(--yellow)}
@@ -136,7 +136,7 @@
 <div class="hdr">
   <div class="hdr-l">
     <div class="live-dot connecting" id="liveDot"></div>
-    <div class="logo">Auto<span>Screen</span></div>
+    <div class="logo">GM<span>2H</span></div>
     <div class="upd" id="upd">Mengambil dari GitHub...</div>
   </div>
   <div class="hdr-r">
