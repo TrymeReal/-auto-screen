@@ -9,12 +9,8 @@ concurrency:
 jobs:
   screen:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_TOKEN || github.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -49,10 +45,3 @@ jobs:
           MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
           MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
           MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
-      - name: Push JSON data to repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f positions.json tracking_log.json seen.json
-          git diff --staged --quiet || git commit -m "chore: update data [skip ci]"
-          git push
