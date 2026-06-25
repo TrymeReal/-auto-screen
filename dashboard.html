@@ -65,13 +65,13 @@
   .cnt.b{background:var(--blue-d);color:var(--blue)} .cnt.p{background:var(--purple-d);color:var(--purple)}
   .cnt.g{background:var(--green-d);color:var(--green-b)} .cnt.r{background:var(--red-d);color:var(--red-b)}
 
-  .pb{flex:1;overflow-y:auto;padding:2px}
+  .pb{flex:1;overflow-y:auto}
   .pb::-webkit-scrollbar{width:2px}
   .pb::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:2px}
 
-  /* TOKEN CARDS */
-  .tc{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:4px 6px;margin-bottom:2px;cursor:pointer;transition:border-color .1s;border-left:2px solid transparent}
-  .tc:hover{border-color:var(--bord2);background:rgba(255,255,255,0.02)}
+  /* TOKEN ROWS (flat, no card) */
+  .tc{padding:5px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;border-left:2px solid transparent;position:relative}
+  .tc:hover{background:rgba(255,255,255,0.025)}
   .tc.gold{border-left-color:var(--green-b)}
   .tc.pot{border-left-color:var(--yellow-b)}
   .tc.sig{border-left-color:var(--purple)}
@@ -98,9 +98,9 @@
   .tp.done{background:var(--green-d);color:var(--green-b);border-color:rgba(34,197,94,.25)}
   .tp.next{border-color:var(--accent);color:var(--accent)}
 
-  /* EVENTS */
-  .ei{display:flex;align-items:flex-start;gap:6px;padding:5px 6px;border-radius:var(--rs);margin-bottom:2px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;transition:border-color .1s}
-  .ei:hover{border-color:var(--bord2);background:rgba(255,255,255,0.02)}
+  /* EVENTS (flat, no card) */
+  .ei{display:flex;align-items:flex-start;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
+  .ei:hover{background:rgba(255,255,255,0.025)}
   .eic{font-size:11px;flex-shrink:0;margin-top:1px}
   .ec{flex:1;min-width:0}
   .et{display:flex;align-items:center;justify-content:space-between;gap:6px}
