@@ -189,26 +189,41 @@ function savePositions() {
 // ─────────────────────────────────────────────
 //  AUTO PUSH JSON KE GITHUB
 // ─────────────────────────────────────────────
-function pushJSONToGitHub() {
+async function pushFileToGitHub(filename, content) {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+  if (!token) return;
+  const encoded = Buffer.from(content).toString('base64');
+  const url = `https://api.github.com/repos/TrymeReal/-auto-screen/contents/${filename}`;
   try {
-    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
-    if (!token) { log('[GitHub] Push skipped: no token'); return; }
-
-    execSync('git config user.email "actions@github.com"', { stdio: 'pipe' });
-    execSync('git config user.name "github-actions"', { stdio: 'pipe' });
-    execSync(`git remote set-url origin https://x-access-token:${token}@github.com/TrymeReal/-auto-screen.git`, { stdio: 'pipe' });
-    execSync('git add -f positions.json tracking_log.json seen.json', { stdio: 'pipe' });
-
+    // Cek SHA file yang ada (diperlukan untuk update)
+    let sha = null;
     try {
-      execSync('git diff --staged --quiet', { stdio: 'pipe' });
-      log('[GitHub] No changes to push');
-    } catch {
-      execSync('git commit -m "chore: update data [skip ci]"', { stdio: 'pipe' });
-      execSync('git push origin main', { stdio: 'pipe' });
-      log('[GitHub] JSON files pushed');
-    }
+      const res = await axios.get(url, { headers: { Authorization: `token ${token}` }, timeout: 5000 });
+      sha = res.data.sha;
+    } catch {}
+    await axios.put(url, {
+      message: 'chore: update data [skip ci]',
+      content: encoded,
+      ...(sha ? { sha } : {}),
+    }, { headers: { Authorization: `token ${token}` }, timeout: 10000 });
+    log('[GitHub] ' + filename + ' pushed');
   } catch (e) {
-    log('[GitHub] Push failed: ' + e.message);
+    log('[GitHub] Failed to push ' + filename + ': ' + (e.response?.data?.message || e.message));
+  }
+}
+
+async function pushJSONToGitHub() {
+  log('[GitHub] Pushing JSON files...');
+  const files = [
+    { name: 'seen.json', path: SEEN_FILE },
+    { name: 'positions.json', path: POSITIONS_FILE },
+    { name: 'tracking_log.json', path: TRACKING_LOG },
+  ];
+  for (const f of files) {
+    try {
+      const content = fs.readFileSync(f.path, 'utf8');
+      await pushFileToGitHub(f.name, content);
+    } catch { log('[GitHub] ' + f.name + ' not found, skip'); }
   }
 }
 
@@ -1446,6 +1461,6 @@ if (process.env.CI === 'true') {
 } else {
   runLoop();
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
-  setTimeout(pushJSONToGitHub, 60 * 1000); // push pertama setelah 1 menit
-  setInterval(pushJSONToGitHub, 10 * 60 * 1000); // push tiap 10 menit
+  setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
+  setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
 }
