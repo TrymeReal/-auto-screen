@@ -1121,30 +1121,31 @@ async function processTokens() {
       continue;
     }
 
-    // Data untuk notifikasi (old filter fields tetap dikumpulkan dari t)
-    var rugScoreGMGN = Math.round((t.rug_ratio || 0) * 100);
-    var insiderPctGMGN = (t.suspected_insider_hold_rate || 0) * 100;
-    var rug = {
-      score: rugScoreGMGN,
-      scoreNormalised: -1,
-      risks: '',
-      creator: t.creator || t.owner || t.dev_address || '?',
-      topDangers: [],
-      topWarns: [],
-      tokenType: '',
-      rugged: false,
-      deployPlatform: '',
-      insiderPct: insiderPctGMGN,
-    };
+    // RugCheck — filter identik dengan Swing 1D
+    log('[MIG] Cek RugCheck ' + t.symbol + '...');
+    const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
+    if (rug.score > CFG.maxRugScore) {
+      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
+      continue;
+    }
+    if (rug.insiderPct > CFG.maxInsiderPct) {
+      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
+      continue;
+    }
 
     var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
     // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
     t.volume = vol1h;
-    const grade = gradeToken(t.liquidity, t.volume, rug.score); // hanya untuk display, tidak blocking
+    const grade = gradeToken(t.liquidity, t.volume, rug.score);
+    if (grade === 'SKIP') {
+      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol terlalu kecil)');
+      continue;
+    }
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Paid:✅)');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅)');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
@@ -1390,8 +1391,9 @@ log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore);
-log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% | Insider < ' + CFG.maxInsiderPct + '%');
+log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
+log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis dibuang');
+log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
