@@ -38,6 +38,7 @@ jobs:
           TG_THREAD_SIGNAL: ${{ secrets.TG_THREAD_SIGNAL }}
           SIGNAL_ENABLED: ${{ secrets.SIGNAL_ENABLED }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
