@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Auto Screen Dashboard</title>
+<style>
+  :root {
+    --bg:     #0d0f14;
+    --bg2:    #141720;
+    --bg3:    #1a1e28;
+    --border: rgba(255,255,255,0.07);
+    --bord2:  rgba(255,255,255,0.13);
+    --text:   #e8eaf0;
+    --muted:  #6b7280;
+    --accent: #5b6ef5;
+    --green:  #22c55e; --green-d: rgba(34,197,94,0.12);
+    --yellow: #eab308; --yellow-d:rgba(234,179,8,0.12);
+    --red:    #ef4444; --red-d:   rgba(239,68,68,0.12);
+    --blue:   #38bdf8; --blue-d:  rgba(56,189,248,0.10);
+    --purple: #a78bfa; --purple-d:rgba(167,139,250,0.10);
+    --r: 10px; --rs: 6px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;line-height:1.5;overflow:hidden}
+
+  /* HEADER */
+  .hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100;height:48px}
+  .hdr-l{display:flex;align-items:center;gap:10px}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.2);animation:pulse 2s infinite}
+  .live-dot.off{background:var(--red);box-shadow:0 0 0 3px rgba(239,68,68,.2);animation:none}
+  .live-dot.connecting{background:var(--yellow);box-shadow:0 0 0 3px rgba(234,179,8,.2)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .logo{font-size:14px;font-weight:600;color:var(--text)}
+  .logo span{color:var(--accent)}
+  .upd{font-size:11px;color:var(--muted)}
+  .hdr-r{display:flex;align-items:center;gap:8px}
+  .badge-live{padding:3px 9px;border-radius:20px;font-size:11px;background:var(--green-d);border:1px solid rgba(34,197,94,.25);color:var(--green)}
+  .badge-live.off{background:var(--red-d);border-color:rgba(239,68,68,.25);color:var(--red)}
+  .badge-live.connecting{background:var(--yellow-d);border-color:rgba(234,179,8,.25);color:var(--yellow)}
+  .btn-r{display:flex;align-items:center;gap:5px;padding:5px 12px;background:transparent;border:1px solid var(--bord2);border-radius:var(--rs);color:var(--muted);cursor:pointer;font-size:12px;transition:all .15s}
+  .btn-r:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* STATS */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:64px}
+  .sc{background:var(--bg2);padding:0 20px;display:flex;align-items:center;gap:12px}
+  .si{width:32px;height:32px;border-radius:var(--rs);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+  .si.w{background:var(--blue-d)} .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
+  .sl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .sv{font-size:20px;font-weight:700;margin-top:1px}
+  .sv.b{color:var(--blue)} .sv.p{color:var(--purple)} .sv.g{color:var(--green)} .sv.r{color:var(--red)}
+
+  /* MAIN GRID */
+  .main{display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 48px - 64px);overflow:hidden}
+  .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+  .panel:last-child{border-right:none}
+
+  .ph{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0;height:38px}
+  .pt{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.6px}
+  .dot{width:7px;height:7px;border-radius:50%}
+  .db{background:var(--blue)} .dp{background:var(--purple)} .dg{background:var(--green)} .dr{background:var(--red)}
+
+  .cnt{padding:2px 7px;border-radius:20px;font-size:11px;font-weight:600}
+  .cnt.b{background:var(--blue-d);color:var(--blue)} .cnt.p{background:var(--purple-d);color:var(--purple)}
+  .cnt.g{background:var(--green-d);color:var(--green)} .cnt.r{background:var(--red-d);color:var(--red)}
+
+  .pb{flex:1;overflow-y:auto;padding:7px}
+  .pb::-webkit-scrollbar{width:3px}
+  .pb::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:3px}
+
+  /* TOKEN CARDS */
+  .tc{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:11px 13px;margin-bottom:5px;cursor:pointer;transition:border-color .15s;border-left:3px solid transparent}
+  .tc:hover{border-color:var(--bord2)}
+  .tc.gold{border-left-color:var(--green)}
+  .tc.pot{border-left-color:var(--yellow)}
+  .tc.sig{border-left-color:var(--purple)}
+  .tc.oth{border-left-color:var(--muted)}
+
+  .ct{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:7px}
+  .tn{font-weight:600;font-size:14px}
+  .ts{font-size:11px;color:var(--muted);margin-top:1px}
+
+  .gb{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+  .gGOLD{background:var(--green-d);color:var(--green);border:1px solid rgba(34,197,94,.25)}
+  .gPOT{background:var(--yellow-d);color:var(--yellow);border:1px solid rgba(234,179,8,.25)}
+  .gSKIP{background:var(--red-d);color:var(--red);border:1px solid rgba(239,68,68,.25)}
+  .gSIG{background:var(--purple-d);color:var(--purple);border:1px solid rgba(167,139,250,.25)}
+  .gSEEN{background:var(--blue-d);color:var(--blue);border:1px solid rgba(56,189,248,.25)}
+
+  .cm{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:7px}
+  .ml{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .mv{font-size:13px;font-weight:500;margin-top:1px}
+  .mv.g{color:var(--green)} .mv.y{color:var(--yellow)} .mv.r{color:var(--red)}
+
+  .tbar{display:flex;gap:4px;flex-wrap:wrap}
+  .tp{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;border:1px solid var(--bord2);color:var(--muted)}
+  .tp.done{background:var(--green-d);color:var(--green);border-color:rgba(34,197,94,.3)}
+  .tp.next{border-color:var(--accent);color:var(--accent)}
+
+  /* EVENTS */
+  .ei{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:var(--rs);margin-bottom:5px;border:1px solid var(--border);background:var(--bg3)}
+  .eic{font-size:15px;flex-shrink:0;margin-top:1px}
+  .ec{flex:1;min-width:0}
+  .et{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .en{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .etm{font-size:10px;color:var(--muted);white-space:nowrap}
+  .ed{font-size:11px;color:var(--muted);margin-top:2px}
+  .eg{font-size:12px;font-weight:600;color:var(--green)}
+  .eg.stop{color:var(--red)}
+
+  /* EMPTY */
+  .emp{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:7px;color:var(--muted);padding:30px;text-align:center}
+  .emp-ic{font-size:28px;opacity:.35}
+  .emp-tx{font-size:13px}
+  .emp-sb{font-size:11px;opacity:.6;margin-top:2px}
+
+  /* CONNECTION OVERLAY */
+  .conn-bar{display:none;align-items:center;justify-content:center;gap:8px;padding:8px;background:rgba(234,179,8,.08);border-bottom:1px solid rgba(234,179,8,.2);font-size:12px;color:var(--yellow)}
+  .conn-bar.show{display:flex}
+
+  /* TOAST */
+  .toast{position:fixed;bottom:18px;right:18px;padding:9px 14px;background:var(--bg2);border:1px solid var(--bord2);border-radius:var(--r);font-size:12px;color:var(--text);z-index:999;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none}
+  .toast.show{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- CONNECTION WARNING BAR -->
+<div class="conn-bar" id="connBar">
+  <span>⚠️</span>
+  <span id="connMsg">Mengambil data dari GitHub...</span>
+  <span style="color:var(--muted);font-size:11px">Pastikan file JSON sudah di-push ke GitHub</span>
+</div>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-l">
+    <div class="live-dot connecting" id="liveDot"></div>
+    <div class="logo">Auto<span>Screen</span></div>
+    <div class="upd" id="upd">Mengambil dari GitHub...</div>
+  </div>
+  <div class="hdr-r">
+    <span class="badge-live connecting" id="badgeLive">● Fetching…</span>
+    <button class="btn-r" onclick="manualRefresh()">⟳ Refresh</button>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="sc"><div class="si w">🔍</div><div><div class="sl">Waiting List</div><div class="sv b" id="stW">—</div></div></div>
+  <div class="sc"><div class="si e">📍</div><div><div class="sl">Entry Area</div><div class="sv p" id="stE">—</div></div></div>
+  <div class="sc"><div class="si t">✅</div><div><div class="sl">Target Tercapai</div><div class="sv g" id="stT">—</div></div></div>
+  <div class="sc"><div class="si s">🗑️</div><div><div class="sl">Stop Track</div><div class="sv r" id="stS">—</div></div></div>
+</div>
+
+<!-- PANELS -->
+<div class="main">
+
+  <!-- KIRI -->
+  <div class="panel">
+    <div class="ph">
+      <div class="pt"><div class="dot db"></div>Waiting List</div>
+      <div class="cnt b" id="cW">0</div>
+    </div>
+    <div class="pb" id="lW" style="max-height:50%;border-bottom:1px solid var(--border)">
+      <div class="emp"><div class="emp-ic">🔍</div><div class="emp-tx">Menunggu data...</div></div>
+    </div>
+
+    <div class="ph">
+      <div class="pt"><div class="dot dp"></div>Entry Area — aktif di-track</div>
+      <div class="cnt p" id="cE">0</div>
+    </div>
+    <div class="pb" id="lE">
+      <div class="emp"><div class="emp-ic">📍</div><div class="emp-tx">Menunggu data...</div></div>
+    </div>
+  </div>
+
+  <!-- KANAN -->
+  <div class="panel">
+    <div class="ph">
+      <div class="pt"><div class="dot dg"></div>Target Tercapai</div>
+      <div class="cnt g" id="cT">0</div>
+    </div>
+    <div class="pb" id="lT" style="max-height:50%;border-bottom:1px solid var(--border)">
+      <div class="emp"><div class="emp-ic">✅</div><div class="emp-tx">Menunggu data...</div></div>
+    </div>
+
+    <div class="ph">
+      <div class="pt"><div class="dot dr"></div>Stop Track — drop &gt;80%</div>
+      <div class="cnt r" id="cS">0</div>
+    </div>
+    <div class="pb" id="lS">
+      <div class="emp"><div class="emp-ic">🗑️</div><div class="emp-tx">Menunggu data...</div></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── CONFIG — GANTI SESUAI REPO LO ──────────────────
+const GITHUB_USER   = 'TrymeReal';
+const GITHUB_REPO   = '-auto-screen';
+const GITHUB_BRANCH = 'main';
+const POLL_INTERVAL = 30000; // refresh tiap 30 detik
+const TARGETS = [30, 50, 100, 200, 500];
+// ────────────────────────────────────────────────────
+
+// Tambah ?t= biar bypass CDN cache GitHub
+function rawURL(file) {
+  return `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${file}?t=${Date.now()}`;
+}
+
+let pollTimer = null;
+let reconnectDelay = 5000;
+
+// ─── TOAST ──────────────────────────────────────────
+function toast(msg, dur) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur || 2500);
+}
+
+// ─── FORMAT HELPERS ──────────────────────────────────
+function fmt(n) {
+  n = Number(n);
+  if (!n || isNaN(n)) return '0';
+  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
+  return n.toFixed(2);
+}
+
+function timeAgo(ts) {
+  if (!ts) return '?';
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  const m = Math.floor((Date.now() - ms) / 60000);
+  if (m < 1) return 'Baru';
+  if (m < 60) return m + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'j';
+  return Math.floor(h/24) + 'h';
+}
+
+function modeLabel(mode) {
+  if (!mode) return '?';
+  if (mode === 'SWING') return '🔄 Swing';
+  if (mode === 'SIGNAL') return '⚡ Signal';
+  return '🆕 Mig';
+}
+
+function gradeClass(g) {
+  if (g === 'GOLD') return 'gold';
+  if (g === 'POTENSIAL' || g === 'POT') return 'pot';
+  if (g === 'SIGNAL') return 'sig';
+  return 'oth';
+}
+
+function gradeBadge(g) {
+  const map = { GOLD:'gGOLD', POTENSIAL:'gPOT', SKIP:'gSKIP', SIGNAL:'gSIG', SEEN:'gSEEN', POT:'gPOT' };
+  const cls = map[g] || 'gSKIP';
+  const lbl = g === 'POTENSIAL' ? 'POT' : (g || '?');
+  return `<span class="gb ${cls}">${lbl}</span>`;
+}
+
+function targetPills(nextIdx) {
+  return TARGETS.map((t, i) => {
+    let c = 'tp';
+    if (i < nextIdx) c += ' done';
+    else if (i === nextIdx) c += ' next';
+    return `<span class="${c}">${i < nextIdx ? '✓ ' : ''}+${t}%</span>`;
+  }).join('');
+}
+
+// ─── RENDER ──────────────────────────────────────────
+function renderWaiting(seen, positions) {
+  const el = document.getElementById('lW');
+  if (!seen) { el.innerHTML = emptyHTML('🔍','seen.json tidak ditemukan di GitHub'); return; }
+
+  const entries = seen.entries || {};
+  const trackedSet = new Set(Object.keys((positions?.entries) || {}));
+  const waiting = Object.entries(entries)
+    .filter(([ca]) => !trackedSet.has(ca))
+    .sort((a,b) => (b[1].seenAt||b[1].firstSeen||0) - (a[1].seenAt||a[1].firstSeen||0))
+    .slice(0, 100);
+
+  document.getElementById('cW').textContent = waiting.length;
+  document.getElementById('stW').textContent = waiting.length;
+
+  if (!waiting.length) { el.innerHTML = emptyHTML('🔍','Tidak ada token waiting','Semua token sudah masuk posisi'); return; }
+
+  el.innerHTML = waiting.map(([ca, e]) => `
+    <div class="tc oth" onclick="copyCA('${ca}')" title="Klik untuk copy CA">
+      <div class="ct">
+        <div>
+          <div class="tn" style="font-size:12px;font-family:monospace">${ca.slice(0,8)}…${ca.slice(-6)}</div>
+          <div class="ts">${modeLabel(e.mode)} · ${timeAgo(e.seenAt||e.firstSeen)}</div>
+        </div>
+        ${e.lockedReason ? gradeBadge('SKIP') : gradeBadge('SEEN')}
+      </div>
+      ${e.lockedReason ? `<div style="font-size:10px;color:var(--red);margin-top:-4px">Lock: ${e.lockedReason}</div>` : ''}
+    </div>`).join('');
+}
+
+function renderEntry(positions) {
+  const el = document.getElementById('lE');
+  if (!positions) { el.innerHTML = emptyHTML('📍','positions.json tidak ditemukan di GitHub'); return; }
+
+  const entries = Object.entries(positions.entries || {})
+    .sort((a,b) => (b[1].entryAt||0)-(a[1].entryAt||0));
+
+  document.getElementById('cE').textContent = entries.length;
+  document.getElementById('stE').textContent = entries.length;
+
+  if (!entries.length) { el.innerHTML = emptyHTML('📍','Tidak ada posisi aktif','Semua token selesai di-track'); return; }
+
+  el.innerHTML = entries.map(([ca, p]) => {
+    const done = p.nextTargetIdx || 0;
+    return `
+      <div class="tc ${gradeClass(p.grade)}" onclick="openDex('${ca}')" title="Buka DexScreener">
+        <div class="ct">
+          <div>
+            <div class="tn">${p.name || p.symbol || '—'}</div>
+            <div class="ts">${p.symbol || ''} · ${modeLabel(p.mode)} · ${timeAgo(p.entryAt)}</div>
+          </div>
+          ${gradeBadge(p.grade)}
+        </div>
+        <div class="cm">
+          <div><div class="ml">Entry</div><div class="mv">$${p.entryPrice ? Number(p.entryPrice).toFixed(8) : '?'}</div></div>
+          <div><div class="ml">Target</div><div class="mv ${done>0?'g':''}">${done}/${TARGETS.length} done</div></div>
+          <div><div class="ml">Thread</div><div class="mv">${p.mode||'?'}</div></div>
+        </div>
+        <div class="tbar">${targetPills(done)}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderTarget(tracking) {
+  const el = document.getElementById('lT');
+  if (!tracking) { el.innerHTML = emptyHTML('✅','tracking_log.json tidak ditemukan di GitHub'); return; }
+
+  const events = (Array.isArray(tracking) ? tracking : [])
+    .filter(e => e.type === 'TERCAPAI')
+    .sort((a,b) => (b.time||0)-(a.time||0));
+
+  document.getElementById('cT').textContent = events.length;
+  document.getElementById('stT').textContent = events.length;
+
+  if (!events.length) { el.innerHTML = emptyHTML('✅','Belum ada target tercapai','Terus pantau posisimu'); return; }
+
+  el.innerHTML = events.map(e => {
+    const ico = e.target >= 100 ? '🚀' : e.target >= 50 ? '📈' : '⬆️';
+    const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
+    return `
+      <div class="ei" onclick="openDex('${e.address||''}')" style="cursor:${e.address?'pointer':'default'}">
+        <div class="eic">${ico}</div>
+        <div class="ec">
+          <div class="et">
+            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span></div>
+            <div class="etm">${timeAgo(e.time)}</div>
+          </div>
+          <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
+          <div style="margin-top:4px;display:flex;gap:7px;align-items:center">
+            ${gradeBadge(e.grade)}
+            <span class="eg">+${e.target}% Tercapai!</span>
+            ${gain ? `<span style="font-size:11px;color:var(--muted)">${gain}</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderStop(tracking) {
+  const el = document.getElementById('lS');
+  if (!tracking) { el.innerHTML = emptyHTML('🗑️','tracking_log.json tidak ditemukan di GitHub'); return; }
+
+  const events = (Array.isArray(tracking) ? tracking : [])
+    .filter(e => e.type === 'STOP_TRACK')
+    .sort((a,b) => (b.time||0)-(a.time||0));
+
+  document.getElementById('cS').textContent = events.length;
+  document.getElementById('stS').textContent = events.length;
+
+  if (!events.length) { el.innerHTML = emptyHTML('🗑️','Tidak ada stop track','Bagus! Belum ada yang drop >80%'); return; }
+
+  el.innerHTML = events.map(e => {
+    const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
+    return `
+      <div class="ei">
+        <div class="eic">💀</div>
+        <div class="ec">
+          <div class="et">
+            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span></div>
+            <div class="etm">${timeAgo(e.time)}</div>
+          </div>
+          <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
+          <div style="margin-top:4px;display:flex;gap:7px;align-items:center">
+            ${gradeBadge(e.grade)}
+            <span class="eg stop">Drop ${gain}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function emptyHTML(ic, tx, sub) {
+  return `<div class="emp"><div class="emp-ic">${ic}</div><div class="emp-tx">${tx}</div>${sub?`<div class="emp-sb">${sub}</div>`:''}</div>`;
+}
+
+function renderAll(data) {
+  renderWaiting(data.seen, data.positions);
+  renderEntry(data.positions);
+  renderTarget(data.tracking);
+  renderStop(data.tracking);
+  document.getElementById('upd').textContent = 'Update: ' + new Date().toLocaleTimeString('id-ID') + ' · tiap 30d';
+}
+
+// ─── CONNECTION STATUS ───────────────────────────────
+function setStatus(state) {
+  const dot   = document.getElementById('liveDot');
+  const badge = document.getElementById('badgeLive');
+  const bar   = document.getElementById('connBar');
+  dot.className   = 'live-dot ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
+  badge.className = 'badge-live ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
+  if (state === 'live')       { badge.textContent = '● Live'; bar.classList.remove('show'); }
+  if (state === 'connecting') { badge.textContent = '● Fetching…'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Mengambil data dari GitHub...'; }
+  if (state === 'error')      { badge.textContent = '● Error'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Gagal fetch GitHub — cek koneksi atau pastikan JSON sudah di-push'; }
+}
+
+// ─── FETCH DATA DARI GITHUB ──────────────────────────
+async function fetchData() {
+  const results = await Promise.allSettled([
+    fetch(rawURL('positions.json')),
+    fetch(rawURL('tracking_log.json')),
+    fetch(rawURL('seen.json')),
+  ]);
+
+  async function safeJSON(settled) {
+    try {
+      if (settled.status !== 'fulfilled' || !settled.value.ok) return null;
+      return await settled.value.json();
+    } catch { return null; }
+  }
+
+  const [positions, tracking, seen] = await Promise.all(results.map(safeJSON));
+
+  if (!positions && !tracking && !seen) throw new Error('Semua file JSON tidak ditemukan di GitHub');
+
+  return { positions, tracking, seen, ts: Date.now() };
+}
+
+// ─── POLL LOOP ───────────────────────────────────────
+async function refresh() {
+  try {
+    setStatus('connecting');
+    const data = await fetchData();
+    renderAll(data);
+    setStatus('live');
+    reconnectDelay = 5000;
+  } catch (err) {
+    console.error('[AutoScreen] Fetch error:', err.message);
+    setStatus('error');
+    document.getElementById('upd').textContent = 'Error — coba lagi...';
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 60000);
+  }
+}
+
+async function manualRefresh() {
+  clearInterval(pollTimer);
+  await refresh();
+  if (document.getElementById('liveDot').classList.contains('off')) {
+    toast('❌ Gagal ambil data dari GitHub');
+  } else {
+    toast('✓ Data diperbarui dari GitHub');
+  }
+  pollTimer = setInterval(refresh, POLL_INTERVAL);
+}
+
+function copyCA(ca) {
+  navigator.clipboard?.writeText(ca).then(() => toast('✓ CA di-copy!'));
+}
+
+function openDex(ca) {
+  if (ca) window.open('https://dexscreener.com/solana/' + ca, '_blank');
+}
+
+// Start! Langsung fetch, lalu poll tiap 30 detik
+refresh();
+pollTimer = setInterval(refresh, POLL_INTERVAL);
+</script>
+</body>
+</html>
