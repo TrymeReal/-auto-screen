@@ -4,201 +4,292 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GM2H</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:     #0c0e13;
-    --bg2:    #111318;
-    --bg3:    #161920;
-    --border: rgba(255,255,255,0.06);
-    --bord2:  rgba(255,255,255,0.11);
-    --text:   #d1d5db;
-    --muted:  #4b5563;
+    --bg:     #080a0e;
+    --bg2:    #0d0f14;
+    --bg3:    #111318;
+    --sep:    rgba(255,255,255,0.05);
+    --sep2:   rgba(255,255,255,0.09);
+    --text:   #d8dce6;
+    --dim:    #7a8499;
     --accent: #4f6ef7;
-    --green:  #16a34a; --green-b:#22c55e; --green-d: rgba(34,197,94,0.10);
-    --yellow: #ca8a04; --yellow-b:#eab308; --yellow-d:rgba(234,179,8,0.10);
-    --red:    #dc2626; --red-b:#ef4444; --red-d: rgba(239,68,68,0.10);
-    --blue:   #0ea5e9; --blue-d:  rgba(14,165,233,0.10);
-    --purple: #8b5cf6; --purple-d:rgba(139,92,246,0.10);
-    --r: 6px; --rs: 4px;
+    --green:  #22c55e; --green-d: rgba(34,197,94,0.08);
+    --yellow: #eab308; --yellow-d:rgba(234,179,8,0.08);
+    --red:    #ef4444; --red-d:   rgba(239,68,68,0.08);
+    --blue:   #38bdf8; --blue-d:  rgba(56,189,248,0.08);
+    --purple: #a78bfa; --purple-d:rgba(167,139,250,0.08);
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:11px;line-height:1.4;overflow:hidden}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;font-size:11px;line-height:1.4;overflow:hidden}
 
-  /* HEADER */
-  .hdr{display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100;height:24px}
-  .hdr-l{display:flex;align-items:center;gap:6px}
-  .live-dot{width:5px;height:5px;border-radius:50%;background:var(--green-b);box-shadow:0 0 0 2px rgba(34,197,94,.15);animation:pulse 2s infinite}
-  .live-dot.off{background:var(--red-b);box-shadow:0 0 0 2px rgba(239,68,68,.15);animation:none}
-  .live-dot.connecting{background:var(--yellow-b);box-shadow:0 0 0 2px rgba(234,179,8,.15)}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  .logo{font-size:10px;font-weight:700;color:var(--text);letter-spacing:.2px}
-  .logo span{color:var(--accent)}
-  .upd{font-size:9px;color:var(--muted);letter-spacing:.1px}
-  .hdr-r{display:flex;align-items:center;gap:4px}
-  .badge-live{padding:1px 5px;border-radius:20px;font-size:9px;font-weight:600;background:var(--green-d);border:1px solid rgba(34,197,94,.2);color:var(--green-b)}
-  .badge-live.off{background:var(--red-d);border-color:rgba(239,68,68,.2);color:var(--red-b)}
-  .badge-live.connecting{background:var(--yellow-d);border-color:rgba(234,179,8,.2);color:var(--yellow-b)}
-  .btn-r{display:flex;align-items:center;gap:2px;padding:1px 6px;background:transparent;border:1px solid var(--bord2);border-radius:var(--rs);color:var(--muted);cursor:pointer;font-size:9px;font-family:inherit;transition:all .15s}
+  /* ── HEADER ── */
+  .hdr{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 12px;border-bottom:1px solid var(--sep);
+    background:var(--bg2);position:sticky;top:0;z-index:100;height:28px;
+  }
+  .hdr-l{display:flex;align-items:center;gap:8px}
+  .logo{font-family:var(--mono);font-size:12px;font-weight:400;letter-spacing:1.5px;color:#fff}
+  .logo em{color:var(--accent);font-style:normal}
+  .divider{width:1px;height:12px;background:var(--sep2)}
+  .live-dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0}
+  .live-dot.off{background:var(--red);animation:none}
+  .live-dot.connecting{background:var(--yellow)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .upd{font-size:9px;color:var(--dim);font-family:var(--mono);letter-spacing:.3px}
+  .hdr-r{display:flex;align-items:center;gap:6px}
+  .badge{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:400;font-family:var(--mono);letter-spacing:.5px;
+    background:var(--green-d);border:1px solid rgba(34,197,94,.18);color:var(--green)}
+  .badge.off{background:var(--red-d);border-color:rgba(239,68,68,.18);color:var(--red)}
+  .badge.connecting{background:var(--yellow-d);border-color:rgba(234,179,8,.18);color:var(--yellow)}
+  .btn-r{display:flex;align-items:center;gap:3px;padding:2px 7px;background:transparent;
+    border:1px solid var(--sep2);border-radius:3px;color:var(--dim);cursor:pointer;
+    font-size:9px;font-family:var(--mono);transition:all .15s;letter-spacing:.3px}
   .btn-r:hover{border-color:var(--accent);color:var(--accent)}
 
-  /* STATS */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:30px}
-  .sc{background:var(--bg2);padding:0 7px;display:flex;align-items:center;gap:6px}
-  .si{width:16px;height:16px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0}
-  .si.w{background:var(--blue-d)} .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
-  .sl{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;line-height:1}
-  .sv{font-size:13px;font-weight:700;line-height:1.1}
-  .sv.b{color:var(--blue)} .sv.p{color:var(--purple)} .sv.g{color:var(--green-b)} .sv.r{color:var(--red-b)}
+  /* ── STATS ROW ── */
+  .stats{display:flex;align-items:stretch;border-bottom:1px solid var(--sep);height:26px;background:var(--bg2)}
+  .sc{display:flex;align-items:center;gap:7px;padding:0 14px;border-right:1px solid var(--sep);flex:1}
+  .sc:last-child{border-right:none}
+  .sl{font-size:8.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono)}
+  .sv{font-size:14px;font-weight:400;font-family:var(--mono);min-width:20px}
+  .sv.b{color:var(--blue)} .sv.p{color:var(--purple)} .sv.g{color:var(--green)} .sv.r{color:var(--red)}
+  .stat-sep{width:1px;align-self:stretch;background:var(--sep)}
 
-  /* MAIN GRID */
-  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 24px - 30px);overflow:hidden}
-  .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+  /* ── MAIN GRID ── */
+  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 28px - 26px);overflow:hidden}
+  .panel{display:flex;flex-direction:column;border-right:1px solid var(--sep);overflow:hidden}
   .panel:last-child{border-right:none}
 
-  .ph{display:flex;align-items:center;justify-content:space-between;padding:0 7px;border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0;height:20px}
-  .pt{display:flex;align-items:center;gap:4px;font-size:8px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.7px}
-  .dot{width:4px;height:4px;border-radius:50%}
-  .db{background:var(--blue)} .dp{background:var(--purple)} .dg{background:var(--green-b)} .dr{background:var(--red-b)}
+  /* ── PANEL HEADER ── */
+  .ph{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 10px;border-bottom:1px solid var(--sep);
+    background:var(--bg2);flex-shrink:0;height:22px;
+  }
+  .pt{display:flex;align-items:center;gap:5px;font-size:8px;font-weight:400;
+    color:var(--dim);text-transform:uppercase;letter-spacing:1px;font-family:var(--mono)}
+  .ph-line{width:12px;height:1px;flex-shrink:0}
+  .ph-line.b{background:var(--blue)} .ph-line.p{background:var(--purple)}
+  .ph-line.g{background:var(--green)} .ph-line.r{background:var(--red)}
+  .cnt{font-size:9px;font-weight:400;font-family:var(--mono);padding:1px 5px;border-radius:2px}
+  .cnt.b{color:var(--blue);background:var(--blue-d)}
+  .cnt.p{color:var(--purple);background:var(--purple-d)}
+  .cnt.g{color:var(--green);background:var(--green-d)}
+  .cnt.r{color:var(--red);background:var(--red-d)}
 
-  .cnt{padding:0px 4px;border-radius:20px;font-size:8px;font-weight:700}
-  .cnt.b{background:var(--blue-d);color:var(--blue)} .cnt.p{background:var(--purple-d);color:var(--purple)}
-  .cnt.g{background:var(--green-d);color:var(--green-b)} .cnt.r{background:var(--red-d);color:var(--red-b)}
-
-  .pb{flex:1;overflow-y:auto;padding:2px}
+  /* ── LIST BODY ── */
+  .pb{flex:1;overflow-y:auto}
   .pb::-webkit-scrollbar{width:2px}
-  .pb::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:2px}
+  .pb::-webkit-scrollbar-thumb{background:var(--sep2);border-radius:2px}
 
-  /* TOKEN CARDS */
-  .tc{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:4px 6px;margin-bottom:2px;cursor:pointer;transition:border-color .1s;border-left:2px solid transparent}
-  .tc:hover{border-color:var(--bord2);background:rgba(255,255,255,0.02)}
-  .tc.gold{border-left-color:var(--green-b)}
-  .tc.pot{border-left-color:var(--yellow-b)}
-  .tc.sig{border-left-color:var(--purple)}
-  .tc.oth{border-left-color:var(--muted)}
+  /* ── TABLE HEADER (column labels) ── */
+  .th{
+    display:flex;align-items:center;padding:0 10px;
+    border-bottom:1px solid var(--sep);height:16px;background:var(--bg);
+    position:sticky;top:0;z-index:5;
+  }
+  .th span{font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-family:var(--mono)}
 
-  .ct{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
-  .tn{font-weight:600;font-size:11px;line-height:1.2;color:var(--text)}
-  .ts{font-size:9px;color:var(--muted);margin-top:1px}
+  /* ── ROW ── */
+  .row{
+    display:flex;align-items:center;padding:5px 10px;
+    border-bottom:1px solid var(--sep);
+    cursor:pointer;transition:background .1s;
+    gap:0;position:relative;
+  }
+  .row:hover{background:rgba(255,255,255,0.025)}
+  .row:last-child{border-bottom:none}
 
-  .gb{padding:0px 4px;border-radius:3px;font-size:8px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-  .gGOLD{background:var(--green-d);color:var(--green-b);border:1px solid rgba(34,197,94,.2)}
-  .gPOT{background:var(--yellow-d);color:var(--yellow-b);border:1px solid rgba(234,179,8,.2)}
-  .gSKIP{background:var(--red-d);color:var(--red-b);border:1px solid rgba(239,68,68,.2)}
-  .gSIG{background:var(--purple-d);color:var(--purple);border:1px solid rgba(139,92,246,.2)}
-  .gSEEN{background:var(--blue-d);color:var(--blue);border:1px solid rgba(14,165,233,.2)}
+  /* left accent line based on grade */
+  .row::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px}
+  .row.gold::before{background:var(--green)}
+  .row.pot::before{background:var(--yellow)}
+  .row.sig::before{background:var(--purple)}
+  .row.seen::before{background:var(--dim)}
+  .row.oth::before{background:transparent}
 
-  .cm{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:3px}
-  .ml{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;line-height:1}
-  .mv{font-size:10px;font-weight:600;margin-top:1px;line-height:1.2;color:var(--text)}
-  .mv.g{color:var(--green-b)} .mv.y{color:var(--yellow-b)} .mv.r{color:var(--red-b)}
+  /* columns */
+  .col-name{flex:0 0 auto;min-width:0;width:42%;padding-left:6px}
+  .col-grade{flex:0 0 auto;width:18%;text-align:right}
+  .col-time{flex:0 0 auto;width:16%;text-align:right;font-family:var(--mono);font-size:9px;color:var(--dim)}
+  .col-mode{flex:0 0 auto;width:24%;text-align:right;font-size:9px;color:var(--dim)}
 
-  .tbar{display:flex;gap:2px;flex-wrap:wrap}
-  .tp{padding:0px 4px;border-radius:20px;font-size:8px;font-weight:600;border:1px solid var(--bord2);color:var(--muted)}
-  .tp.done{background:var(--green-d);color:var(--green-b);border-color:rgba(34,197,94,.25)}
-  .tp.next{border-color:var(--accent);color:var(--accent)}
+  .rname{font-size:10.5px;font-weight:400;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+  .rsub{font-size:8.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;font-family:var(--mono)}
 
-  /* EVENTS */
-  .ei{display:flex;align-items:flex-start;gap:6px;padding:5px 6px;border-radius:var(--rs);margin-bottom:2px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;transition:border-color .1s}
-  .ei:hover{border-color:var(--bord2);background:rgba(255,255,255,0.02)}
-  .eic{font-size:11px;flex-shrink:0;margin-top:1px}
-  .ec{flex:1;min-width:0}
-  .et{display:flex;align-items:center;justify-content:space-between;gap:6px}
-  .en{font-weight:600;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
-  .etm{font-size:8px;color:var(--muted);white-space:nowrap}
-  .ed{font-size:9px;color:var(--muted);margin-top:1px}
-  .eg{font-size:10px;font-weight:700;color:var(--green-b)}
-  .eg.stop{color:var(--red-b)}
+  /* entry area extra cols */
+  .col-name-e{flex:0 0 auto;min-width:0;width:36%;padding-left:6px}
+  .col-entry{flex:0 0 auto;width:24%;text-align:right;font-family:var(--mono);font-size:9px}
+  .col-prog{flex:0 0 auto;width:22%;text-align:right}
+  .col-grade-e{flex:0 0 auto;width:18%;text-align:right}
 
-  /* EMPTY */
-  .emp{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;color:var(--muted);padding:16px;text-align:center}
-  .emp-ic{font-size:18px;opacity:.25}
+  /* target/stop cols */
+  .col-name-t{flex:0 0 auto;min-width:0;width:38%;padding-left:6px}
+  .col-gain{flex:0 0 auto;width:20%;text-align:right;font-family:var(--mono);font-size:10px;font-weight:400}
+  .col-tgt{flex:0 0 auto;width:22%;text-align:right;font-family:var(--mono);font-size:9px}
+  .col-time-t{flex:0 0 auto;width:20%;text-align:right;font-family:var(--mono);font-size:9px;color:var(--dim)}
+
+  /* badges */
+  .gb{padding:1px 5px;border-radius:2px;font-size:8px;font-weight:400;letter-spacing:.4px;text-transform:uppercase;font-family:var(--mono)}
+  .gGOLD{background:var(--green-d);color:var(--green);border:1px solid rgba(34,197,94,.18)}
+  .gPOT {background:var(--yellow-d);color:var(--yellow);border:1px solid rgba(234,179,8,.18)}
+  .gSKIP{background:var(--red-d);color:var(--red);border:1px solid rgba(239,68,68,.18)}
+  .gSIG {background:var(--purple-d);color:var(--purple);border:1px solid rgba(167,139,250,.18)}
+  .gSEEN{background:var(--blue-d);color:var(--blue);border:1px solid rgba(56,189,248,.18)}
+
+  /* progress pills */
+  .prog{display:flex;gap:2px;justify-content:flex-end}
+  .pil{width:8px;height:3px;border-radius:1px;background:var(--sep2)}
+  .pil.done{background:var(--green)}
+  .pil.next{background:rgba(79,110,247,.5)}
+
+  /* gain colors */
+  .pos{color:var(--green)} .neg{color:var(--red)}
+
+  /* empty */
+  .emp{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;color:var(--dim);padding:16px;text-align:center}
+  .emp-ic{font-size:20px;opacity:.2}
   .emp-tx{font-size:10px}
-  .emp-sb{font-size:9px;opacity:.5;margin-top:1px}
+  .emp-sb{font-size:9px;opacity:.5;margin-top:2px}
 
-  /* CONNECTION BAR */
-  .conn-bar{display:none;align-items:center;justify-content:center;gap:6px;padding:5px 8px;background:rgba(234,179,8,.06);border-bottom:1px solid rgba(234,179,8,.15);font-size:10px;color:var(--yellow-b)}
+  /* conn bar */
+  .conn-bar{display:none;align-items:center;justify-content:center;gap:6px;padding:4px 8px;
+    background:rgba(234,179,8,.05);border-bottom:1px solid rgba(234,179,8,.12);
+    font-size:9px;color:var(--yellow);font-family:var(--mono)}
   .conn-bar.show{display:flex}
 
-  /* TOAST */
-  .toast{position:fixed;bottom:14px;right:14px;padding:7px 12px;background:var(--bg2);border:1px solid var(--bord2);border-radius:var(--r);font-size:11px;color:var(--text);z-index:999;opacity:0;transform:translateY(6px);transition:all .2s;pointer-events:none}
+  /* toast */
+  .toast{position:fixed;bottom:12px;right:12px;padding:6px 12px;background:var(--bg3);
+    border:1px solid var(--sep2);border-radius:3px;font-size:10px;font-family:var(--mono);
+    color:var(--text);z-index:999;opacity:0;transform:translateY(4px);
+    transition:all .18s;pointer-events:none}
   .toast.show{opacity:1;transform:translateY(0)}
 </style>
 </head>
 <body>
 
-<!-- CONNECTION WARNING BAR -->
+<!-- CONNECTION BAR -->
 <div class="conn-bar" id="connBar">
-  <span>⚠️</span>
+  <span>⚠</span>
   <span id="connMsg">Mengambil data dari GitHub...</span>
-  <span style="color:var(--muted);font-size:11px">Pastikan file JSON sudah di-push ke GitHub</span>
+  <span style="color:var(--dim)">— pastikan JSON sudah di-push</span>
 </div>
 
 <!-- HEADER -->
 <div class="hdr">
   <div class="hdr-l">
     <div class="live-dot connecting" id="liveDot"></div>
-    <div class="logo">GM<span>2H</span></div>
-    <div class="upd" id="upd">Mengambil dari GitHub...</div>
+    <div class="logo">GM<em>2H</em></div>
+    <div class="divider"></div>
+    <div class="upd" id="upd">fetching...</div>
   </div>
   <div class="hdr-r">
-    <span class="badge-live connecting" id="badgeLive">● Fetching…</span>
-    <button class="btn-r" onclick="manualRefresh()">⟳ Refresh</button>
+    <span class="badge connecting" id="badgeLive">FETCHING</span>
+    <button class="btn-r" onclick="manualRefresh()">⟳ REFRESH</button>
   </div>
 </div>
 
 <!-- STATS -->
 <div class="stats">
-  <div class="sc"><div class="si w">🔍</div><div><div class="sl">Waiting List</div><div class="sv b" id="stW">—</div></div></div>
-  <div class="sc"><div class="si e">📍</div><div><div class="sl">Entry Area</div><div class="sv p" id="stE">—</div></div></div>
-  <div class="sc"><div class="si t">✅</div><div><div class="sl">Target Tercapai</div><div class="sv g" id="stT">—</div></div></div>
-  <div class="sc"><div class="si s">🗑️</div><div><div class="sl">Stop Track</div><div class="sv r" id="stS">—</div></div></div>
+  <div class="sc">
+    <div class="sl">Waiting</div>
+    <div class="sv b" id="stW">—</div>
+  </div>
+  <div class="sc">
+    <div class="sl">Entry</div>
+    <div class="sv p" id="stE">—</div>
+  </div>
+  <div class="sc">
+    <div class="sl">Target</div>
+    <div class="sv g" id="stT">—</div>
+  </div>
+  <div class="sc">
+    <div class="sl">Stop</div>
+    <div class="sv r" id="stS">—</div>
+  </div>
 </div>
 
-<!-- PANELS — 4 kolom sejajar -->
+<!-- PANELS -->
 <div class="main">
 
   <!-- KOL 1: Waiting List -->
   <div class="panel">
     <div class="ph">
-      <div class="pt"><div class="dot db"></div>Waiting List</div>
+      <div class="pt"><div class="ph-line b"></div>Waiting List</div>
       <div class="cnt b" id="cW">0</div>
     </div>
-    <div class="pb" id="lW">
-      <div class="emp"><div class="emp-ic">🔍</div><div class="emp-tx">Menunggu data...</div></div>
+    <div class="pb">
+      <div class="th">
+        <span style="width:48%;padding-left:6px">Token</span>
+        <span style="width:18%;text-align:right">Grade</span>
+        <span style="width:16%;text-align:right">Waktu</span>
+        <span style="width:18%;text-align:right">Mode</span>
+      </div>
+      <div id="lW">
+        <div class="emp"><div class="emp-ic">🔍</div><div class="emp-tx">Menunggu data...</div></div>
+      </div>
     </div>
   </div>
 
   <!-- KOL 2: Entry Area -->
   <div class="panel">
     <div class="ph">
-      <div class="pt"><div class="dot dp"></div>Entry Area</div>
+      <div class="pt"><div class="ph-line p"></div>Entry Area</div>
       <div class="cnt p" id="cE">0</div>
     </div>
-    <div class="pb" id="lE">
-      <div class="emp"><div class="emp-ic">📍</div><div class="emp-tx">Menunggu data...</div></div>
+    <div class="pb">
+      <div class="th">
+        <span style="width:36%;padding-left:6px">Token</span>
+        <span style="width:24%;text-align:right">Entry</span>
+        <span style="width:22%;text-align:right">Progress</span>
+        <span style="width:18%;text-align:right">Grade</span>
+      </div>
+      <div id="lE">
+        <div class="emp"><div class="emp-ic">📍</div><div class="emp-tx">Menunggu data...</div></div>
+      </div>
     </div>
   </div>
 
   <!-- KOL 3: Target Tercapai -->
   <div class="panel">
     <div class="ph">
-      <div class="pt"><div class="dot dg"></div>Target Tercapai</div>
+      <div class="pt"><div class="ph-line g"></div>Target Tercapai</div>
       <div class="cnt g" id="cT">0</div>
     </div>
-    <div class="pb" id="lT">
-      <div class="emp"><div class="emp-ic">✅</div><div class="emp-tx">Menunggu data...</div></div>
+    <div class="pb">
+      <div class="th">
+        <span style="width:38%;padding-left:6px">Token</span>
+        <span style="width:20%;text-align:right">Gain</span>
+        <span style="width:22%;text-align:right">Target</span>
+        <span style="width:20%;text-align:right">Waktu</span>
+      </div>
+      <div id="lT">
+        <div class="emp"><div class="emp-ic">✅</div><div class="emp-tx">Menunggu data...</div></div>
+      </div>
     </div>
   </div>
 
   <!-- KOL 4: Stop Track -->
   <div class="panel">
     <div class="ph">
-      <div class="pt"><div class="dot dr"></div>Stop Track</div>
+      <div class="pt"><div class="ph-line r"></div>Stop Track</div>
       <div class="cnt r" id="cS">0</div>
     </div>
-    <div class="pb" id="lS">
-      <div class="emp"><div class="emp-ic">🗑️</div><div class="emp-tx">Menunggu data...</div></div>
+    <div class="pb">
+      <div class="th">
+        <span style="width:38%;padding-left:6px">Token</span>
+        <span style="width:20%;text-align:right">Loss</span>
+        <span style="width:22%;text-align:right">Grade</span>
+        <span style="width:20%;text-align:right">Waktu</span>
+      </div>
+      <div id="lS">
+        <div class="emp"><div class="emp-ic">🗑️</div><div class="emp-tx">Menunggu data...</div></div>
+      </div>
     </div>
   </div>
 
@@ -207,15 +298,14 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ─── CONFIG — GANTI SESUAI REPO LO ──────────────────
+// ─── CONFIG ──────────────────────────────────────────
 const GITHUB_USER   = 'TrymeReal';
 const GITHUB_REPO   = '-auto-screen';
 const GITHUB_BRANCH = 'main';
-const POLL_INTERVAL = 30000; // refresh tiap 30 detik
+const POLL_INTERVAL = 30000;
 const TARGETS = [30, 50, 100, 200, 500];
-// ────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────
 
-// Tambah ?t= biar bypass CDN cache GitHub
 function rawURL(file) {
   return `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${file}?t=${Date.now()}`;
 }
@@ -223,7 +313,6 @@ function rawURL(file) {
 let pollTimer = null;
 let reconnectDelay = 5000;
 
-// ─── TOAST ──────────────────────────────────────────
 function toast(msg, dur) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -231,7 +320,6 @@ function toast(msg, dur) {
   setTimeout(() => el.classList.remove('show'), dur || 2500);
 }
 
-// ─── FORMAT HELPERS ──────────────────────────────────
 function fmt(n) {
   n = Number(n);
   if (!n || isNaN(n)) return '0';
@@ -244,18 +332,18 @@ function timeAgo(ts) {
   if (!ts) return '?';
   const ms = ts > 1e12 ? ts : ts * 1000;
   const m = Math.floor((Date.now() - ms) / 60000);
-  if (m < 1) return 'Baru';
+  if (m < 1) return 'baru';
   if (m < 60) return m + 'm';
   const h = Math.floor(m / 60);
   if (h < 24) return h + 'j';
   return Math.floor(h/24) + 'h';
 }
 
-function modeLabel(mode) {
+function modeShort(mode) {
   if (!mode) return '?';
-  if (mode === 'SWING') return '🔄 Swing';
-  if (mode === 'SIGNAL') return '⚡ Signal';
-  return '🆕 Mig';
+  if (mode === 'SWING') return 'SWG';
+  if (mode === 'SIGNAL') return 'SIG';
+  return 'MIG';
 }
 
 function gradeClass(g) {
@@ -272,19 +360,23 @@ function gradeBadge(g) {
   return `<span class="gb ${cls}">${lbl}</span>`;
 }
 
-function targetPills(nextIdx) {
-  return TARGETS.map((t, i) => {
-    let c = 'tp';
+function progressPills(nextIdx) {
+  return `<div class="prog">${TARGETS.map((t, i) => {
+    let c = 'pil';
     if (i < nextIdx) c += ' done';
     else if (i === nextIdx) c += ' next';
-    return `<span class="${c}">${i < nextIdx ? '✓ ' : ''}+${t}%</span>`;
-  }).join('');
+    return `<span class="${c}" title="+${t}%"></span>`;
+  }).join('')}</div>`;
 }
 
-// ─── RENDER ──────────────────────────────────────────
+function emptyHTML(ic, tx, sub) {
+  return `<div class="emp"><div class="emp-ic">${ic}</div><div class="emp-tx">${tx}</div>${sub?`<div class="emp-sb">${sub}</div>`:''}</div>`;
+}
+
+// ─── RENDER WAITING ──────────────────────────────────
 function renderWaiting(seen, positions) {
   const el = document.getElementById('lW');
-  if (!seen) { el.innerHTML = emptyHTML('🔍','seen.json tidak ditemukan di GitHub'); return; }
+  if (!seen) { el.innerHTML = emptyHTML('🔍','seen.json tidak ditemukan'); return; }
 
   const entries = seen.entries || {};
   const trackedSet = new Set(Object.keys((positions?.entries) || {}));
@@ -299,21 +391,21 @@ function renderWaiting(seen, positions) {
   if (!waiting.length) { el.innerHTML = emptyHTML('🔍','Tidak ada token waiting','Semua token sudah masuk posisi'); return; }
 
   el.innerHTML = waiting.map(([ca, e]) => `
-    <div class="tc oth" onclick="copyCA('${ca}')" title="Klik untuk copy CA">
-      <div class="ct">
-        <div>
-          <div class="tn" style="font-size:11px;font-family:monospace;letter-spacing:.3px">${ca.slice(0,8)}…${ca.slice(-6)}</div>
-          <div class="ts">${modeLabel(e.mode)} · ${timeAgo(e.seenAt||e.firstSeen)}</div>
-        </div>
-        ${e.lockedReason ? gradeBadge('SKIP') : gradeBadge('SEEN')}
+    <div class="row seen" onclick="copyCA('${ca}')" title="Klik untuk copy CA">
+      <div class="col-name">
+        <div class="rname" style="font-family:var(--mono);font-size:10px;letter-spacing:.2px">${ca.slice(0,8)}…${ca.slice(-4)}</div>
+        <div class="rsub">${modeShort(e.mode)} · ${timeAgo(e.seenAt||e.firstSeen)}${e.lockedReason?' · LOCK':''}</div>
       </div>
-      ${e.lockedReason ? `<div style="font-size:9px;color:var(--red);margin-top:1px">Lock: ${e.lockedReason}</div>` : ''}
+      <div class="col-grade">${e.lockedReason ? gradeBadge('SKIP') : gradeBadge('SEEN')}</div>
+      <div class="col-time">${timeAgo(e.seenAt||e.firstSeen)}</div>
+      <div class="col-mode">${modeShort(e.mode)}</div>
     </div>`).join('');
 }
 
+// ─── RENDER ENTRY ─────────────────────────────────────
 function renderEntry(positions) {
   const el = document.getElementById('lE');
-  if (!positions) { el.innerHTML = emptyHTML('📍','positions.json tidak ditemukan di GitHub'); return; }
+  if (!positions) { el.innerHTML = emptyHTML('📍','positions.json tidak ditemukan'); return; }
 
   const entries = Object.entries(positions.entries || {})
     .sort((a,b) => (b[1].entryAt||0)-(a[1].entryAt||0));
@@ -326,27 +418,22 @@ function renderEntry(positions) {
   el.innerHTML = entries.map(([ca, p]) => {
     const done = p.nextTargetIdx || 0;
     return `
-      <div class="tc ${gradeClass(p.grade)}" onclick="openDex('${ca}')" title="Buka DexScreener">
-        <div class="ct">
-          <div>
-            <div class="tn">${p.name || p.symbol || '—'}</div>
-            <div class="ts">${p.symbol || ''} · ${modeLabel(p.mode)} · ${timeAgo(p.entryAt)}</div>
-          </div>
-          ${gradeBadge(p.grade)}
+      <div class="row ${gradeClass(p.grade)}" onclick="openDex('${ca}')" title="Buka DexScreener">
+        <div class="col-name-e">
+          <div class="rname">${p.name || p.symbol || '—'}</div>
+          <div class="rsub">${p.symbol||''} · ${modeShort(p.mode)}</div>
         </div>
-        <div class="cm">
-          <div><div class="ml">Entry</div><div class="mv">$${p.entryPrice ? Number(p.entryPrice).toFixed(8) : '?'}</div></div>
-          <div><div class="ml">Target</div><div class="mv ${done>0?'g':''}">${done}/${TARGETS.length} done</div></div>
-          <div><div class="ml">Thread</div><div class="mv">${p.mode||'?'}</div></div>
-        </div>
-        <div class="tbar">${targetPills(done)}</div>
+        <div class="col-entry" style="color:var(--dim)">$${p.entryPrice ? Number(p.entryPrice).toFixed(8) : '?'}</div>
+        <div class="col-prog">${progressPills(done)}<div style="font-size:8px;color:var(--dim);text-align:right;margin-top:2px">${done}/${TARGETS.length}</div></div>
+        <div class="col-grade-e">${gradeBadge(p.grade)}</div>
       </div>`;
   }).join('');
 }
 
+// ─── RENDER TARGET ────────────────────────────────────
 function renderTarget(tracking) {
   const el = document.getElementById('lT');
-  if (!tracking) { el.innerHTML = emptyHTML('✅','tracking_log.json tidak ditemukan di GitHub'); return; }
+  if (!tracking) { el.innerHTML = emptyHTML('✅','tracking_log.json tidak ditemukan'); return; }
 
   const events = (Array.isArray(tracking) ? tracking : [])
     .filter(e => e.type === 'TERCAPAI')
@@ -358,30 +445,25 @@ function renderTarget(tracking) {
   if (!events.length) { el.innerHTML = emptyHTML('✅','Belum ada target tercapai','Terus pantau posisimu'); return; }
 
   el.innerHTML = events.map(e => {
-    const ico = e.target >= 100 ? '🚀' : e.target >= 50 ? '📈' : '⬆️';
     const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
+    const gainClass = e.gain && Number(e.gain) >= 0 ? 'pos' : 'neg';
     return `
-      <div class="ei" onclick="openDex('${e.address||''}')" style="cursor:${e.address?'pointer':'default'}">
-        <div class="eic">${ico}</div>
-        <div class="ec">
-          <div class="et">
-            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span></div>
-            <div class="etm">${timeAgo(e.time)}</div>
-          </div>
-          <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
-          <div style="margin-top:3px;display:flex;gap:5px;align-items:center">
-            ${gradeBadge(e.grade)}
-            <span class="eg">+${e.target}% Tercapai!</span>
-            ${gain ? `<span style="font-size:10px;color:var(--muted)">${gain}</span>` : ''}
-          </div>
+      <div class="row gold" onclick="openDex('${e.address||''}')" style="cursor:${e.address?'pointer':'default'}">
+        <div class="col-name-t">
+          <div class="rname">${e.name||e.symbol||'Token'}</div>
+          <div class="rsub">${e.symbol||''} · ${modeShort(e.mode)}</div>
         </div>
+        <div class="col-gain ${gainClass}">${gain}</div>
+        <div class="col-tgt" style="color:var(--green)">+${e.target}%</div>
+        <div class="col-time-t">${timeAgo(e.time)}</div>
       </div>`;
   }).join('');
 }
 
+// ─── RENDER STOP ──────────────────────────────────────
 function renderStop(tracking) {
   const el = document.getElementById('lS');
-  if (!tracking) { el.innerHTML = emptyHTML('🗑️','tracking_log.json tidak ditemukan di GitHub'); return; }
+  if (!tracking) { el.innerHTML = emptyHTML('🗑️','tracking_log.json tidak ditemukan'); return; }
 
   const events = (Array.isArray(tracking) ? tracking : [])
     .filter(e => e.type === 'STOP_TRACK')
@@ -390,75 +472,63 @@ function renderStop(tracking) {
   document.getElementById('cS').textContent = events.length;
   document.getElementById('stS').textContent = events.length;
 
-  if (!events.length) { el.innerHTML = emptyHTML('🗑️','Tidak ada stop track','Bagus! Belum ada yang drop >80%'); return; }
+  if (!events.length) { el.innerHTML = emptyHTML('🗑️','Tidak ada stop track','Bagus! Belum ada yang drop'); return; }
 
   el.innerHTML = events.map(e => {
-    const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
+    const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '?';
     return `
-      <div class="ei">
-        <div class="eic">💀</div>
-        <div class="ec">
-          <div class="et">
-            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span></div>
-            <div class="etm">${timeAgo(e.time)}</div>
-          </div>
-          <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
-          <div style="margin-top:3px;display:flex;gap:5px;align-items:center">
-            ${gradeBadge(e.grade)}
-            <span class="eg stop">Drop ${gain}</span>
-          </div>
+      <div class="row oth">
+        <div class="col-name-t">
+          <div class="rname">${e.name||e.symbol||'Token'}</div>
+          <div class="rsub">${e.symbol||''} · ${modeShort(e.mode)}</div>
         </div>
+        <div class="col-gain neg">${gain}</div>
+        <div class="col-tgt">${gradeBadge(e.grade)}</div>
+        <div class="col-time-t">${timeAgo(e.time)}</div>
       </div>`;
   }).join('');
 }
 
-function emptyHTML(ic, tx, sub) {
-  return `<div class="emp"><div class="emp-ic">${ic}</div><div class="emp-tx">${tx}</div>${sub?`<div class="emp-sb">${sub}</div>`:''}</div>`;
-}
-
+// ─── RENDER ALL ───────────────────────────────────────
 function renderAll(data) {
   renderWaiting(data.seen, data.positions);
   renderEntry(data.positions);
   renderTarget(data.tracking);
   renderStop(data.tracking);
-  document.getElementById('upd').textContent = 'Update: ' + new Date().toLocaleTimeString('id-ID') + ' · tiap 30d';
+  document.getElementById('upd').textContent = new Date().toLocaleTimeString('id-ID') + ' · 30s';
 }
 
-// ─── CONNECTION STATUS ───────────────────────────────
+// ─── STATUS ───────────────────────────────────────────
 function setStatus(state) {
   const dot   = document.getElementById('liveDot');
   const badge = document.getElementById('badgeLive');
   const bar   = document.getElementById('connBar');
   dot.className   = 'live-dot ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
-  badge.className = 'badge-live ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
-  if (state === 'live')       { badge.textContent = '● Live'; bar.classList.remove('show'); }
-  if (state === 'connecting') { badge.textContent = '● Fetching…'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Mengambil data dari GitHub...'; }
-  if (state === 'error')      { badge.textContent = '● Error'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Gagal fetch GitHub — cek koneksi atau pastikan JSON sudah di-push'; }
+  badge.className = 'badge ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
+  if (state === 'live')       { badge.textContent = 'LIVE'; bar.classList.remove('show'); }
+  if (state === 'connecting') { badge.textContent = 'FETCHING'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Mengambil data dari GitHub...'; }
+  if (state === 'error')      { badge.textContent = 'ERROR'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Gagal fetch — cek koneksi atau JSON belum di-push'; }
 }
 
-// ─── FETCH DATA DARI GITHUB ──────────────────────────
+// ─── FETCH ────────────────────────────────────────────
 async function fetchData() {
   const results = await Promise.allSettled([
     fetch(rawURL('positions.json')),
     fetch(rawURL('tracking_log.json')),
     fetch(rawURL('seen.json')),
   ]);
-
   async function safeJSON(settled) {
     try {
       if (settled.status !== 'fulfilled' || !settled.value.ok) return null;
       return await settled.value.json();
     } catch { return null; }
   }
-
   const [positions, tracking, seen] = await Promise.all(results.map(safeJSON));
-
-  if (!positions && !tracking && !seen) throw new Error('Semua file JSON tidak ditemukan di GitHub');
-
+  if (!positions && !tracking && !seen) throw new Error('Semua JSON tidak ditemukan');
   return { positions, tracking, seen, ts: Date.now() };
 }
 
-// ─── POLL LOOP ───────────────────────────────────────
+// ─── POLL ─────────────────────────────────────────────
 async function refresh() {
   try {
     setStatus('connecting');
@@ -467,9 +537,9 @@ async function refresh() {
     setStatus('live');
     reconnectDelay = 5000;
   } catch (err) {
-    console.error('[AutoScreen] Fetch error:', err.message);
+    console.error('[GM2H] Fetch error:', err.message);
     setStatus('error');
-    document.getElementById('upd').textContent = 'Error — coba lagi...';
+    document.getElementById('upd').textContent = 'error — retry...';
     reconnectDelay = Math.min(reconnectDelay * 1.5, 60000);
   }
 }
@@ -477,11 +547,8 @@ async function refresh() {
 async function manualRefresh() {
   clearInterval(pollTimer);
   await refresh();
-  if (document.getElementById('liveDot').classList.contains('off')) {
-    toast('❌ Gagal ambil data dari GitHub');
-  } else {
-    toast('✓ Data diperbarui dari GitHub');
-  }
+  toast(document.getElementById('liveDot').classList.contains('off')
+    ? '✗ Gagal ambil data' : '✓ Data diperbarui');
   pollTimer = setInterval(refresh, POLL_INTERVAL);
 }
 
@@ -493,7 +560,6 @@ function openDex(ca) {
   if (ca) window.open('https://dexscreener.com/solana/' + ca, '_blank');
 }
 
-// Start! Langsung fetch, lalu poll tiap 30 detik
 refresh();
 pollTimer = setInterval(refresh, POLL_INTERVAL);
 </script>
