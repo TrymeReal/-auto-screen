@@ -27,7 +27,7 @@ jobs:
       - run: npm install -g gmgn-cli
       - run: node screen.js
         env:
-          CI: 'false'
+          CI: 'true'
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
@@ -41,3 +41,7 @@ jobs:
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
           MAX_RUG_SCORE: ${{ secrets.MAX_RUG_SCORE }}
           MIN_BUY_RATIO: ${{ secrets.MIN_BUY_RATIO }}
+          MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
+          MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
+          MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
+          MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
