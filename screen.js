@@ -191,16 +191,21 @@ function savePositions() {
 // ─────────────────────────────────────────────
 function pushJSONToGitHub() {
   try {
-    execSync('git config user.email "actions@github.com"', { stdio: 'ignore' });
-    execSync('git config user.name "github-actions"', { stdio: 'ignore' });
-    execSync('git add -f positions.json tracking_log.json seen.json', { stdio: 'ignore' });
-    const diff = execSync('git diff --staged --quiet; echo $?').toString().trim();
-    if (diff === '1') {
-      execSync('git commit -m "chore: update data [skip ci]"', { stdio: 'ignore' });
-      execSync('git push', { stdio: 'ignore' });
-      log('[GitHub] JSON files pushed');
-    } else {
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+    if (!token) { log('[GitHub] Push skipped: no token'); return; }
+
+    execSync('git config user.email "actions@github.com"', { stdio: 'pipe' });
+    execSync('git config user.name "github-actions"', { stdio: 'pipe' });
+    execSync(`git remote set-url origin https://x-access-token:${token}@github.com/TrymeReal/-auto-screen.git`, { stdio: 'pipe' });
+    execSync('git add -f positions.json tracking_log.json seen.json', { stdio: 'pipe' });
+
+    try {
+      execSync('git diff --staged --quiet', { stdio: 'pipe' });
       log('[GitHub] No changes to push');
+    } catch {
+      execSync('git commit -m "chore: update data [skip ci]"', { stdio: 'pipe' });
+      execSync('git push origin main', { stdio: 'pipe' });
+      log('[GitHub] JSON files pushed');
     }
   } catch (e) {
     log('[GitHub] Push failed: ' + e.message);
