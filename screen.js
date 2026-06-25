@@ -187,6 +187,27 @@ function savePositions() {
 }
 
 // ─────────────────────────────────────────────
+//  AUTO PUSH JSON KE GITHUB
+// ─────────────────────────────────────────────
+function pushJSONToGitHub() {
+  try {
+    execSync('git config user.email "actions@github.com"', { stdio: 'ignore' });
+    execSync('git config user.name "github-actions"', { stdio: 'ignore' });
+    execSync('git add -f positions.json tracking_log.json seen.json', { stdio: 'ignore' });
+    const diff = execSync('git diff --staged --quiet; echo $?').toString().trim();
+    if (diff === '1') {
+      execSync('git commit -m "chore: update data [skip ci]"', { stdio: 'ignore' });
+      execSync('git push', { stdio: 'ignore' });
+      log('[GitHub] JSON files pushed');
+    } else {
+      log('[GitHub] No changes to push');
+    }
+  } catch (e) {
+    log('[GitHub] Push failed: ' + e.message);
+  }
+}
+
+// ─────────────────────────────────────────────
 //  NETWORK
 // ─────────────────────────────────────────────
 async function getWithRetry(url, opts, retries) {
@@ -1420,4 +1441,5 @@ if (process.env.CI === 'true') {
 } else {
   runLoop();
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
+  setInterval(pushJSONToGitHub, 10 * 60 * 1000); // push tiap 10 menit
 }
