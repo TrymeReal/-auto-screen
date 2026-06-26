@@ -62,7 +62,7 @@
   .s2v.g{color:var(--green-b)} .s2v.r{color:var(--red-b)} .s2v.y{color:var(--yellow-b)} .s2v.w{color:var(--text)}
 
   /* MAIN GRID */
-  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 24px - 30px - 26px);overflow:hidden}
+  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 30px - 26px);overflow:hidden}
   .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
   .panel:last-child{border-right:none}
 
@@ -158,18 +158,8 @@
   <span style="color:var(--muted);font-size:11px">Pastikan file JSON sudah di-push ke GitHub</span>
 </div>
 
-<!-- HEADER -->
-<div class="hdr">
-  <div class="hdr-l">
-    <div class="live-dot connecting" id="liveDot"></div>
-    <div class="logo">GM<span>2H</span></div>
-    <div class="upd" id="upd">Mengambil dari GitHub...</div>
-  </div>
-  <div class="hdr-r">
-    <span class="badge-live connecting" id="badgeLive">● Fetching…</span>
-    <button class="btn-r" onclick="manualRefresh()">⟳ Refresh</button>
-  </div>
-</div>
+<!-- live dot hidden, still needed for setStatus -->
+<div id="liveDot" style="display:none"></div>
 
 <!-- STATS -->
 <div class="stats">
@@ -536,19 +526,17 @@ function renderAll(data) {
   renderTarget(data.tracking, data.positions);
   renderStop(data.tracking, data.positions);
   renderAvg(data.tracking);
-  document.getElementById('upd').textContent = 'Update: ' + new Date().toLocaleTimeString('id-ID') + ' · tiap 30d';
+  // upd element removed
 }
 
 // ─── CONNECTION STATUS ───────────────────────────────
 function setStatus(state) {
-  const dot   = document.getElementById('liveDot');
-  const badge = document.getElementById('badgeLive');
-  const bar   = document.getElementById('connBar');
-  dot.className   = 'live-dot ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
-  badge.className = 'badge-live ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
-  if (state === 'live')       { badge.textContent = '● Live'; bar.classList.remove('show'); }
-  if (state === 'connecting') { badge.textContent = '● Fetching…'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Mengambil data dari GitHub...'; }
-  if (state === 'error')      { badge.textContent = '● Error'; bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Gagal fetch GitHub — cek koneksi atau pastikan JSON sudah di-push'; }
+  const dot = document.getElementById('liveDot');
+  const bar = document.getElementById('connBar');
+  dot.className = 'live-dot ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
+  if (state === 'live')       { bar.classList.remove('show'); }
+  if (state === 'connecting') { bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Mengambil data dari GitHub...'; }
+  if (state === 'error')      { bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Gagal fetch GitHub — cek koneksi atau pastikan JSON sudah di-push'; }
 }
 
 // ─── FETCH DATA DARI GITHUB ──────────────────────────
@@ -584,7 +572,7 @@ async function refresh() {
   } catch (err) {
     console.error('[AutoScreen] Fetch error:', err.message);
     setStatus('error');
-    document.getElementById('upd').textContent = 'Error — coba lagi...';
+    // upd element removed
     reconnectDelay = Math.min(reconnectDelay * 1.5, 60000);
   }
 }
