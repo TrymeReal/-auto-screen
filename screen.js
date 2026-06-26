@@ -513,31 +513,7 @@ async function sendTelegram(msg, replyTo, threadId) {
 
 
 
-async function sendEntrySignal(t, rug, grade, f) {
-  const msg =
-    `👑 <b>ENTRY SIGNAL</b>\n\n` +
-    `Token : $${t.symbol}\n` +
-    `CA    : <code>${t.address}</code>\n\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    `<b>Bandar confirmed ✅</b>\n` +
-    `<b>Screen : ${grade}</b>\n` +
-    `LP      : $${fmt(t.liquidity)}\n` +
-    `Vol 1h  : $${fmt(t.volume)}\n` +
-    `Rug     : ${rug.score} (${rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya'})\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    `Entry : $${fmtPrice(t.price)}\n` +
-    `TP1   : $${fmtPrice(t.price * 1.3)} (+30%)\n` +
-    `TP2   : $${fmtPrice(t.price * 1.5)} (+50%)\n` +
-    `TP3   : $${fmtPrice(t.price * 2.0)} (+100%)\n` +
-    `SL    : $${fmtPrice(t.price * 0.85)} (-15%)\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    `<a href="https://dexscreener.com/solana/${t.address}">Chart</a> | ` +
-    `<a href="https://gmgn.ai/sol/token/${t.address}">GMGN</a> | ` +
-    `<a href="https://rugcheck.xyz/tokens/${t.address}">RugCheck</a>`;
 
-  await sendTelegram(msg, null, CFG.tgThreadEntry);
-  log('[ENTRY] ' + t.symbol + ' — signal dikirim ke thread entry');
-}
 // ─────────────────────────────────────────────
 //  KLASIFIKASI & SCORING
 // ─────────────────────────────────────────────
