@@ -1309,7 +1309,7 @@ async function checkTrackedPositions(trendingTokens) {
       var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
       var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
       log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
-      logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
+      logTrackingEvent({ type: stopType, ...pos, address: ca, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
