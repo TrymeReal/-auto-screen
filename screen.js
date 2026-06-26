@@ -1165,7 +1165,6 @@ async function processTokens() {
     var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
     if (migResult.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
       continue;
     }
 
@@ -1306,7 +1305,7 @@ async function processTokens() {
 
     try {
       const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-      if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'swing', lockedReason: 'rug_score' }); continue; }
+      if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
