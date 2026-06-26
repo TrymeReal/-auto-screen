@@ -1165,6 +1165,7 @@ async function processTokens() {
     var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
     if (migResult.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
       continue;
     }
 
