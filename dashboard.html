@@ -152,7 +152,7 @@
   <div class="sc"><div class="si w">🔍</div><div><div class="sl">Waiting List</div><div class="sv b" id="stW">—</div></div></div>
   <div class="sc"><div class="si e">📍</div><div><div class="sl">Entry Area</div><div class="sv p" id="stE">—</div></div></div>
   <div class="sc"><div class="si t">✅</div><div><div class="sl">Target Tercapai</div><div class="sv g" id="stT">—</div></div></div>
-  <div class="sc"><div class="si s">🗑️</div><div><div class="sl">Stop Track</div><div class="sv r" id="stS">—</div></div></div>
+  <div class="sc"><div class="si s">🗑️</div><div><div class="sl">Stop Track</div><div style="display:flex;align-items:baseline;gap:5px"><div class="sv r" id="stS">—</div><div style="font-size:9px;color:var(--muted)">💀<span id="stSN">0</span> · 📉<span id="stSW">0</span></div></div></div></div>
 </div>
 
 <!-- PANELS — 4 kolom sejajar -->
@@ -386,8 +386,12 @@ function renderStop(tracking) {
     .filter(e => e.type === 'STOP_TRACK' || e.type === 'STOP_TRACK_WAS_PROFIT')
     .sort((a,b) => (b.time||0)-(a.time||0));
 
+  const countNoProfit = events.filter(e => e.type === 'STOP_TRACK').length;
+  const countWasProfit = events.filter(e => e.type === 'STOP_TRACK_WAS_PROFIT').length;
   document.getElementById('cS').textContent = events.length;
   document.getElementById('stS').textContent = events.length;
+  document.getElementById('stSN').textContent = countNoProfit;
+  document.getElementById('stSW').textContent = countWasProfit;
 
   if (!events.length) { el.innerHTML = emptyHTML('🗑️','Tidak ada stop track','Bagus! Belum ada yang drop >80%'); return; }
 
@@ -398,7 +402,7 @@ function renderStop(tracking) {
     const labelClr  = wasProfit ? 'var(--yellow-b)' : 'var(--red-b)';
     const gain      = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
     return `
-      <div class="ei">
+      <div class="ei" ${e.address ? `onclick="openDex('${e.address}')" style="cursor:pointer"` : ''}>
         <div class="ec">
           <div class="et">
             <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span> ${ico}</div>
