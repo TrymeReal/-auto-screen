@@ -65,7 +65,6 @@ const CFG = {
   tgChatId:        process.env.TG_CHAT_ID,
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
   tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
-  tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
 };
 
 if (!CFG.tgToken || !CFG.tgChatId) {
@@ -511,49 +510,7 @@ async function sendTelegram(msg, replyTo, threadId) {
   }
 }
 
-const GIST_ID_SCREEN = '7872aefdf9114d37a56a1e9187406800';
-const GITHUB_TOKEN_SCREEN = process.env.GH_TOKEN || '';
 
-async function readGist() {
-  if (!GITHUB_TOKEN_SCREEN || !GIST_ID_SCREEN) return [];
-  try {
-    const res = await axios.get(
-      `https://api.github.com/gists/${GIST_ID_SCREEN}`,
-      { headers: { Authorization: `token ${GITHUB_TOKEN_SCREEN}` }, timeout: 5000 }
-    );
-    const content = res.data.files['confirmed_bandars.json'].content;
-    return JSON.parse(content);
-  } catch (e) {
-    log('Gagal baca Gist: ' + e.message);
-    return [];
-  }
-}
-
-async function sendEntrySignal(t, rug, grade, f) {
-  const msg =
-    `👑 <b>ENTRY SIGNAL</b>\n\n` +
-    `Token : $${t.symbol}\n` +
-    `CA    : <code>${t.address}</code>\n\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    `<b>Bandar confirmed ✅</b>\n` +
-    `<b>Screen : ${grade}</b>\n` +
-    `LP      : $${fmt(t.liquidity)}\n` +
-    `Vol 1h  : $${fmt(t.volume)}\n` +
-    `Rug     : ${rug.score} (${rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya'})\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    `Entry : $${fmtPrice(t.price)}\n` +
-    `TP1   : $${fmtPrice(t.price * 1.3)} (+30%)\n` +
-    `TP2   : $${fmtPrice(t.price * 1.5)} (+50%)\n` +
-    `TP3   : $${fmtPrice(t.price * 2.0)} (+100%)\n` +
-    `SL    : $${fmtPrice(t.price * 0.85)} (-15%)\n` +
-    `━━━━━━━━━━━━━━━━━\n` +
-    `<a href="https://dexscreener.com/solana/${t.address}">Chart</a> | ` +
-    `<a href="https://gmgn.ai/sol/token/${t.address}">GMGN</a> | ` +
-    `<a href="https://rugcheck.xyz/tokens/${t.address}">RugCheck</a>`;
-
-  await sendTelegram(msg, null, CFG.tgThreadEntry);
-  log('[ENTRY] ' + t.symbol + ' — signal dikirim ke thread entry');
-}
 // ─────────────────────────────────────────────
 //  KLASIFIKASI & SCORING
 // ─────────────────────────────────────────────
@@ -1062,8 +1019,6 @@ function buildSignalMsg(t) {
 // ─────────────────────────────────────────────
 async function processTokens() {
   log('========== SCREENING ==========');
-  const confirmedBandars = await readGist();
-  log('Confirmed bandars dari Gist: ' + confirmedBandars.length);
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
   var swingTokens     = fetchGmgnTrending();
@@ -1191,11 +1146,6 @@ async function processTokens() {
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
 
-    if (confirmedBandars.includes(t.address)) {
-      const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'MIGRATION');
-      await sendEntrySignal(t, rug, grade, f);
-    }
-
     if (t.price && Number(t.price) > 0) {
       TRACKED.set(t.address, {
         symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
@@ -1238,10 +1188,6 @@ async function processTokens() {
       const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
       totalNotified++;
 
-      if (confirmedBandars.includes(t.address)) {
-        const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'SWING');
-        await sendEntrySignal(t, rug, grade, f);
-      }
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
