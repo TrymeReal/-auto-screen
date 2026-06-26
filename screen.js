@@ -1,667 +1,1415 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>GM2H</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nIzBkMTAxNycvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0nZycgeDE9JzAlJyB5MT0nMTAwJScgeDI9JzEwMCUnIHkyPScwJSc+PHN0b3Agb2Zmc2V0PScwJScgc3RvcC1jb2xvcj0nI2I4ODYwYicvPjxzdG9wIG9mZnNldD0nNTAlJyBzdG9wLWNvbG9yPScjZmJiZjI0Jy8+PHN0b3Agb2Zmc2V0PScxMDAlJyBzdG9wLWNvbG9yPScjZmRlNjhhJy8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGNpcmNsZSBjeD0nMTYnIGN5PScxNycgcj0nMTAnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIGZpbGw9J25vbmUnIHN0cm9rZS1kYXNoYXJyYXk9JzI2IDgnIHRyYW5zZm9ybT0ncm90YXRlKC00NSAxNiAxNyknLz48cGF0aCBkPSdNMTkuNSAxMi41YTUgNSAwIDEgMCAxIDcnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjYnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgZmlsbD0nbm9uZScvPjxwYXRoIGQ9J00yMC41IDEwLjUgTDIzLjUgMTAuNSBMMjMuNSAxMy41IE0yMy41IDEwLjUgTDE4IDE1LjUnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcgZmlsbD0nbm9uZScvPjwvc3ZnPg==">
-<link rel="shortcut icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nIzBkMTAxNycvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0nZycgeDE9JzAlJyB5MT0nMTAwJScgeDI9JzEwMCUnIHkyPScwJSc+PHN0b3Agb2Zmc2V0PScwJScgc3RvcC1jb2xvcj0nI2I4ODYwYicvPjxzdG9wIG9mZnNldD0nNTAlJyBzdG9wLWNvbG9yPScjZmJiZjI0Jy8+PHN0b3Agb2Zmc2V0PScxMDAlJyBzdG9wLWNvbG9yPScjZmRlNjhhJy8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGNpcmNsZSBjeD0nMTYnIGN5PScxNycgcj0nMTAnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIGZpbGw9J25vbmUnIHN0cm9rZS1kYXNoYXJyYXk9JzI2IDgnIHRyYW5zZm9ybT0ncm90YXRlKC00NSAxNiAxNyknLz48cGF0aCBkPSdNMTkuNSAxMi41YTUgNSAwIDEgMCAxIDcnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjYnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgZmlsbD0nbm9uZScvPjxwYXRoIGQ9J00yMC41IDEwLjUgTDIzLjUgMTAuNSBMMjMuNSAxMy41IE0yMy41IDEwLjUgTDE4IDE1LjUnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcgZmlsbD0nbm9uZScvPjwvc3ZnPg==">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg:     #0c0e13;
-    --bg2:    #111318;
-    --bg3:    #161920;
-    --border: rgba(255,255,255,0.06);
-    --bord2:  rgba(255,255,255,0.11);
-    --text:   #d1d5db;
-    --muted:  #4b5563;
-    --accent: #4f6ef7;
-    --green:  #16a34a; --green-b:#22c55e; --green-d: rgba(34,197,94,0.10);
-    --yellow: #ca8a04; --yellow-b:#eab308; --yellow-d:rgba(234,179,8,0.10);
-    --red:    #dc2626; --red-b:#ef4444; --red-d: rgba(239,68,68,0.10);
-    --blue:   #0ea5e9; --blue-d:  rgba(14,165,233,0.10);
-    --purple: #8b5cf6; --purple-d:rgba(139,92,246,0.10);
-    --r: 6px; --rs: 4px;
-    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:11px;line-height:1.4;overflow:hidden}
+require('dotenv').config();
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+const {
+  shouldSkipNewMigration,
+  checkBaseLiquidity,
+  checkBaseAgeHours,
+  checkVol1h,
+  checkSwaps5m,
+  checkVol5m,
+} = require('./filters');
 
-  /* HEADER */
-  .hdr{display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100;height:24px}
-  .hdr-l{display:flex;align-items:center;gap:6px}
-  .live-dot{width:5px;height:5px;border-radius:50%;background:var(--green-b);box-shadow:0 0 0 2px rgba(34,197,94,.15);animation:pulse 2s infinite}
-  .live-dot.off{background:var(--red-b);box-shadow:0 0 0 2px rgba(239,68,68,.15);animation:none}
-  .live-dot.connecting{background:var(--yellow-b);box-shadow:0 0 0 2px rgba(234,179,8,.15)}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  .logo{font-size:10px;font-weight:700;color:var(--text);letter-spacing:.2px}
-  .logo span{color:var(--accent)}
-  .upd{font-size:9px;color:var(--muted);letter-spacing:.1px}
-  .hdr-r{display:flex;align-items:center;gap:4px}
-  .badge-live{padding:1px 5px;border-radius:20px;font-size:9px;font-weight:600;background:var(--green-d);border:1px solid rgba(34,197,94,.2);color:var(--green-b)}
-  .badge-live.off{background:var(--red-d);border-color:rgba(239,68,68,.2);color:var(--red-b)}
-  .badge-live.connecting{background:var(--yellow-d);border-color:rgba(234,179,8,.2);color:var(--yellow-b)}
-  .btn-r{display:flex;align-items:center;gap:2px;padding:1px 6px;background:transparent;border:1px solid var(--bord2);border-radius:var(--rs);color:var(--muted);cursor:pointer;font-size:9px;font-family:inherit;transition:all .15s}
-  .btn-r:hover{border-color:var(--accent);color:var(--accent)}
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+const CFG = {
+  // New Migration V2 — base gates
+  minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
+  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
+  minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
+  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
-  /* STATS */
-  .sc{background:var(--bg2);padding:0 7px;display:flex;align-items:center;gap:6px}
-  .si{width:16px;height:16px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0}
-  .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
-  .sl{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;line-height:1}
-  .sv{font-size:13px;font-weight:700;line-height:1.1}
-  .sv.b{color:var(--blue)} .sv.p{color:var(--purple)} .sv.g{color:var(--green-b)} .sv.r{color:var(--red-b)}
+  // Mode New Migration (sama seperti sebelumnya)
+  minLp:           Number(process.env.MIN_LP)           || 5000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
+  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
+  minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
-  /* MAIN GRID */
-  .s2v{font-weight:700} .s2v.g{color:var(--green-b)} .s2v.r{color:var(--red-b)} .s2v.y{color:var(--yellow-b)}
-  .main{display:grid;grid-template-columns:repeat(3,1fr);height:calc(100vh - 24px - 30px);overflow:hidden}
-  .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
-  .panel:last-child{border-right:none}
+  // New Migration extra gates
+  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 25,
+  maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
+  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 20,
+  maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 10,
+  maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
+  minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
+  maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
+  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
 
-  .ph{display:flex;align-items:center;justify-content:space-between;padding:0 7px;border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0;height:20px}
-  .pt{display:flex;align-items:center;gap:4px;font-size:8px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.7px}
-  .dot{width:4px;height:4px;border-radius:50%}
-  .db{background:var(--blue)} .dp{background:var(--purple)} .dg{background:var(--green-b)} .dr{background:var(--red-b)}
+  // Mode Swing 1D — filter lebih ketat
+  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
+  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 20000,
+  swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 15,   // tidak sedang pump >15% per jam
+  swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
+  swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
+  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
+  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
+  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
 
-  .cnt{padding:0px 4px;border-radius:20px;font-size:8px;font-weight:700}
-  .cnt.b{background:var(--blue-d);color:var(--blue)} .cnt.p{background:var(--purple-d);color:var(--purple)}
-  .cnt.g{background:var(--green-d);color:var(--green-b)} .cnt.r{background:var(--red-d);color:var(--red-b)}
+  // Smart Money Signal
+  signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
+  tgThreadSignal:     Number(process.env.TG_THREAD_SIGNAL) || undefined,
+  signalMinLiquidity: Number(process.env.SIGNAL_MIN_LIQ)   || 10000,
+  signalMinHolders:   Number(process.env.SIGNAL_MIN_HOLDERS)|| 100,
+  signalMaxMc:        Number(process.env.SIGNAL_MAX_MC)     || 300000,
+  signalMaxTop10Rate: Number(process.env.SIGNAL_MAX_TOP10)  || 35,
 
-  .pb{flex:1;overflow-y:auto}
-  .pb::-webkit-scrollbar{width:2px}
-  .pb::-webkit-scrollbar-thumb{background:var(--bord2);border-radius:2px}
+  // Umum
+  interval:        Number(process.env.POLL_INTERVAL)     || 60,
+  healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
+  seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
+  tgToken:         process.env.TG_TOKEN,
+  tgChatId:        process.env.TG_CHAT_ID,
+  tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
+  tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
+};
 
-  /* TOKEN ROWS (flat, no card) */
-  .tc{padding:5px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;border-left:2px solid transparent;position:relative}
-  .tc:hover{background:rgba(255,255,255,0.025)}
-  .tc.gold{border-left-color:var(--green-b)}
-  .tc.pot{border-left-color:var(--yellow-b)}
-  .tc.sig{border-left-color:var(--purple)}
-  .tc.oth{border-left-color:var(--muted)}
+if (!CFG.tgToken || !CFG.tgChatId) {
+  console.error('Isi TG_TOKEN dan TG_CHAT_ID di .env');
+  process.exit(1);
+}
 
-  .ct{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
-  .tn{font-weight:600;font-size:11px;line-height:1.2;color:var(--text)}
-  .ts{font-size:9px;color:var(--muted);margin-top:1px}
+console.log('DEBUG thread SWING=' + process.env.TG_THREAD_ID + ' MIG=' + process.env.TG_THREAD_MIG);
 
-  .gb{padding:0px 4px;border-radius:3px;font-size:8px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-  .gGOLD{background:var(--green-d);color:var(--green-b);border:1px solid rgba(34,197,94,.2)}
-  .gPOT{background:var(--yellow-d);color:var(--yellow-b);border:1px solid rgba(234,179,8,.2)}
-  .gSKIP{background:var(--red-d);color:var(--red-b);border:1px solid rgba(239,68,68,.2)}
-  .gSIG{background:var(--purple-d);color:var(--purple);border:1px solid rgba(139,92,246,.2)}
-  .gSEEN{background:var(--blue-d);color:var(--blue);border:1px solid rgba(14,165,233,.2)}
+const TG_API        = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
+const SEEN_FILE     = path.join(__dirname, 'seen.json');
+const POSITIONS_FILE= path.join(__dirname, 'positions.json');
+const LOG_FILE      = path.join(__dirname, 'screen.log');
+const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
 
-  .cm{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:3px}
-  .ml{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;line-height:1}
-  .mv{font-size:10px;font-weight:600;margin-top:1px;line-height:1.2;color:var(--text)}
-  .mv.g{color:var(--green-b)} .mv.y{color:var(--yellow-b)} .mv.r{color:var(--red-b)}
-
-  .tbar{display:flex;gap:2px;flex-wrap:wrap}
-  .tp{padding:0px 4px;border-radius:20px;font-size:8px;font-weight:600;border:1px solid var(--bord2);color:var(--muted)}
-  .tp.done{background:var(--green-d);color:var(--green-b);border-color:rgba(34,197,94,.25)}
-  .tp.next{border-color:var(--accent);color:var(--accent)}
-
-  /* EVENTS (flat, no card) */
-  .ei{display:flex;align-items:flex-start;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s}
-  .ei:hover{background:rgba(255,255,255,0.025)}
-  .eic{font-size:11px;flex-shrink:0;margin-top:1px}
-  .ec{flex:1;min-width:0}
-  .et{display:flex;align-items:center;justify-content:space-between;gap:6px}
-  .en{font-weight:600;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
-  .etm{font-size:8px;color:var(--muted);white-space:nowrap}
-  .ed{font-size:9px;color:var(--muted);margin-top:1px}
-  .eg{font-size:10px;font-weight:700;color:var(--green-b)}
-  .eg.stop{color:var(--red-b)}
-
-  /* EMPTY */
-  .emp{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px;color:var(--muted);padding:16px;text-align:center}
-  .emp-ic{font-size:18px;opacity:.25}
-  .emp-tx{font-size:10px}
-  .emp-sb{font-size:9px;opacity:.5;margin-top:1px}
-
-  /* CONNECTION BAR */
-  .conn-bar{display:none;align-items:center;justify-content:center;gap:6px;padding:5px 8px;background:rgba(234,179,8,.06);border-bottom:1px solid rgba(234,179,8,.15);font-size:10px;color:var(--yellow-b)}
-  .conn-bar.show{display:flex}
-
-  /* TOAST */
-  .toast{position:fixed;bottom:14px;right:14px;padding:7px 12px;background:var(--bg2);border:1px solid var(--bord2);border-radius:var(--r);font-size:11px;color:var(--text);z-index:999;opacity:0;transform:translateY(6px);transition:all .2s;pointer-events:none}
-  .toast.show{opacity:1;transform:translateY(0)}
-
-  /* SEMUA INTER — konsisten di seluruh dashboard */
-  * {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-</style>
-</head>
-<body>
-
-<!-- CONNECTION WARNING BAR -->
-<div class="conn-bar" id="connBar">
-  <span>⚠️</span>
-  <span id="connMsg">Mengambil data dari GitHub...</span>
-  <span style="color:var(--muted);font-size:11px">Pastikan file JSON sudah di-push ke GitHub</span>
-</div>
-
-<!-- live dot hidden, still needed for setStatus -->
-<div id="liveDot" style="display:none"></div>
-
-<!-- STATS — align persis sama 3 kolom panel di bawah -->
-<div style="display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--border);background:var(--bg2);height:30px;overflow:hidden">
-
-  <!-- Kolom 1: STATS + WR + GAIN -->
-  <div style="display:flex;align-items:center;gap:8px;padding:0 10px;border-right:1px solid var(--border);overflow:hidden">
-    <span style="font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;font-weight:600;flex-shrink:0">STATS</span>
-    <span style="font-size:9px;color:var(--green-b);font-weight:600;flex-shrink:0">WR <span id="avgWR" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
-    <span style="font-size:9px;color:var(--green-b);font-weight:600;flex-shrink:0">GAIN <span id="avgGain" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
-  </div>
-
-  <!-- Kolom 2: MODE + Swing/Signal/Mig -->
-  <div style="display:flex;align-items:center;gap:8px;padding:0 10px;border-right:1px solid var(--border);overflow:hidden">
-    <span style="font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;font-weight:600;flex-shrink:0">MODE</span>
-    <div id="winRateMode" style="display:flex;align-items:center;gap:5px;overflow:hidden;flex:1">
-      <span style="font-size:9px;color:var(--muted)">—</span>
-    </div>
-  </div>
-
-  <!-- Kolom 3: LOSS + HIT -->
-  <div style="display:flex;align-items:center;gap:8px;padding:0 10px;overflow:hidden">
-    <span style="font-size:9px;color:var(--red-b);font-weight:600;flex-shrink:0">LOSS <span id="avgLoss" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
-    <span style="font-size:9px;color:var(--muted);font-weight:600;flex-shrink:0">HIT <span id="hitRateBar" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
-  </div>
-
-</div>
-
-<!-- PANELS -->
-<div class="main">
-
-  <!-- KOL 1: Entry Area -->
-  <div class="panel">
-    <div class="ph">
-      <div class="pt"><div class="dot dp"></div>Entry Area</div>
-      <div style="display:flex;align-items:center;gap:5px">
-        <span id="stE" style="font-size:11px;font-weight:700;color:var(--purple)">—</span>
-        <div class="cnt p" id="cE">0</div>
-      </div>
-    </div>
-    <div class="pb" id="lE">
-      <div class="emp"><div class="emp-ic">📍</div><div class="emp-tx">Menunggu data...</div></div>
-    </div>
-  </div>
-
-  <!-- KOL 2: Target Tercapai -->
-  <div class="panel">
-    <div class="ph">
-      <div class="pt"><div class="dot dg"></div>Target Tercapai</div>
-      <div style="display:flex;align-items:center;gap:5px">
-        <span id="stT" style="font-size:11px;font-weight:700;color:var(--green-b)">—</span>
-        <div class="cnt g" id="cT">0</div>
-      </div>
-    </div>
-    <div class="pb" id="lT">
-      <div class="emp"><div class="emp-ic">✅</div><div class="emp-tx">Menunggu data...</div></div>
-    </div>
-  </div>
-
-  <!-- KOL 3: Stop Track -->
-  <div class="panel">
-    <div class="ph">
-      <div class="pt"><div class="dot dr"></div>Stop Track</div>
-      <div style="display:flex;align-items:center;gap:5px">
-        <span style="font-size:9px;color:var(--muted)">💀<span id="stSN">0</span>·📉<span id="stSW">0</span></span>
-        <span id="stS" style="font-size:11px;font-weight:700;color:var(--red-b)">—</span>
-        <div class="cnt r" id="cS">0</div>
-      </div>
-    </div>
-    <div class="pb" id="lS">
-      <div class="emp"><div class="emp-ic">🗑️</div><div class="emp-tx">Menunggu data...</div></div>
-    </div>
-  </div>
-
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-// ─── CONFIG — GANTI SESUAI REPO LO ──────────────────
-const GITHUB_USER   = 'TrymeReal';
-const GITHUB_REPO   = '-auto-screen';
-const GITHUB_BRANCH = 'main';
-const POLL_INTERVAL = 30000; // refresh tiap 30 detik
+const SEEN    = new Map();
+const TRACKED = new Map();
 const TARGETS = [30, 50, 100, 200, 500];
-// ────────────────────────────────────────────────────
+let startTime = Date.now();
+let totalNotified = 0;
 
-// Tambah ?t= biar bypass CDN cache GitHub
-function rawURL(file) {
-  return `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${file}?t=${Date.now()}`;
-}
-
-let pollTimer = null;
-let reconnectDelay = 5000;
-
-// ─── TOAST ──────────────────────────────────────────
-function toast(msg, dur) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), dur || 2500);
-}
-
-// ─── FORMAT HELPERS ──────────────────────────────────
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
 function fmt(n) {
-  n = Number(n);
   if (!n || isNaN(n)) return '0';
-  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
-  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
-  return n.toFixed(2);
+  if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+  if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
+  return Number(n).toFixed(2);
+}
+
+function fmtPrice(n) {
+  var v = Number(n);
+  if (!v || isNaN(v)) return '0';
+  if (v >= 1000)     return (v / 1000).toFixed(2) + 'K';
+  if (v >= 1)        return v.toFixed(4);
+  if (v >= 0.0001)   return v.toFixed(6);
+  if (v >= 0.000001) return v.toFixed(8);
+  return v.toFixed(10);
+}
+
+function timeNow() {
+  return new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+}
+
+function log(msg) {
+  const line = '[' + timeNow() + '] ' + msg;
+  console.log(line);
+  fs.appendFileSync(LOG_FILE, line + '\n');
 }
 
 function timeAgo(ts) {
   if (!ts) return '?';
-  const ms = ts > 1e12 ? ts : ts * 1000;
-  const m = Math.floor((Date.now() - ms) / 60000);
-  if (m < 1) return 'Baru';
-  if (m < 60) return m + 'm';
-  const h = Math.floor(m / 60);
-  if (h < 24) return h + 'j';
-  return Math.floor(h/24) + 'h';
+  const diff = Date.now() - ts * 1000;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return 'Baru saja';
+  if (mins < 60) return mins + 'm';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return hrs + 'j';
+  return Math.floor(hrs / 24) + 'd';
 }
 
-function modeLabel(mode) {
-  if (!mode) return '?';
-  if (mode === 'SWING') return '🔄 Swing';
-  if (mode === 'SIGNAL') return '⚡ Signal';
-  return '🆕 Mig';
+function tokenAgeHours(ts) {
+  if (!ts) return 0;
+  return (Date.now() - ts * 1000) / 3600000;
 }
 
-function gradeClass(g) {
-  if (g === 'GOLD') return 'gold';
-  if (g === 'POTENSIAL' || g === 'POT') return 'pot';
-  if (g === 'SIGNAL') return 'sig';
-  return 'oth';
+// ─────────────────────────────────────────────
+//  PERSISTENCE
+// ─────────────────────────────────────────────
+function loadSeen() {
+  try {
+    const data = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8'));
+    for (const [ca, entry] of Object.entries(data.entries || {})) SEEN.set(ca, entry);
+    log('Loaded ' + SEEN.size + ' seen tokens');
+  } catch { log('No existing seen.json, starting fresh'); }
 }
 
-function gradeBadge(g) {
-  const map = { GOLD:'gGOLD', POTENSIAL:'gPOT', SKIP:'gSKIP', SIGNAL:'gSIG', SEEN:'gSEEN', POT:'gPOT' };
-  const cls = map[g] || 'gSKIP';
-  const lbl = g === 'POTENSIAL' ? 'POT' : (g || '?');
-  return `<span class="gb ${cls}">${lbl}</span>`;
+function saveSeen() {
+  try {
+    fs.writeFileSync(SEEN_FILE, JSON.stringify({
+      version: 2, savedAt: Date.now(), entries: Object.fromEntries(SEEN),
+    }));
+  } catch (e) { log('Failed to save seen.json: ' + e.message); }
 }
 
-function targetPills(nextIdx) {
-  return TARGETS.map((t, i) => {
-    let c = 'tp';
-    if (i < nextIdx) c += ' done';
-    else if (i === nextIdx) c += ' next';
-    return `<span class="${c}">${i < nextIdx ? '✓ ' : ''}+${t}%</span>`;
-  }).join('');
-}
-
-// ─── RENDER ──────────────────────────────────────────
-function renderWaiting(seen, positions) {
-  const el = document.getElementById('lW');
-  if (!seen) { el.innerHTML = emptyHTML('🔍','seen.json tidak ditemukan di GitHub'); return; }
-
-  const entries = seen.entries || {};
-  const trackedSet = new Set(Object.keys((positions?.entries) || {}));
-  const waiting = Object.entries(entries)
-    .filter(([ca]) => !trackedSet.has(ca))
-    .sort((a,b) => (b[1].seenAt||b[1].firstSeen||0) - (a[1].seenAt||a[1].firstSeen||0))
-    .slice(0, 100);
-
-  document.getElementById('cW').textContent = waiting.length;
-  document.getElementById('stW').textContent = waiting.length;
-
-  if (!waiting.length) { el.innerHTML = emptyHTML('🔍','Tidak ada token waiting','Semua token sudah masuk posisi'); return; }
-
-  el.innerHTML = waiting.map(([ca, e]) => `
-    <div class="tc oth" onclick="openDex('${ca}')" title="Klik untuk buka di DexScreener">
-      <div class="ct">
-        <div>
-          <div class="tn" style="font-size:11px;font-family:monospace;letter-spacing:.3px">${ca.slice(0,8)}…${ca.slice(-6)} <span onclick="event.stopPropagation();copyCA('${ca}')" title="Copy CA" style="cursor:pointer;color:var(--muted)">📋</span></div>
-          <div class="ts">${modeLabel(e.mode)} · ${timeAgo(e.seenAt||e.firstSeen)}</div>
-        </div>
-        ${e.lockedReason ? gradeBadge('SKIP') : gradeBadge('SEEN')}
-      </div>
-      ${e.lockedReason ? `<div style="font-size:9px;color:var(--red);margin-top:1px">Lock: ${e.lockedReason}</div>` : ''}
-    </div>`).join('');
-}
-
-function renderEntry(positions) {
-  const el = document.getElementById('lE');
-  if (!positions) { el.innerHTML = emptyHTML('📍','positions.json tidak ditemukan di GitHub'); return; }
-
-  const entries = Object.entries(positions.entries || {})
-    .sort((a,b) => (b[1].entryAt||0)-(a[1].entryAt||0));
-
-  document.getElementById('cE').textContent = entries.length;
-  document.getElementById('stE').textContent = entries.length;
-
-  if (!entries.length) { el.innerHTML = emptyHTML('📍','Tidak ada posisi aktif','Semua token selesai di-track'); return; }
-
-  el.innerHTML = entries.map(([ca, p]) => {
-    const done = p.nextTargetIdx || 0;
-    return `
-      <div class="tc ${gradeClass(p.grade)}" onclick="openDex('${ca}')" title="Buka DexScreener">
-        <div class="ct">
-          <div>
-            <div class="tn">${p.name || p.symbol || '—'}</div>
-            <div class="ts">${p.symbol || ''} · ${modeLabel(p.mode)} · ${timeAgo(p.entryAt)}</div>
-          </div>
-          ${gradeBadge(p.grade)}
-        </div>
-        <div class="cm">
-          <div><div class="ml">Entry</div><div class="mv">$${p.entryPrice ? Number(p.entryPrice).toFixed(8) : '?'}</div></div>
-          <div><div class="ml">Target</div><div class="mv ${done>0?'g':''}">${done}/${TARGETS.length} done</div></div>
-          <div><div class="ml">Thread</div><div class="mv">${p.mode||'?'}</div></div>
-        </div>
-        <div class="tbar">${targetPills(done)}</div>
-      </div>`;
-  }).join('');
-}
-
-function buildAddressMap(tracking, positions) {
-  const map = {};
-  // Dari tracking log: event yang punya address (event baru)
-  (Array.isArray(tracking) ? tracking : []).forEach(e => {
-    if (e.msgId && e.address) map[e.msgId] = e.address;
-  });
-  // Dari positions.json: key adalah CA, value punya msgId
-  const posEntries = Object.entries((positions && positions.entries) || {});
-  posEntries.forEach(([ca, p]) => {
-    if (p.msgId && !map[p.msgId]) map[p.msgId] = ca;
-  });
-  return map;
-}
-
-function renderTarget(tracking, positions) {
-  const el = document.getElementById('lT');
-  if (!tracking) { el.innerHTML = emptyHTML('✅','tracking_log.json tidak ditemukan di GitHub'); return; }
-
-  const addrMap = buildAddressMap(tracking, positions);
-
-  const events = (Array.isArray(tracking) ? tracking : [])
-    .filter(e => e.type === 'TERCAPAI')
-    .sort((a,b) => (b.time||0)-(a.time||0));
-
-  document.getElementById('cT').textContent = events.length;
-  document.getElementById('stT').textContent = events.length;
-
-  if (!events.length) { el.innerHTML = emptyHTML('✅','Belum ada target tercapai','Terus pantau posisimu'); return; }
-
-  el.innerHTML = events.map(e => {
-    const ca  = e.address || addrMap[e.msgId] || '';
-    const ico = e.target >= 100 ? '🚀' : e.target >= 50 ? '📈' : '⬆️';
-    const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
-    return `
-      <div class="ei" onclick="openDex('${ca}','${e.symbol||''}')" style="cursor:pointer">
-        <div class="ec">
-          <div class="et">
-            <div class="en">${e.name||e.symbol||'Token'} ${ico}</div>
-            <div class="etm">${timeAgo(e.time)}</div>
-          </div>
-          <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
-          <div style="margin-top:3px;display:flex;gap:5px;align-items:center">
-            ${gradeBadge(e.grade)}
-            <span class="eg">+${e.target}% Tercapai!</span>
-            ${gain ? `<span style="font-size:10px;color:var(--muted)">${gain}</span>` : ''}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function renderStop(tracking, positions) {
-  const el = document.getElementById('lS');
-  if (!tracking) { el.innerHTML = emptyHTML('🗑️','tracking_log.json tidak ditemukan di GitHub'); return; }
-
-  const addrMap = buildAddressMap(tracking, positions);
-
-  const events = (Array.isArray(tracking) ? tracking : [])
-    .filter(e => e.type === 'STOP_TRACK' || e.type === 'STOP_TRACK_WAS_PROFIT')
-    .sort((a,b) => (b.time||0)-(a.time||0));
-
-  const countNoProfit = events.filter(e => e.type === 'STOP_TRACK').length;
-  const countWasProfit = events.filter(e => e.type === 'STOP_TRACK_WAS_PROFIT').length;
-  document.getElementById('cS').textContent = events.length;
-  document.getElementById('stS').textContent = events.length;
-  document.getElementById('stSN').textContent = countNoProfit;
-  document.getElementById('stSW').textContent = countWasProfit;
-
-  if (!events.length) { el.innerHTML = emptyHTML('🗑️','Tidak ada stop track','Bagus! Belum ada yang drop >80%'); return; }
-
-  el.innerHTML = events.map(e => {
-    const ca        = e.address || addrMap[e.msgId] || '';
-    const wasProfit = e.type === 'STOP_TRACK_WAS_PROFIT';
-    const ico       = wasProfit ? '📉' : '💀';
-    const label     = wasProfit ? 'Was Profit' : 'Stop Track';
-    const labelClr  = wasProfit ? 'var(--yellow-b)' : 'var(--red-b)';
-    const gain      = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
-    return `
-      <div class="ei" onclick="openDex('${ca}','${e.symbol||''}')" style="cursor:pointer">
-        <div class="ec">
-          <div class="et">
-            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span> ${ico}</div>
-            <div class="etm">${timeAgo(e.time)}</div>
-          </div>
-          <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
-          <div style="margin-top:3px;display:flex;gap:5px;align-items:center">
-            ${gradeBadge(e.grade)}
-            <span class="eg stop" style="color:${labelClr}">${label} ${gain}</span>
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function renderAvg(tracking) {
-  const events = Array.isArray(tracking) ? tracking : [];
-
-  // Build token map — key = address || msgId (biar ga double count)
-  const tokenMap = {};
-  events.forEach(e => {
-    const key = e.address || e.msgId;
-    if (!key) return;
-    if (!tokenMap[key]) tokenMap[key] = { tercapaiEvents: [], stopEvent: null, mode: e.mode || '?' };
-    if (e.type === 'TERCAPAI') tokenMap[key].tercapaiEvents.push(e);
-    else if (e.type === 'STOP_TRACK' || e.type === 'STOP_TRACK_WAS_PROFIT') tokenMap[key].stopEvent = e;
-    if (e.mode) tokenMap[key].mode = e.mode;
-  });
-
-  const allTokens = Object.values(tokenMap);
-  const closedTokens = allTokens.filter(t => t.stopEvent !== null || t.tercapaiEvents.length > 0);
-
-  // WIN = pernah hit target minimal 1x
-  const winTokens  = closedTokens.filter(t => t.tercapaiEvents.length > 0);
-  // LOSS = murni STOP_TRACK, tidak pernah profit
-  const lossTokens = closedTokens.filter(t => t.tercapaiEvents.length === 0 && t.stopEvent?.type === 'STOP_TRACK');
-  const totalUnique = winTokens.length + lossTokens.length;
-
-  // ── Win Rate global ──
-  const winRate = totalUnique > 0 ? ((winTokens.length / totalUnique) * 100).toFixed(1) : null;
-
-  // ── Avg Gain (max gain per win token) ──
-  const gains = winTokens.map(t => {
-    const g = t.tercapaiEvents.map(e => Number(e.gain)).filter(n => !isNaN(n));
-    return g.length > 0 ? Math.max(...g) : NaN;
-  }).filter(n => !isNaN(n));
-  const avgGain = gains.length > 0 ? (gains.reduce((a,b)=>a+b,0)/gains.length).toFixed(1) : null;
-
-  // ── Avg Loss (pure stop track) ──
-  const losses = lossTokens.map(t => Number(t.stopEvent.gain)).filter(n => !isNaN(n));
-  const avgLoss = losses.length > 0 ? (losses.reduce((a,b)=>a+b,0)/losses.length).toFixed(1) : null;
-
-  // ── HIT RATE AVG ──
-  const hitRateBar = document.getElementById('hitRateBar');
-  if (closedTokens.length > 0) {
-    const totalHits = TARGETS.reduce((sum, t) => {
-      return sum + closedTokens.filter(tok =>
-        tok.tercapaiEvents.some(e => Number(e.target) >= t)
-      ).length;
-    }, 0);
-    const avgHit = ((totalHits / (TARGETS.length * closedTokens.length)) * 100).toFixed(0);
-    hitRateBar.textContent = avgHit + '%';
-  } else {
-    hitRateBar.textContent = '—';
+function cleanupSeen() {
+  const cutoff = Date.now() - CFG.seenCleanupDays * 86400000;
+  let deleted = 0;
+  for (const [ca, entry] of SEEN) {
+    if (entry.firstSeen < cutoff) { SEEN.delete(ca); deleted++; }
   }
-
-  // ── WIN RATE PER MODE ──
-  const modes = ['SWING','SIGNAL','MIGRATION'];
-  const modeLabels = { SWING:'Swing', SIGNAL:'Signal', MIGRATION:'Mig' };
-  const winRateModeEl = document.getElementById('winRateMode');
-  const modePills = modes.map(m => {
-    const mTokens = closedTokens.filter(t => (t.mode||'').toUpperCase() === m || (t.mode||'').toUpperCase().includes(m.slice(0,3)));
-    const mWin    = mTokens.filter(t => t.tercapaiEvents.length > 0).length;
-    const mLoss   = mTokens.filter(t => t.tercapaiEvents.length === 0 && t.stopEvent?.type === 'STOP_TRACK').length;
-    const mTotal  = mWin + mLoss;
-    if (mTotal === 0) return '';
-    const mPct = ((mWin / mTotal) * 100).toFixed(0);
-    const col  = mPct >= 60 ? 'var(--green-b)' : mPct >= 40 ? 'var(--yellow-b)' : 'var(--red-b)';
-    const labelCol = m === 'SWING' ? 'var(--blue)' : m === 'SIGNAL' ? 'var(--purple)' : 'var(--yellow-b)';
-    return `<span style="font-size:9px;font-family:'Inter',-apple-system,sans-serif;white-space:nowrap;font-weight:600;color:${labelCol}">${modeLabels[m]} <span style="color:var(--text);font-weight:700">${mPct}%</span><span style="font-size:8px;color:var(--muted);font-weight:400"> (${mTotal})</span></span>`;
-  }).filter(Boolean).join('<span style="color:var(--border);margin:0 3px">·</span>');
-  winRateModeEl.innerHTML = modePills || '<span style="font-size:10px;color:var(--muted);font-family:\'Inter\',-apple-system,sans-serif">—</span>';
-
-  // ── Update DOM ──
-  document.getElementById('avgWR').textContent   = winRate  !== null ? winRate  + '%'      : '—';
-  document.getElementById('avgGain').textContent = avgGain  !== null ? '+' + avgGain + '%' : '—';
-  document.getElementById('avgLoss').textContent = avgLoss  !== null ? avgLoss  + '%'      : '—';
-  const totalClosedEl = document.getElementById('totalClosed');
-  if (totalClosedEl) totalClosedEl.textContent = totalUnique || '—';
+  if (deleted > 0) { log('Cleaned up ' + deleted + ' old entries'); saveSeen(); }
 }
 
-function emptyHTML(ic, tx, sub) {
-  return `<div class="emp"><div class="emp-ic">${ic}</div><div class="emp-tx">${tx}</div>${sub?`<div class="emp-sb">${sub}</div>`:''}</div>`;
+function logTrackingEvent(event) {
+  try {
+    const data = [];
+    try { data.push(...JSON.parse(fs.readFileSync(TRACKING_LOG, 'utf8'))); } catch {}
+    data.push({ ...event, time: Date.now() });
+    fs.writeFileSync(TRACKING_LOG, JSON.stringify(data));
+  } catch {}
 }
 
-function renderAll(data) {
-  renderEntry(data.positions);
-  renderTarget(data.tracking, data.positions);
-  renderStop(data.tracking, data.positions);
-  renderAvg(data.tracking);
-  // upd element removed
+function loadPositions() {
+  try {
+    const data = JSON.parse(fs.readFileSync(POSITIONS_FILE, 'utf8'));
+    for (const [ca, entry] of Object.entries(data.entries || {})) TRACKED.set(ca, entry);
+    log('Loaded ' + TRACKED.size + ' tracked positions');
+  } catch { log('No existing positions.json, starting fresh'); }
 }
 
-// ─── CONNECTION STATUS ───────────────────────────────
-function setStatus(state) {
-  const dot = document.getElementById('liveDot');
-  const bar = document.getElementById('connBar');
-  dot.className = 'live-dot ' + (state === 'live' ? '' : state === 'connecting' ? 'connecting' : 'off');
-  if (state === 'live')       { bar.classList.remove('show'); }
-  if (state === 'connecting') { bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Mengambil data dari GitHub...'; }
-  if (state === 'error')      { bar.classList.add('show'); document.getElementById('connMsg').textContent = 'Gagal fetch GitHub — cek koneksi atau pastikan JSON sudah di-push'; }
+function savePositions() {
+  try {
+    fs.writeFileSync(POSITIONS_FILE, JSON.stringify({
+      version: 1, savedAt: Date.now(), entries: Object.fromEntries(TRACKED),
+    }));
+  } catch (e) { log('Failed to save positions.json: ' + e.message); }
 }
 
-// ─── FETCH DATA DARI GITHUB ──────────────────────────
-async function fetchData() {
-  const results = await Promise.allSettled([
-    fetch(rawURL('positions.json')),
-    fetch(rawURL('tracking_log.json')),
-  ]);
-
-  async function safeJSON(settled) {
+// ─────────────────────────────────────────────
+//  AUTO PUSH JSON KE GITHUB
+// ─────────────────────────────────────────────
+async function pushFileToGitHub(filename, content) {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+  if (!token) return;
+  const encoded = Buffer.from(content).toString('base64');
+  const url = `https://api.github.com/repos/TrymeReal/-auto-screen/contents/${filename}`;
+  try {
+    // Cek SHA file yang ada (diperlukan untuk update)
+    let sha = null;
     try {
-      if (settled.status !== 'fulfilled' || !settled.value.ok) return null;
-      return await settled.value.json();
-    } catch { return null; }
-  }
-
-  const [positions, tracking] = await Promise.all(results.map(safeJSON));
-
-  if (!positions && !tracking) throw new Error('Semua file JSON tidak ditemukan di GitHub');
-
-  return { positions, tracking, ts: Date.now() };
-}
-
-// ─── POLL LOOP ───────────────────────────────────────
-async function refresh() {
-  try {
-    setStatus('connecting');
-    const data = await fetchData();
-    renderAll(data);
-    setStatus('live');
-    reconnectDelay = 5000;
-  } catch (err) {
-    console.error('[AutoScreen] Fetch error:', err.message);
-    setStatus('error');
-    // upd element removed
-    reconnectDelay = Math.min(reconnectDelay * 1.5, 60000);
+      const res = await axios.get(url, { headers: { Authorization: `token ${token}` }, timeout: 5000 });
+      sha = res.data.sha;
+    } catch {}
+    await axios.put(url, {
+      message: 'chore: update data [skip ci]',
+      content: encoded,
+      ...(sha ? { sha } : {}),
+    }, { headers: { Authorization: `token ${token}` }, timeout: 10000 });
+    log('[GitHub] ' + filename + ' pushed');
+  } catch (e) {
+    log('[GitHub] Failed to push ' + filename + ': ' + (e.response?.data?.message || e.message));
   }
 }
 
-async function manualRefresh() {
-  clearInterval(pollTimer);
-  await refresh();
-  if (document.getElementById('liveDot').classList.contains('off')) {
-    toast('❌ Gagal ambil data dari GitHub');
-  } else {
-    toast('✓ Data diperbarui dari GitHub');
+async function pushJSONToGitHub() {
+  log('[GitHub] Pushing JSON files...');
+  const files = [
+    { name: 'seen.json', path: SEEN_FILE },
+    { name: 'positions.json', path: POSITIONS_FILE },
+    { name: 'tracking_log.json', path: TRACKING_LOG },
+  ];
+  for (const f of files) {
+    try {
+      const content = fs.readFileSync(f.path, 'utf8');
+      await pushFileToGitHub(f.name, content);
+    } catch { log('[GitHub] ' + f.name + ' not found, skip'); }
   }
-  pollTimer = setInterval(refresh, POLL_INTERVAL);
 }
 
-function copyCA(ca) {
-  navigator.clipboard?.writeText(ca).then(() => toast('✓ CA di-copy!'));
-}
-
-async function openDex(ca, symbol) {
-  // Kalau CA ada, langsung ke halaman token-nya — paling akurat.
-  if (ca) {
-    window.open('https://dexscreener.com/solana/' + ca, '_blank');
-    return;
-  }
-  if (!symbol) { toast('⚠️ Gak ada CA maupun simbol buat token ini'); return; }
-
-  // Gak ada CA (biasanya token yang udah di-stop-track & kehapus dari positions.json).
-  // Buka tab kosong DULU (biar gak ke-block popup blocker karena ini async),
-  // baru kita isi setelah hasil search ketemu.
-  const tab = window.open('', '_blank');
-  if (tab) {
-    tab.document.write(
-      '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-      '<style>body{background:#0c0e13;color:#d1d5db;font-family:Inter,-apple-system,sans-serif;' +
-      'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:13px;' +
-      'gap:8px}.dot{width:5px;height:5px;border-radius:50%;background:#4f6ef7;animation:p 1s infinite}' +
-      '@keyframes p{0%,100%{opacity:1}50%{opacity:.3}}</style></head>' +
-      '<body><span class="dot"></span> Mencari "' + symbol + '" di Dexscreener (Solana)...</body></html>'
-    );
-    tab.document.close();
-  }
-
-  const fallbackURL = 'https://dexscreener.com/search?q=' + encodeURIComponent(symbol);
-  try {
-    const res = await fetch('https://api.dexscreener.com/latest/dex/search?q=' + encodeURIComponent(symbol));
-    if (!res.ok) throw new Error('search api error');
-    const data = await res.json();
-    const pairs = Array.isArray(data.pairs) ? data.pairs : [];
-
-    // Filter cuma chain Solana, biar gak kebanjiran token sama nama dari chain lain
-    const solanaPairs = pairs.filter(p => p.chainId === 'solana');
-    // Lebih prioritasin yang simbolnya exact match (case-insensitive), baru sortir by likuiditas tertinggi
-    const exact = solanaPairs.filter(p => (p.baseToken?.symbol||'').toLowerCase() === symbol.toLowerCase());
-    const pool = (exact.length ? exact : solanaPairs)
-      .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0));
-    const best = pool[0];
-
-    if (best && best.pairAddress) {
-      if (tab) tab.location = 'https://dexscreener.com/solana/' + best.pairAddress;
-      else window.open('https://dexscreener.com/solana/' + best.pairAddress, '_blank');
-    } else {
-      toast('🔎 Token "' + symbol + '" gak ketemu di Solana — coba search manual');
-      if (tab) tab.location = fallbackURL;
-      else window.open(fallbackURL, '_blank');
+// ─────────────────────────────────────────────
+//  NETWORK
+// ─────────────────────────────────────────────
+async function getWithRetry(url, opts, retries) {
+  const maxRetries = retries ?? 3;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await axios.get(url, { timeout: 10000, ...(opts || {}) });
+    } catch (e) {
+      if (i === maxRetries - 1) throw e;
+      await new Promise(r => setTimeout(r, (i + 1) * 1000));
     }
-  } catch (err) {
-    console.error('[openDex] search error:', err.message);
-    if (tab) tab.location = fallbackURL;
-    else window.open(fallbackURL, '_blank');
   }
 }
 
-// Start! Langsung fetch, lalu poll tiap 30 detik
-refresh();
-pollTimer = setInterval(refresh, POLL_INTERVAL);
-</script>
-</body>
-</html>
+function fetchGmgnTrending() {
+  try {
+    const out = execSync(
+      'npx gmgn-cli market trending --chain sol --interval 1h --limit 100 --raw',
+      { encoding: 'utf8', timeout: 30000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    const d = JSON.parse(out);
+    if (!d.data || !d.data.rank) return [];
+    log('GMGN trending: ' + d.data.rank.length + ' tokens');
+    return d.data.rank;
+  } catch (e) {
+    log('GMGN trending error: ' + e.message);
+    return [];
+  }
+}
+
+// Terima berbagai bentuk "ya": true, 1, "1", "true", "yes".
+function isTruthyFlag(v) {
+  return v === true || v === 1 || v === '1' || v === 'true' || v === 'yes';
+}
+
+// Normalisasi item trenches → nama field yang dipakai sisa kode (sama spt trending).
+// Trenches tak punya `price`/`market_cap` langsung; diturunkan dari market cap / supply.
+function normalizeTrench(t) {
+  const supply = Number(t.total_supply) || 0;
+  const mc     = Number(t.usd_market_cap) || 0;
+  return Object.assign({}, t, {
+    price:              supply > 0 ? mc / supply : 0,
+    market_cap:         mc,
+    creation_timestamp: t.created_timestamp,
+    volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
+    buys:               t.buys_24h,
+    sells:              t.sells_24h,
+    bundler_rate:       t.bundler_trader_amount_rate,
+    rug_ratio:          Number(t.rug_ratio) || 0,
+    suspected_insider_hold_rate: Number(t.suspected_insider_hold_rate) || 0,
+    renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
+    renounced_freeze_account: isTruthyFlag(t.renounced_freeze_account) ? 1 : 0,
+  });
+}
+
+// Sumber khusus New Migration: token yang sudah graduate ke DEX (`completed`).
+// CLI sudah unwrap `.data`, jadi kategori ada di root (d.completed).
+function fetchGmgnTrenches() {
+  try {
+    const args = [
+      'market trenches',
+      '--chain sol',
+      '--type completed',
+      '--limit 50',
+      '--min-smart-degen-count 1',
+      '--sort-by smart_degen_count',
+      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
+      '--min-liquidity ' + CFG.minLp,
+      '--raw',
+    ].join(' ');
+    const out = execSync('npx gmgn-cli ' + args, {
+      encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' },
+    });
+    const d = JSON.parse(out);
+    // Utamakan d.completed (CLI sudah unwrap). Fallback d.data.completed kalau masih terbungkus.
+    const root = (d && d.completed) ? d : (d && d.data) ? d.data : {};
+    const list = root.completed || [];
+    log('GMGN trenches completed: ' + list.length + ' tokens');
+    return list.map(normalizeTrench);
+  } catch (e) {
+    log('GMGN trenches error: ' + e.message);
+    return [];
+  }
+}
+
+function fetchTokenInfo(address) {
+  try {
+    const out = execSync(
+      'npx gmgn-cli token info --chain sol --address ' + address + ' --raw',
+      { encoding: 'utf8', timeout: 15000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    const d = JSON.parse(out);
+    return d;
+  } catch (e) {
+    log('Token info error ' + (address || '').slice(0, 8) + ': ' + e.message);
+    return null;
+  }
+}
+
+async function fetchPaidDex(address) {
+  try {
+    const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + address, { timeout: 8000 }, 2);
+    const pairs = res.data?.pairs;
+    if (!pairs || pairs.length === 0) return false;
+    var hasBoost = false;
+    for (var i = 0; i < pairs.length; i++) {
+      var p = pairs[i];
+      if (p.boosts && Number(p.boosts.active) > 0) { hasBoost = true; break; }
+      if (p.labels && Array.isArray(p.labels) && p.labels.length > 0) hasBoost = true;
+    }
+    return hasBoost;
+  } catch (e) {
+    log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
+    return false;
+  }
+}
+
+function getCreatorTokenCount(walletAddress) {
+  if (!walletAddress || walletAddress === '?' || walletAddress.length < 30) return 0;
+  try {
+    var out = execSync(
+      'npx gmgn-cli portfolio created-tokens --chain sol --wallet ' + walletAddress + ' --raw',
+      { encoding: 'utf8', timeout: 10000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    var data = JSON.parse(out);
+    var tokens = Array.isArray(data) ? data : (data.data || []);
+    return tokens.length;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function fetchGmgnSignal() {
+  try {
+    const out = execSync(
+      'npx gmgn-cli market signal --chain sol --signal-type 12 --raw',
+      { encoding: 'utf8', timeout: 30000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    const d = JSON.parse(out);
+    if (!Array.isArray(d) || d.length === 0) return [];
+    log('GMGN signal: ' + d.length + ' events');
+    return d;
+  } catch (e) {
+    log('GMGN signal error: ' + e.message);
+    return [];
+  }
+}
+
+function normalizeSignal(signals) {
+  var grouped = new Map();
+  for (var i = 0; i < signals.length; i++) {
+    var s = signals[i];
+    if (!s.token_address || !s.data) continue;
+    var existing = grouped.get(s.token_address);
+    if (!existing || s.trigger_at > existing.trigger_at) {
+      grouped.set(s.token_address, s);
+    }
+  }
+  var result = [];
+  for (var s of grouped.values()) {
+    var d = s.data;
+    var supply = Number(d.total_supply) || 0;
+    var mc = Number(s.market_cap) || Number(d.usd_market_cap) || 0;
+    result.push({
+      address:       d.address,
+      symbol:        d.symbol,
+      name:          d.name,
+      exchange:      d.exchange || '',
+      price:         supply > 0 ? mc / supply : 0,
+      market_cap:    mc,
+      liquidity:     Number(d.liquidity) || 0,
+      volume:        Number(d.volume_1h) || 0,
+      holder_count:  Number(d.holder_count) || 0,
+      top_10_holder_rate: Number(d.top_10_holder_rate) || 0,
+      rug_ratio:     Number(d.rug_ratio) || 0,
+      creator:       d.creator || '',
+      trigger_mc:    Number(s.trigger_mc) || 0,
+      trigger_at:    Number(s.trigger_at) || 0,
+      signal_times:  Number(s.signal_times) || 0,
+      smart_degen_wallets: d.smart_degen_wallets || [],
+      smart_degen_count: Number(d.smart_degen_count) || 0,
+      bot_degen_rate: Number(d.bot_degen_rate) || 0,
+      bot_degen_count: Number(d.bot_degen_count) || 0,
+      suspected_insider_hold_rate: Number(d.suspected_insider_hold_rate) || 0,
+      bundler_rate:  Number(d.bundler_trader_amount_rate) || 0,
+      sniper_count:  Number(d.sniper_count) || 0,
+      dev_team_hold_rate: Number(d.dev_team_hold_rate) || 0,
+      creator_created_count: Number(d.creator_created_count) || 0,
+    });
+  }
+  return result;
+}
+
+async function fetchGMGNKline(address, resolution, fromSec, toSec) {
+  try {
+    const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
+    const ts   = Math.floor(Date.now() / 1000);
+    const cid  = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
+    const url  = host + '/v1/market/token_kline?chain=sol&address=' + address
+               + '&resolution=' + resolution
+               + '&from=' + Math.floor(fromSec)
+               + '&to='   + Math.floor(toSec)
+               + '&timestamp=' + ts + '&client_id=' + cid;
+    const res  = await axios.get(url, {
+      headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
+      timeout: 10000,
+    });
+
+    // Dulu cuma coba res.data.list — kalau API-nya bungkus payload di level
+    // "data" (kayak endpoint trending: d.data.rank), .list bakal selalu
+    // undefined dan fungsi ini diam-diam balik null tanpa error sama sekali.
+    // Coba dua kemungkinan struktur sekaligus:
+    const list = res.data?.list ?? res.data?.data?.list ?? null;
+
+    if (!list || list.length < 3) {
+      log('[DEBUG KLINE] ' + address.slice(0, 8)
+        + ' — list: ' + (list ? list.length + ' candle' : 'null')
+        + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
+    }
+
+    return list;
+  } catch (e) {
+    log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
+    return null;
+  }
+}
+
+async function getRugCheck(ca, insiderThreshold) {
+  try {
+    const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
+    const d   = res.data;
+    const riskNames = (d.risks || []).map(r => {
+      const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
+      return lv + r.name;
+    });
+    let maxInsiderPct = 0;
+    const insThreshold = insiderThreshold || 10;
+    if (d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
+      d.insiderNetworks.forEach(net => {
+        const totalSupply = d.token?.supply ? Number(d.token.supply) : 0;
+        const pct = totalSupply > 0 ? (net.tokenAmount / totalSupply) * 100 : 0;
+        if (pct > maxInsiderPct) maxInsiderPct = pct;
+        if (pct >= insThreshold) {
+          riskNames.push('[DANGER] Insider Analysis: ' + Math.round(net.tokenAmount / 1e6) + 'M tokens ('
+            + pct.toFixed(0) + '% of supply) | ' + net.size + ' wallets');
+        }
+      });
+    }
+    return {
+      score:           d.score || 0,
+      scoreNormalised: d.score_normalised ?? -1,
+      risks:           riskNames.join(', '),
+      creator:         d.creator || d.owner || '?',
+      topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
+      topWarns:        riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, '')),
+      tokenType:       d.tokenType || '',
+      rugged:          d.rugged || false,
+      deployPlatform:  d.deployPlatform || '',
+      insiderPct:      maxInsiderPct,
+    };
+  } catch {
+    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
+             topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
+             insiderPct: 0 };
+  }
+}
+
+async function sendTelegram(msg, replyTo, threadId) {
+  try {
+    var resolvedThread = threadId !== undefined ? threadId : null;
+    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+    if (resolvedThread)  payload.message_thread_id  = resolvedThread;
+    if (replyTo)         payload.reply_to_message_id = replyTo;
+    var res = await axios.post(TG_API, payload, { timeout: 10000 });
+    return res.data.result?.message_id || null;
+  } catch (e) {
+    const desc = e.response?.data?.description || e.message;
+    log('TG error: ' + desc);
+    return null;
+  }
+}
+
+
+// ─────────────────────────────────────────────
+//  KLASIFIKASI & SCORING
+// ─────────────────────────────────────────────
+function isMigratedDex(t) {
+  return t.exchange && t.exchange !== 'pump';
+}
+
+function gradeToken(lp, vol, rugScore) {
+  let score = 0;
+  if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
+  if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
+  if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
+  if (score >= 80) return 'GOLD';
+  if (score >= 60) return 'POTENSIAL';
+  return 'SKIP';
+}
+
+function calculateScore(t, rug) {
+  var score = 0;
+  var lp  = t.liquidity || 0;
+  var vol = t.volume || 0;
+
+  if (lp > 100000) score += 20; else if (lp > 50000) score += 15;
+  else if (lp > 30000) score += 10; else if (lp > 15000) score += 5;
+
+  if (vol > 200000) score += 20; else if (vol > 100000) score += 15;
+  else if (vol > 50000) score += 10; else if (vol > 10000) score += 5;
+
+  var totalTxn = (t.buys || 0) + (t.sells || 0);
+  var buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 50;
+  if (buyRatio >= 65) score += 10; else if (buyRatio >= 55) score += 7; else if (buyRatio >= 45) score += 3;
+
+  var rs = rug.score || 999;
+  if (rs < 20) score += 15; else if (rs < 50) score += 10; else if (rs < 100) score += 5; else score -= 10;
+
+  if (t.renounced_mint === 1) score += 5;
+  if (t.renounced_freeze_account === 1) score += 5;
+
+  var burn = (t.burn_ratio || 0) * 100;
+  if (burn >= 50) score += 5; else if (burn >= 20) score += 3; else if (burn >= 5) score += 1;
+
+  var holders  = t.holder_count || 1;
+  var botRatio = (t.bot_degen_count || 0) / holders;
+  if (botRatio > 0.40) score -= 15; else if (botRatio > 0.25) score -= 10; else if (botRatio > 0.10) score -= 5;
+
+  var bundler = (t.bundler_rate || 0) * 100;
+  if (bundler > 30) score -= 10; else if (bundler > 20) score -= 7; else if (bundler > 10) score -= 3;
+
+  var creatorHold = (t.dev_team_hold_rate || 0) * 100;
+  if (creatorHold > 10) score -= 10; else if (creatorHold > 5) score -= 5;
+
+  var top10 = (t.top_10_holder_rate || 0) * 100;
+  if (top10 > 50) score -= 5; else if (top10 > 35) score -= 3;
+
+  var smart = t.smart_degen_count || 0;
+  if (smart >= 10) score += 5; else if (smart >= 5) score += 3; else if (smart >= 1) score += 1;
+
+  return Math.min(100, Math.max(0, score));
+}
+
+// ─────────────────────────────────────────────
+//  SWING 1D — ANALISA PRE-PUMP
+// ─────────────────────────────────────────────
+
+/**
+ * Ambil kline 1D (7 candle ke belakang) untuk analisa swing.
+ * Return null jika gagal atau data tidak cukup.
+ */
+async function fetchSwingKlines(address) {
+  await new Promise(r => setTimeout(r, 500));
+  const nowSec  = Math.floor(Date.now() / 1000);
+  const fromSec = nowSec - 7 * 86400; // 7 hari
+  return await fetchGMGNKline(address, '1d', fromSec, nowSec);
+}
+
+/**
+ * Cek apakah token memenuhi kriteria swing pre-pump.
+ * Return { pass: bool, reason: string, signals: [] }
+ */
+async function checkSwingSignal(t) {
+  const ageH      = tokenAgeHours(t.creation_timestamp);
+  const change1h  = Number(t.price_change_percent1h)  || 0;
+  const change24h = Number(t.price_change_percent24h) || 0;
+  const lp        = t.liquidity || 0;
+  const vol1h     = t.volume    || 0;
+  // Bedakan "data holder gak tersedia" (null) vs "beneran 0 holder" — sebelumnya
+  // dua-duanya numpuk jadi 0 dan gate holder jadi silently bypass tiap kali API
+  // gak ngirim field ini.
+  const holders   = (typeof t.holder_count === 'number') ? t.holder_count : null;
+
+  // — Gate 1: usia token —
+  if (ageH < CFG.swingMinAge)
+    return { pass: false, reason: 'Terlalu baru (' + ageH.toFixed(0) + 'j < ' + CFG.swingMinAge + 'j)' };
+  if (ageH > CFG.swingMaxAge)
+    return { pass: false, reason: 'Terlalu tua (' + Math.floor(ageH / 24) + 'h > ' + (CFG.swingMaxAge / 24) + 'h)' };
+
+  // — Gate 2: LP cukup untuk swing —
+  if (lp < CFG.swingMinLp)
+    return { pass: false, reason: 'LP terlalu kecil ($' + fmt(lp) + ')' };
+
+  // — Gate 3: Belum terlanjur pump —
+  if (change1h > CFG.swingMaxChange1h)
+    return { pass: false, reason: 'Sudah pump 1h +' + change1h.toFixed(1) + '% (FOMO)' };
+  if (change24h > CFG.swingMaxChange24h)
+    return { pass: false, reason: 'Sudah pump 24h +' + change24h.toFixed(1) + '% (terlambat)' };
+
+  // — Gate 4: Volume 1h minimal —
+  if (vol1h < CFG.swingMinVol1h)
+    return { pass: false, reason: 'Vol 1h terlalu kecil ($' + fmt(vol1h) + ')' };
+
+  // — Gate 5: Holder cukup (likuiditas sosial) —
+  if (holders !== null && holders < CFG.swingMinHolders)
+    return { pass: false, reason: 'Holder terlalu sedikit (' + holders + ')' };
+  if (holders === null)
+    log('[SWING] ' + (t.symbol || '?') + ': holder_count tidak tersedia dari API, gate holder di-skip');
+
+  // — Gate 6: Buy ratio minimal 50% —
+  const totalTxn = (t.buys || 0) + (t.sells || 0);
+  const buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 0;
+  if (totalTxn > 0 && buyRatio < 50)
+    return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy)' };
+
+  // — Analisa kline 1D untuk konfirmasi sinyal —
+  const signals = [];
+  const klines  = await fetchSwingKlines(t.address);
+
+  if (klines && klines.length >= 3) {
+    // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
+    // masing-masing array) — kalau satu candle datanya bolong di salah satu field,
+    // array jadi geser dan index gak nyambung lagi (closes[i] bisa beda hari sama
+    // volumes[i]). Sekarang digabung jadi satu objek per candle dulu, baru di-filter
+    // sebagai satu kesatuan, dan di-sort by time supaya gak asumsi urutan dari API
+    // (kalau API ternyata ngirim terbaru-duluan, sort ini yang nyelametin logikanya).
+    const candles = klines
+      .map(c => ({
+        time:   Number(c.time ?? c.timestamp ?? c.t ?? 0),
+        close:  Number(c.close),
+        high:   Number(c.high),
+        low:    Number(c.low),
+        volume: Number(c.volume) || 0,
+      }))
+      .filter(c => c.close > 0 && c.high > 0 && c.low > 0)
+      .sort((a, b) => a.time - b.time);
+
+    if (!candles.some(c => c.time > 0)) {
+      log('[SWING] WARNING ' + (t.symbol || '?') + ': kline gak ada field time, urutan candle gak bisa divalidasi — cek manual response GMGN kline');
+    }
+
+    if (candles.length < 3) {
+      log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
+      if (vol1h >= CFG.swingMinVol1h)
+        signals.push('Vol 1h cukup $' + fmt(vol1h));
+      if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
+        signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
+      if (change24h < 0)
+        signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+    } else {
+      const lastCandle = candles[candles.length - 1];
+      const prevCandle = candles[candles.length - 2];
+      const histVols   = candles.slice(0, -1).map(c => c.volume).filter(v => v > 0);
+      const avgVol      = histVols.length > 0 ? histVols.reduce((a, b) => a + b, 0) / histVols.length : 0;
+
+      // Candle hari ini biasanya belum closed (masih real-time) — volumenya cuma
+      // ngitung dari jam 00:00 sampai sekarang, bukan sehari penuh. Kalau gak
+      // dinormalisasi, hasilnya tergantung jam berapa script jalan: kepagian bisa
+      // ke-skip walau lagi beneran ada momentum, kemaleman bisa keliatan "spike"
+      // padahal cuma akumulasi volume semalaman.
+      const nowSec        = Math.floor(Date.now() / 1000);
+      const dayElapsedSec = lastCandle.time ? Math.max(nowSec - lastCandle.time, 0) : 86400;
+      const dayFraction   = Math.min(Math.max(dayElapsedSec / 86400, 0.1), 1); // floor 10% biar gak diekstrapolasi gila-gilaan pas hari baru mulai
+      const normLastVol   = lastCandle.volume / dayFraction;
+
+      const highs       = candles.map(c => c.high);
+      const lows         = candles.map(c => c.low);
+      const swingHigh   = Math.max(...highs);
+      const swingLow    = Math.min(...lows);
+      const priceRange  = swingHigh - swingLow;
+
+      // Sinyal 1 (GATE wajib, bukan opsional): Volume hari ini (ternormalisasi)
+      // harus spike vs rata-rata candle sebelumnya. Kalau gak ada spike, langsung
+      // gagal — jadi sinyal 2/3/4 di bawah itu cuma konfirmasi tambahan, bukan
+      // pengganti gate ini.
+      const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
+      if (volSpike < CFG.swingVolSpikeMin) {
+        return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x, hari baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
+      }
+      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+
+      // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
+      if (priceRange > 0) {
+        const posInRange = (lastCandle.close - swingLow) / priceRange; // 0=bawah, 1=atas
+        if (posInRange <= 0.45) {
+          signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
+        } else if (posInRange >= 0.80) {
+          // Sudah terlalu tinggi di range
+          signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
+        }
+      }
+
+      // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
+      if (lastCandle.close > prevCandle.close) {
+        signals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
+      }
+
+      // Sinyal 4: Konsolidasi — range harga gak lebih dari 80% dari low
+      if (swingLow > 0 && priceRange / swingLow < 0.80) {
+        signals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+      }
+    }
+
+  } else {
+    // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
+    log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
+    if (vol1h >= CFG.swingMinVol1h)
+      signals.push('Vol 1h cukup $' + fmt(vol1h));
+    if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
+      signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
+    if (change24h < 0)
+      signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+  }
+
+  // Minimal 1 sinyal positif harus ada
+  const positiveSignals = signals.filter(s => !s.startsWith('[WARN]'));
+  if (positiveSignals.length === 0)
+    return { pass: false, reason: 'Tidak ada sinyal pre-pump' };
+
+  return { pass: true, signals };
+}
+
+// ─────────────────────────────────────────────
+//  FIBONACCI
+// ─────────────────────────────────────────────
+async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
+  var p     = Number(price);
+  if (!p || p <= 0) p = 0.0001;
+  var floor = p * 0.1;
+
+  // Untuk swing: pakai kline 1D (7 candle), lebih akurat
+  const resolution = mode === 'SWING' ? '1d' : '1h';
+  const lookback   = mode === 'SWING' ? 7 * 86400 : 86400;
+
+  try {
+    const nowSec  = Math.floor(Date.now() / 1000);
+    const klines  = await fetchGMGNKline(address, resolution, nowSec - lookback, nowSec);
+    if (klines && klines.length >= 3) {
+      var highs      = klines.map(c => Number(c.high)).filter(v => v > 0);
+      var lows       = klines.map(c => Number(c.low)).filter(v => v > 0);
+      var swingHigh  = Math.max(...highs);
+      var swingLow   = Math.min(...lows);
+      if (swingHigh > swingLow) {
+        var range = swingHigh - swingLow;
+        log('Fib dari kline ' + resolution + ': H=' + swingHigh + ' L=' + swingLow);
+        return {
+          source: 'kline_' + resolution,
+          swingHigh, swingLow,
+          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+          fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
+          resist:  (swingHigh + range * 0.382).toFixed(10),
+          sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
+        };
+      }
+    }
+  } catch (e) { log('Kline fetch failed, fallback estimasi: ' + e.message); }
+
+  // Fallback estimasi
+  log('Fib fallback estimasi untuk ' + address);
+  var h, l, priceIsHigh;
+  if (athMc && mc && Number(athMc) > Number(mc)) {
+    var ratio = Math.min(Number(athMc) / Number(mc), 20);
+    h = p * ratio; l = p; priceIsHigh = false;
+  } else {
+    var ch = Number(changePct) || 0;
+    if (ch > 0)      { h = p; l = p / (1 + ch / 100); priceIsHigh = true; }
+    else if (ch < 0) { h = p / (1 + ch / 100); l = p; priceIsHigh = false; }
+    else             { h = p * 1.2; l = p * 0.8; priceIsHigh = false; }
+  }
+  var range = h - l;
+  if (range < p * 0.05) range = p * 0.1;
+  if (priceIsHigh) {
+    return {
+      source: 'estimasi',
+      swingHigh: h, swingLow: l,
+      support: Math.max(h - range * 0.500, floor).toFixed(10),
+      fair:    Math.max(h - range * 0.618, floor).toFixed(10),
+      resist:  (h + range * 0.382).toFixed(10),
+      sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
+    };
+  } else {
+    return {
+      source: 'estimasi',
+      swingHigh: h, swingLow: l,
+      support: Math.max(l - range * 0.272, floor).toFixed(10),
+      fair:    Math.max(l - range * 0.500, floor).toFixed(10),
+      resist:  (l + range * 0.382).toFixed(10),
+      sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
+    };
+  }
+}
+
+// ─────────────────────────────────────────────
+//  NARRATIVE DETECTION
+// ─────────────────────────────────────────────
+function detectNarrative(name, symbol) {
+  var s = ((name || '') + ' ' + (symbol || '')).toLowerCase();
+  var cat = [], tag = [];
+
+  var animalKws = {dog:'🐕',cat:'🐱',frog:'🐸',pepe:'🐸',horse:'🐴',bird:'🐦',fish:'🐟',
+    wolf:'🐺',bear:'🐻',bull:'🐂',dragon:'🐉',whale:'🐋',shark:'🦈',lion:'🦁',
+    tiger:'🐯',panda:'🐼',snake:'🐍',rabbit:'🐇',turtle:'🐢',duck:'🦆',seal:'🦭',
+    koala:'🐨',monkey:'🐵',gorilla:'🦍',hippo:'🦛',fox:'🦊',rat:'🐀',hamster:'🐹',
+    owl:'🦉',eagle:'🦅',penguin:'🐧'};
+  for (var kw in animalKws) { if (s.includes(kw)) { cat.push(animalKws[kw] + ' Animal'); tag.push(kw[0].toUpperCase() + kw.slice(1)); break; } }
+
+  var celebKws = ['trump','musk','elon','kanye','biden','obama','hawk','pnut','taylor','kamala','vance','melania','barron'];
+  for (var i = 0; i < celebKws.length; i++) { if (s.includes(celebKws[i])) { cat.push('🎭 Celebrity'); tag.push(celebKws[i][0].toUpperCase() + celebKws[i].slice(1)); break; } }
+
+  var aiKws = ['ai','gpt','claude','agent','neural','deep','grok','chatbot','llm','tokenai','bot','predict'];
+  for (var j = 0; j < aiKws.length; j++) { if (s.includes(aiKws[j]) && !cat.length) { cat.push('🤖 AI/Agent'); tag.push('AI'); break; } }
+
+  var gameKws = ['game','play','guild','raid','arena','legends','gaming','rpg','pixel'];
+  for (var k = 0; k < gameKws.length; k++) { if (s.includes(gameKws[k])) { cat.push('🎮 Gaming'); tag.push('Gaming'); break; } }
+
+  var defiKws = ['swap','lend','borrow','stake','yield','vault','farm','defi','liquid'];
+  for (var l = 0; l < defiKws.length; l++) { if (s.includes(defiKws[l])) { cat.push('🏛️ DeFi'); tag.push('DeFi'); break; } }
+
+  var cultureKws = ['degen','based','wagmi','ngmi','fren','ser','dao','moon','lambo','wen','gm','chad','soy','normie'];
+  for (var m = 0; m < cultureKws.length; m++) { if (s.includes(cultureKws[m]) && !cat.length) { cat.push('💎 Culture'); tag.push('Culture'); break; } }
+
+  var infraKws = ['bridge','oracle','layer','protocol','infra','cross','inter'];
+  for (var n = 0; n < infraKws.length; n++) { if (s.includes(infraKws[n])) { cat.push('🔧 Infra'); tag.push('Infra'); break; } }
+
+  if (!cat.length) {
+    var symDigits = (symbol || '').replace(/[^a-zA-Z]/g, '');
+    if (symDigits !== (symbol || '')) { cat.push('🔄 Copycat'); tag.push('Copycat'); }
+    else { cat.push('🔷 Meme'); tag.push('Meme'); }
+  }
+  return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
+}
+
+// ─────────────────────────────────────────────
+//  BUILD MESSAGE
+// ─────────────────────────────────────────────
+async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
+  var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
+  var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
+  var le = t.liquidity > 100000 ? '🟢' : t.liquidity > 50000 ? '🟡' : '🔵';
+
+  var ratio    = '?';
+  var totalTxn = (t.buys || 0) + (t.sells || 0);
+  if (totalTxn > 0) ratio = (t.buys / totalTxn * 100).toFixed(0) + '%';
+
+  var age   = timeAgo(t.creation_timestamp);
+  var chg1h = '';
+  if (t.price_change_percent1h != null) {
+    chg1h = t.price_change_percent1h > 0
+      ? ' 📈 +' + Number(t.price_change_percent1h).toFixed(1) + '%'
+      : ' 📉 '  + Number(t.price_change_percent1h).toFixed(1) + '%';
+  }
+  var chg24h = '';
+  if (t.price_change_percent24h != null) {
+    chg24h = t.price_change_percent24h > 0
+      ? ' (+' + Number(t.price_change_percent24h).toFixed(1) + '% 24h)'
+      : ' ('   + Number(t.price_change_percent24h).toFixed(1) + '% 24h)';
+  }
+
+  var linkParts = [];
+  if (t.twitter_username) linkParts.push('<a href="' + t.twitter_username + '">Twitter</a>');
+  if (t.website)          linkParts.push('<a href="' + t.website + '">Web</a>');
+  if (t.telegram)         linkParts.push('<a href="' + t.telegram + '">TG</a>');
+
+  var mi          = t.renounced_mint === 1 ? '✅' : '❌';
+  var fr          = t.renounced_freeze_account === 1 ? '✅' : '❌';
+  var hp          = t.is_honeypot === 1 ? '🚨' : '✅';
+  var burnPct     = ((t.burn_ratio || 0) * 100).toFixed(1);
+  var top10       = ((t.top_10_holder_rate || 0) * 100).toFixed(1);
+  var bundlerPct  = ((t.bundler_rate || 0) * 100).toFixed(1);
+  var snipers     = ((t.top70_sniper_hold_rate || 0) * 100).toFixed(1);
+  var creatorHold = ((t.dev_team_hold_rate || 0) * 100).toFixed(1);
+  var SEP         = '━━━━━━━━━━━━━━━━━━━━';
+
+  var nar        = detectNarrative(t.name, t.symbol);
+  var modeLabel  = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
+  var gradeEmoji = grade === 'GOLD' ? '🟢' : grade === 'POTENSIAL' ? '🟡' : '🔴';
+  var riskLabel  = grade === 'GOLD' ? 'Grade A' : grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+
+  var msg = '';
+  msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + modeLabel + ' | ' + nar.category + '\n';
+  msg += '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n';
+  msg += SEP + '\n';
+  msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
+  msg += ve + ' Vol 1h  : $' + fmt(t.volume) + '\n';
+
+  // Untuk swing: tampilkan Vol 24h juga jika tersedia
+  if (mode === 'SWING' && dex24h && dex24h.vol24h > 0)
+    msg += '📊 Vol 24h : $' + fmt(dex24h.vol24h) + '\n';
+
+  var rugLabel   = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
+  var riskLevel  = rug.scoreNormalised >= 0
+    ? (rug.scoreNormalised <= 30 ? 'Good' : rug.scoreNormalised <= 60 ? 'Warning' : 'Danger') : '';
+  msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
+  if (riskLevel) msg += ' | ' + riskLevel;
+  if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
+  if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
+  msg += '\n';
+  if (rug.topDangers.length > 0) msg += '🚨 Danger  : ' + rug.topDangers.join(' | ') + '\n';
+  if (rug.topWarns.length  > 0) msg += '⚠️ Warning : ' + rug.topWarns.join(' | ')  + '\n';
+  msg += '💰 Harga   : $' + fmtPrice(t.price) + chg1h + chg24h + '\n';
+  msg += '🔄 Buy/Sell: ' + (t.buys || 0) + '/' + (t.sells || 0) + ' (' + ratio + ' Buy)\n';
+  msg += '📊 MC      : $' + fmt(t.market_cap) + '\n';
+  if (dex24h && dex24h.dexName) msg += '🛡️ DEX     : ' + dex24h.dexName + '\n';
+  msg += '⏱️ Age     : ' + age + '\n';
+  msg += '👤 Creator : <code>' + rug.creator + '</code>\n';
+  if (linkParts.length) msg += '🔗 Links   : ' + linkParts.join(' | ') + '\n';
+  msg += SEP + '\n';
+
+  // Swing signals khusus
+  if (mode === 'SWING' && swingSignals && swingSignals.length > 0) {
+    msg += '📡 <b>Sinyal Pre-Pump:</b>\n';
+    swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
+    msg += SEP + '\n';
+  }
+
+  msg += '🛡️ GMGN:\n';
+  msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
+  msg += '🔍 Top10   : ' + top10 + '%\n';
+  msg += '🔗 Bundler : ' + bundlerPct + '%\n';
+  msg += '🤖 Bots    : ' + (t.bot_degen_count || 0) + '\n';
+  msg += '🎯 Snipers : ' + snipers + '%\n';
+  msg += '👤 Creator : ' + creatorHold + '%\n';
+  msg += '♻️ Burn    : ' + burnPct + '%\n';
+  // Mint/Freeze/Honeypot tidak ditampilkan: di sumber trenches field renounce
+  // selalu kosong (tampil ❌) → misleading. Patokan keamanan pakai RugCheck.
+  msg += '💎 Smart   : ' + (t.smart_degen_count || 0) + '\n';
+  msg += '🌟 KOL     : ' + (t.renowned_count || 0) + '\n';
+  msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
+  msg += SEP + '\n';
+
+  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
+  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
+  msg += '📊 Entry & Targets:\n';
+  msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
+  msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
+  msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
+  msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
+  msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
+  msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
+  msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
+
+  var dynScore = calculateScore(t, rug);
+  msg += 'Score: ' + dynScore + '/100\n';
+
+  // Auto-warnings
+  var warnings = [];
+  var currentPrice = Number(t.price);
+  var supportPrice = Number(f.support);
+  if (currentPrice > 0 && supportPrice > 0) {
+    var pctAbove = ((currentPrice - supportPrice) / supportPrice) * 100;
+    if (pctAbove > 100) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — sangat rawan FOMO, tunggu pullback');
+    else if (pctAbove > 50) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — rawan FOMO');
+  }
+  if (Number(creatorHold) > 5)  warnings.push('👤 Creator hold ' + creatorHold + '% — rawan dump');
+  if (Number(bundlerPct) > 20 && Number(top10) > 30) warnings.push('🔄 Bundler ' + bundlerPct + '% + Top10 ' + top10 + '% — rawan distribusi');
+  if (Number(snipers) > 10)     warnings.push('🎯 Snipers ' + snipers + '% — rawan sniper activity');
+  var holdCount = t.holder_count || 0;
+  if (holdCount > 0 && (t.bot_degen_count / holdCount) > 0.05)
+    warnings.push('🤖 Bots ' + (t.bot_degen_count / holdCount * 100).toFixed(1) + '% dari holders');
+  if (t.volume && t.volume < CFG.minVol * 2)
+    warnings.push('📊 Volume tipis ($' + fmt(t.volume) + ') — rawan manipulasi');
+  warnings.forEach(w => { msg += '⚠️ ' + w + '\n'; });
+
+  msg += SEP + '\n';
+  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Buka Chart</a>';
+  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '<code>' + t.address + '</code>';
+
+  return msg;
+}
+
+function buildSignalMsg(t) {
+  var SEP = '━━━━━━━━━━━━━━━━━━━━';
+  var re = (t.rug_ratio || 0) * 100 < 50 ? '✅' : '🚨';
+  var le = t.liquidity > 50000 ? '🟢' : t.liquidity > 10000 ? '🟡' : '🔵';
+  var smWallets = t.smart_degen_wallets || [];
+  var totalSol = smWallets.reduce(function(a, b) { return a + (b.buy_amount || 0); }, 0);
+  var avgSol = smWallets.length > 0 ? (totalSol / smWallets.length).toFixed(1) : '0';
+  var msg = '';
+  msg += '🔔 <b>SMART MONEY SIGNAL</b>\n';
+  msg += '<b>' + (t.name || t.symbol) + '</b> (<code>' + t.symbol + '</code>)\n';
+  msg += SEP + '\n';
+  msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
+  msg += '💎 SM Buy  : ' + smWallets.length + ' wallets (total ' + totalSol.toFixed(0) + ' SOL, rata2 ' + avgSol + ' SOL)\n';
+  msg += '📊 MC trig : $' + fmt(t.trigger_mc) + '\n';
+  msg += '📊 MC skrg : $' + fmt(t.market_cap) + '\n';
+  msg += re + ' Rug     : ' + Math.round((t.rug_ratio || 0) * 100) + '\n';
+  msg += '👥 Holders : ' + (t.holder_count || 0) + ' | 🤖 Bot ' + ((t.bot_degen_rate || 0) * 100).toFixed(0) + '%\n';
+  msg += '🔍 Top10   : ' + ((t.top_10_holder_rate || 0) * 100).toFixed(1) + '%\n';
+  msg += SEP + '\n';
+  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>';
+  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '<code>' + t.address + '</code>';
+  return msg;
+}
+
+// ─────────────────────────────────────────────
+//  MAIN PROCESSING LOOP
+// ─────────────────────────────────────────────
+async function processTokens() {
+  log('========== SCREENING ==========');
+  // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
+  var migrationTokens = fetchGmgnTrenches();
+  var swingTokens     = fetchGmgnTrending();
+
+  var newMigration = [];
+  var swingCandidates = [];
+
+  // — Klasifikasi New Migration (sumber: trenches completed) —
+  for (let i = 0; i < migrationTokens.length; i++) {
+    const t = migrationTokens[i];
+    if (!t.address) continue;
+    if (SEEN.has(t.address)) continue;          // belum pernah dilihat
+    if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
+    // umur < maxAgeHours sudah dijamin server (--max-created), cek lagi sbg pengaman
+    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
+    newMigration.push(t);
+  }
+
+  // — Klasifikasi Swing 1D (sumber: trending) —
+  for (let i = 0; i < swingTokens.length; i++) {
+    const t = swingTokens[i];
+    if (!t.address) continue;
+
+    const isDex = isMigratedDex(t);
+    const ageH  = tokenAgeHours(t.creation_timestamp);
+
+    if (!isDex) {
+      log('SKIP ' + (t.symbol || '?') + ' (still ' + (t.exchange || 'pump') + ')');
+      continue;
+    }
+
+    // Token yang sudah lebih tua (≥ swingMinAge), cek pre-pump signal.
+    if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
+      const seenEntry = SEEN.get(t.address);
+
+      // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
+      if (seenEntry && seenEntry.swingNotified) continue;
+
+      // Jika token pernah masuk SEEN sebelumnya, verifikasi usia SEEN juga sudah cukup.
+      if (seenEntry && seenEntry.seenAt) {
+        const seenAgeH = (Date.now() - seenEntry.seenAt) / 3600000;
+        if (seenAgeH < CFG.swingMinAge) {
+          log('SKIP [SWING] ' + (t.symbol || '?') + ' — sudah di SEEN tapi baru ' + seenAgeH.toFixed(1) + 'j (< ' + CFG.swingMinAge + 'j)');
+          continue;
+        }
+      }
+
+      swingCandidates.push(t);
+    }
+  }
+
+  // — Smart Money Signal (sumber: signal endpoint) —
+  var signalTokens = CFG.signalEnabled ? fetchGmgnSignal() : [];
+  var signalCandidates = normalizeSignal(signalTokens);
+  // Skip token yg udah pernah dilihat (dari mode manapun)
+  var uniqueSignal = [];
+  for (var i = 0; i < signalCandidates.length; i++) {
+    if (!SEEN.has(signalCandidates[i].address)) uniqueSignal.push(signalCandidates[i]);
+  }
+
+  log('New Migration candidates: ' + newMigration.length);
+  log('Swing 1D candidates: ' + swingCandidates.length);
+  log('Signal candidates: ' + uniqueSignal.length);
+
+  // — Proses New Migration V2 (6 base gates only) —
+  for (let i = 0; i < newMigration.length; i++) {
+    const t = newMigration[i];
+
+    // Fetch token info untuk data 5m/1h
+    log('[MIG] Fetch info ' + t.symbol + '...');
+    const tokenInfo = fetchTokenInfo(t.address);
+    if (!tokenInfo) {
+      log('SKIP [MIG] ' + t.symbol + ' (Gagal fetch token info)');
+      continue;
+    }
+
+    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m
+    var migCfg = {
+      minLp:        CFG.minLp,
+      maxAgeHours:  CFG.maxAgeHours,
+      minVol1h:     CFG.minVol1h,
+      minSwaps5m:   CFG.minSwaps5m,
+      minVol5m:     CFG.minVol5m,
+    };
+    var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
+    if (migResult.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
+      continue;
+    }
+
+    // Cek paid DEX via DEX Screener API
+    log('[MIG] Cek paid DEX ' + t.symbol + '...');
+    var paidDex = await fetchPaidDex(t.address);
+    if (!paidDex) {
+      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+      continue;
+    }
+
+    // RugCheck — filter identik dengan Swing 1D
+    log('[MIG] Cek RugCheck ' + t.symbol + '...');
+    const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
+    if (rug.score > CFG.maxRugScore) {
+      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
+      continue;
+    }
+    if (rug.insiderPct > CFG.maxInsiderPct) {
+      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
+      continue;
+    }
+
+    var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
+    // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
+    t.volume = vol1h;
+    const grade = gradeToken(t.liquidity, t.volume, rug.score);
+    if (grade === 'SKIP') {
+      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol terlalu kecil)');
+      continue;
+    }
+
+    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
+
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅)');
+    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
+    const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    totalNotified++;
+
+    if (t.price && Number(t.price) > 0) {
+      TRACKED.set(t.address, {
+        symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
+        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+        threadId: CFG.tgThreadMig,
+      });
+      log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
+    }
+  }
+
+
+  // — Proses Swing 1D —
+  for (let i = 0; i < swingCandidates.length; i++) {
+    const t = swingCandidates[i];
+
+    log('[SWING] Cek ' + t.symbol + ' (age ' + tokenAgeHours(t.creation_timestamp).toFixed(0) + 'j)');
+    const swingResult = await checkSwingSignal(t);
+
+    if (!swingResult.pass) {
+      log('SKIP [SWING] ' + t.symbol + ': ' + swingResult.reason);
+      continue;
+    }
+
+    log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
+
+    try {
+      const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
+      if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
+      if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
+
+      const grade = gradeToken(t.liquidity, t.volume, rug.score);
+      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
+
+      // Mark sudah dinotif sebagai swing (update SEEN entry)
+      const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now(), seenAt: Date.now() };
+      SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
+
+      log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
+      const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
+      const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
+      totalNotified++;
+
+      if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
+        TRACKED.set(t.address, {
+          symbol: t.symbol, name: t.name, grade, mode: 'SWING',
+          entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+          threadId: CFG.tgThreadId,
+        });
+        log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
+      }
+    } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
+  }
+
+  // — Proses Smart Money Signal —
+  for (var i = 0; i < uniqueSignal.length; i++) {
+    var t = uniqueSignal[i];
+    if (!t.address) continue;
+
+    // Gate 1: SM masih pegang — cek awal karena paling sering kena
+    if (t.smart_degen_count < 1) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
+      continue;
+    }
+    // Gate 3: trigger_mc (cegah token udah pump)
+    if (t.trigger_mc > CFG.signalMaxMc) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (MC trig $' + fmt(t.trigger_mc) + ' > $' + fmt(CFG.signalMaxMc) + ')');
+      continue;
+    }
+    // Gate 4: liquidity
+    if (t.liquidity < CFG.signalMinLiquidity) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (LP $' + fmt(t.liquidity) + ' < $' + fmt(CFG.signalMinLiquidity) + ')');
+      continue;
+    }
+    // Gate 5: holder count
+    if (t.holder_count < CFG.signalMinHolders) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Holders ' + t.holder_count + ' < ' + CFG.signalMinHolders + ')');
+      continue;
+    }
+    // Gate 6: top10 holder
+    var top10Pct = (t.top_10_holder_rate || 0) * 100;
+    if (top10Pct > CFG.signalMaxTop10Rate) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
+      continue;
+    }
+    // Gate 7: rug ratio
+    var rugScore = Math.round((t.rug_ratio || 0) * 100);
+    if (rugScore > CFG.maxRugScore) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
+      continue;
+    }
+    // Gate 8: bot degen rate
+    var botPct = (t.bot_degen_rate || 0) * 100;
+    if (botPct > 50) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Bot ' + botPct.toFixed(1) + '% dari holders > 50%)');
+      continue;
+    }
+    // Gate 9: serial creator
+    if (t.creator_created_count > CFG.maxCreatorTokens) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Creator bikin ' + t.creator_created_count + ' token > ' + CFG.maxCreatorTokens + ')');
+      continue;
+    }
+
+    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal' });
+
+    log('[SIGNAL] ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Holders:' + t.holder_count + ' Rug:' + rugScore + ')');
+    var fullMsg = buildSignalMsg(t);
+    var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
+    totalNotified++;
+    // Delay 1.5s antar notif signal biar gak kena TG rate limit
+    await new Promise(r => setTimeout(r, 1500));
+
+    if (t.price && Number(t.price) > 0) {
+      TRACKED.set(t.address, {
+        symbol: t.symbol, name: t.name, grade: 'SIGNAL', mode: 'SIGNAL',
+        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+        threadId: CFG.tgThreadSignal,
+      });
+      log('Tracked [SIGNAL] ' + t.symbol + ' @ $' + t.price);
+    }
+  }
+
+  saveSeen();
+  savePositions();
+  cleanupSeen();
+
+  if (TRACKED.size > 0) {
+    await checkTrackedPositions(migrationTokens.concat(swingTokens));
+    savePositions();
+  }
+  log('Cycle done. Total notified: ' + totalNotified);
+}
+
+// ─────────────────────────────────────────────
+//  POSITION TRACKING
+// ─────────────────────────────────────────────
+async function checkTrackedPositions(trendingTokens) {
+  var priceMap = {};
+  trendingTokens.forEach(tt => { if (tt.address && tt.price) priceMap[tt.address] = Number(tt.price); });
+
+  var toRemove = [];
+  for (const [ca, pos] of TRACKED) {
+    var currentPrice = priceMap[ca];
+
+    if (!currentPrice) {
+      try {
+        var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + ca, { timeout: 8000 });
+        var pairs = ds.data.pairs || [];
+        var best  = pairs.find(p => p.priceUsd) || pairs[0] || null;
+        if (best && best.priceUsd) currentPrice = Number(best.priceUsd);
+      } catch {}
+    }
+
+    if (!currentPrice || currentPrice <= 0) continue;
+
+    var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
+    var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
+
+    if (gain <= -80) {
+      var wasProfit   = (pos.nextTargetIdx || 0) > 0;
+      var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
+      var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
+      log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
+      logTrackingEvent({ type: stopType, ...pos, address: ca, currentPrice, gain: gain.toFixed(1) });
+      toRemove.push(ca);
+      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
+      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
+      await sendTelegram(
+        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
+        + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+        + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
+        pos.msgId,
+        safeThread
+      );
+      continue;
+    }
+
+    var highestIdx = -1;
+    for (var ti = 0; ti < TARGETS.length; ti++) {
+      if (gain >= TARGETS[ti]) highestIdx = ti;
+    }
+    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
+      var target = TARGETS[highestIdx];
+      var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
+      log(pos.symbol + ' hit target +' + target + '%');
+      logTrackingEvent({ type: 'TERCAPAI', ...pos, address: ca, currentPrice, target, gain: gain.toFixed(1) });
+      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
+      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
+      await sendTelegram(
+        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
+        + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
+        + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
+        + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
+        + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
+        + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
+        + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+        pos.msgId,
+        safeThread
+      );
+      pos.nextTargetIdx = highestIdx + 1;
+      savePositions();
+    }
+  }
+
+  toRemove.forEach(ca => TRACKED.delete(ca));
+  if (toRemove.length > 0) savePositions();
+}
+
+// ─────────────────────────────────────────────
+//  HEALTH & RUN LOOP
+// ─────────────────────────────────────────────
+function doHealthCheck() {
+  var u = Math.floor((Date.now() - startTime) / 1000);
+  var h = Math.floor(u / 3600);
+  var m = Math.floor((u % 3600) / 60);
+  var s = u % 60;
+  log('[HEALTH] ' + h + 'h ' + m + 'm ' + s + 's | Seen: ' + SEEN.size + ' | Notified: ' + totalNotified + ' | Tracked: ' + TRACKED.size);
+}
+
+async function runLoop() {
+  try { await processTokens(); } catch (e) { log('FATAL: ' + e.message); }
+  setTimeout(runLoop, CFG.interval * 1000);
+}
+
+process.on('SIGINT',  () => { log('Saving...'); saveSeen(); process.exit(0); });
+process.on('SIGTERM', () => { log('Saving...'); saveSeen(); process.exit(0); });
+
+log('');
+log('╔══════════════════════════════════════╗');
+log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
+log('╚══════════════════════════════════════╝');
+log('');
+log('[ Mode 1: New Migration ]');
+log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
+log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis dibuang');
+log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
+log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
+log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
+log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
+log('[ Mode 2: Swing 1D Pre-Pump ]');
+log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
+log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
+log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
+log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
+if (CFG.signalEnabled) {
+  log('[ Mode 3: Smart Money Signal ]');
+  log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
+  log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
+  log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
+}
+log('');
+log('Interval: ' + CFG.interval + 's');
+log('');
+
+loadSeen();
+loadPositions();
+
+if (process.env.CI === 'true') {
+  processTokens().then(() => process.exit(0));
+} else {
+  runLoop();
+  setInterval(doHealthCheck, CFG.healthInterval * 1000);
+  setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
+  setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
+}
