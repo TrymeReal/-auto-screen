@@ -55,7 +55,7 @@
 
   /* MAIN GRID */
   .s2v{font-weight:700} .s2v.g{color:var(--green-b)} .s2v.r{color:var(--red-b)} .s2v.y{color:var(--yellow-b)}
-  .main{display:grid;grid-template-columns:repeat(3,1fr);height:calc(100vh - 24px - 36px);overflow:hidden}
+  .main{display:grid;grid-template-columns:repeat(3,1fr);height:calc(100vh - 24px - 30px);overflow:hidden}
   .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
   .panel:last-child{border-right:none}
 
@@ -148,57 +148,29 @@
 <div id="liveDot" style="display:none"></div>
 
 <!-- STATS — 1 baris tipis, semua info inline -->
-<div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);background:var(--bg2);height:36px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);background:var(--bg2);height:30px;overflow:hidden">
 
-  <!-- Entry Area -->
-  <div style="display:flex;align-items:center;gap:5px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
-    <span style="font-size:10px;color:var(--purple);font-family:'Inter',-apple-system,sans-serif;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Entry</span>
-    <span id="stE" style="font-size:15px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span>
-  </div>
-
-  <!-- Target Tercapai -->
-  <div style="display:flex;align-items:center;gap:5px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
-    <span style="font-size:10px;color:var(--green-b);font-family:'Inter',-apple-system,sans-serif;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Target</span>
-    <span id="stT" style="font-size:15px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span>
-  </div>
-
-  <!-- Stop Track -->
-  <div style="display:flex;align-items:center;gap:5px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
-    <span style="font-size:10px;color:var(--red-b);font-family:'Inter',-apple-system,sans-serif;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Stop</span>
-    <span id="stS" style="font-size:15px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span>
-    <span style="font-size:10px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif">💀<span id="stSN">0</span>·📉<span id="stSW">0</span></span>
-  </div>
-
-  <!-- Divider label -->
+  <!-- STATS label -->
   <div style="padding:0 10px;flex-shrink:0;border-right:1px solid var(--border)">
-    <span style="font-size:9px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif;letter-spacing:.5px;text-transform:uppercase;font-weight:600">STATS</span>
+    <span style="font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;font-weight:600">STATS</span>
   </div>
 
-  <!-- Win Rate + Avg Gain + Avg Loss -->
+  <!-- Win Rate + Avg Gain + Avg Loss + Hit Rate -->
   <div style="display:flex;align-items:center;gap:10px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
-    <span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;color:var(--green-b);font-weight:600">WR <span id="avgWR" style="font-size:12px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span></span>
-    <span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;color:var(--green-b);font-weight:600">GAIN <span id="avgGain" style="font-size:12px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span></span>
-    <span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;color:var(--red-b);font-weight:600">LOSS <span id="avgLoss" style="font-size:12px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:9px;color:var(--green-b);font-weight:600">WR <span id="avgWR" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:9px;color:var(--green-b);font-weight:600">GAIN <span id="avgGain" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:9px;color:var(--red-b);font-weight:600">LOSS <span id="avgLoss" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:9px;color:var(--muted);font-weight:600">HIT <span id="hitRateBar" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
   </div>
 
-  <!-- Divider label -->
+  <!-- MODE label -->
   <div style="padding:0 10px;flex-shrink:0;border-right:1px solid var(--border)">
-    <span style="font-size:9px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif;letter-spacing:.5px;text-transform:uppercase;font-weight:600">HIT RATE</span>
-  </div>
-
-  <!-- Hit Rate per Level -->
-  <div id="hitRateBar" style="display:flex;align-items:center;gap:4px;padding:0 10px;border-right:1px solid var(--border);flex-shrink:0">
-    <span style="font-size:10px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif">—</span>
-  </div>
-
-  <!-- Divider label -->
-  <div style="padding:0 10px;flex-shrink:0;border-right:1px solid var(--border)">
-    <span style="font-size:9px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif;letter-spacing:.5px;text-transform:uppercase;font-weight:600">MODE</span>
+    <span style="font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;font-weight:600">MODE</span>
   </div>
 
   <!-- Win Rate per Mode -->
   <div id="winRateMode" style="display:flex;align-items:center;gap:5px;padding:0 10px;flex:1;overflow:hidden">
-    <span style="font-size:10px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif">—</span>
+    <span style="font-size:9px;color:var(--muted)">—</span>
   </div>
 
 </div>
@@ -210,7 +182,10 @@
   <div class="panel">
     <div class="ph">
       <div class="pt"><div class="dot dp"></div>Entry Area</div>
-      <div class="cnt p" id="cE">0</div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span id="stE" style="font-size:11px;font-weight:700;color:var(--purple)">—</span>
+        <div class="cnt p" id="cE">0</div>
+      </div>
     </div>
     <div class="pb" id="lE">
       <div class="emp"><div class="emp-ic">📍</div><div class="emp-tx">Menunggu data...</div></div>
@@ -221,7 +196,10 @@
   <div class="panel">
     <div class="ph">
       <div class="pt"><div class="dot dg"></div>Target Tercapai</div>
-      <div class="cnt g" id="cT">0</div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span id="stT" style="font-size:11px;font-weight:700;color:var(--green-b)">—</span>
+        <div class="cnt g" id="cT">0</div>
+      </div>
     </div>
     <div class="pb" id="lT">
       <div class="emp"><div class="emp-ic">✅</div><div class="emp-tx">Menunggu data...</div></div>
@@ -232,7 +210,11 @@
   <div class="panel">
     <div class="ph">
       <div class="pt"><div class="dot dr"></div>Stop Track</div>
-      <div class="cnt r" id="cS">0</div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <span style="font-size:9px;color:var(--muted)">💀<span id="stSN">0</span>·📉<span id="stSW">0</span></span>
+        <span id="stS" style="font-size:11px;font-weight:700;color:var(--red-b)">—</span>
+        <div class="cnt r" id="cS">0</div>
+      </div>
     </div>
     <div class="pb" id="lS">
       <div class="emp"><div class="emp-ic">🗑️</div><div class="emp-tx">Menunggu data...</div></div>
@@ -521,9 +503,9 @@ function renderAvg(tracking) {
       ).length;
     }, 0);
     const avgHit = ((totalHits / (TARGETS.length * closedTokens.length)) * 100).toFixed(0);
-    hitRateBar.innerHTML = `<span style="font-size:12px;font-weight:700;color:var(--text)">${avgHit}%</span>`;
+    hitRateBar.textContent = avgHit + '%';
   } else {
-    hitRateBar.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--text)">—</span>';
+    hitRateBar.textContent = '—';
   }
 
   // ── WIN RATE PER MODE ──
@@ -539,7 +521,7 @@ function renderAvg(tracking) {
     const mPct = ((mWin / mTotal) * 100).toFixed(0);
     const col  = mPct >= 60 ? 'var(--green-b)' : mPct >= 40 ? 'var(--yellow-b)' : 'var(--red-b)';
     const labelCol = m === 'SWING' ? 'var(--blue)' : m === 'SIGNAL' ? 'var(--purple)' : 'var(--yellow-b)';
-    return `<span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;white-space:nowrap;font-weight:600;color:${labelCol}">${modeLabels[m]} <span style="color:var(--text);font-weight:700">${mPct}%</span><span style="font-size:9px;color:var(--muted);font-weight:400"> (${mTotal})</span></span>`;
+    return `<span style="font-size:9px;font-family:'Inter',-apple-system,sans-serif;white-space:nowrap;font-weight:600;color:${labelCol}">${modeLabels[m]} <span style="color:var(--text);font-weight:700">${mPct}%</span><span style="font-size:8px;color:var(--muted);font-weight:400"> (${mTotal})</span></span>`;
   }).filter(Boolean).join('<span style="color:var(--border);margin:0 3px">·</span>');
   winRateModeEl.innerHTML = modePills || '<span style="font-size:10px;color:var(--muted);font-family:\'Inter\',-apple-system,sans-serif">—</span>';
 
