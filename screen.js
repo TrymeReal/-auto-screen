@@ -346,22 +346,24 @@ async function fetchPaidDex(address) {
   }
 }
 
-// Cek apakah token punya approved tokenProfile order di DexScreener (khusus New Migration)
-async function fetchDexOrders(address) {
+async function fetchDexInfo(address) {
   try {
-    const res = await getWithRetry(
-      'https://api.dexscreener.com/orders/v1/solana/' + address,
-      { timeout: 8000 },
-      2
+    const res = await axios.get(
+      'https://api.dexscreener.com/latest/dex/tokens/' + address,
+      { timeout: 8000 }
     );
-    const orders = res.data;
-    if (!Array.isArray(orders)) return false;
-    return orders.some(order =>
-      order.status === 'approved' && order.type === 'tokenProfile'
-    );
-  } catch (e) {
-    log('DEX Orders error ' + (address || '').slice(0, 8) + ': ' + e.message);
-    return false;
+
+    const pair = res.data?.pairs?.[0];
+    if (!pair) return null;
+
+    return {
+      hasImage:    !!pair.info?.imageUrl,
+      hasWebsite:  (pair.info?.websites || []).length > 0,
+      hasTwitter:  (pair.info?.socials || []).some(s => s.type === 'twitter'),
+      hasTelegram: (pair.info?.socials || []).some(s => s.type === 'telegram'),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1139,11 +1141,26 @@ async function processTokens() {
       continue;
     }
 
-    // Gate: cek approved tokenProfile order di DexScreener (New Migration only)
-    log('[MIG] Cek DEX tokenProfile ' + t.symbol + '...');
-    var hasTokenProfile = await fetchDexOrders(t.address);
-    if (!hasTokenProfile) {
-      log('SKIP [MIG] ' + t.symbol + ' (Belum ada approved tokenProfile di DexScreener)');
+    // Gate: Social Score via DEX Screener (Twitter wajib + Website/TG salah satu)
+    log('[MIG] Cek Social Score ' + t.symbol + '...');
+    const dexInfo = await fetchDexInfo(t.address);
+    if (!dexInfo) {
+      log('SKIP [MIG] ' + t.symbol + ' (DEX data gagal)');
+      continue;
+    }
+
+    let socialScore = 0;
+    if (dexInfo.hasImage)    socialScore++;
+    if (dexInfo.hasWebsite)  socialScore++;
+    if (dexInfo.hasTwitter)  socialScore++;
+    if (dexInfo.hasTelegram) socialScore++;
+
+    if (!dexInfo.hasTwitter) {
+      log('SKIP [MIG] ' + t.symbol + ' (No Twitter) [Score:' + socialScore + '/4]');
+      continue;
+    }
+    if (!(dexInfo.hasWebsite || dexInfo.hasTelegram)) {
+      log('SKIP [MIG] ' + t.symbol + ' (No Website/TG) [Score:' + socialScore + '/4]');
       continue;
     }
 
@@ -1171,7 +1188,7 @@ async function processTokens() {
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅)');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + socialScore + '/4)');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
