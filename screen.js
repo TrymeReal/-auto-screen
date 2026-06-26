@@ -65,6 +65,7 @@ const CFG = {
   tgChatId:        process.env.TG_CHAT_ID,
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
   tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
+  tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
 };
 
 if (!CFG.tgToken || !CFG.tgChatId) {
@@ -509,6 +510,8 @@ async function sendTelegram(msg, replyTo, threadId) {
     return null;
   }
 }
+
+
 
 
 // ─────────────────────────────────────────────
@@ -1309,7 +1312,7 @@ async function checkTrackedPositions(trendingTokens) {
       var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
       var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
       log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
-      logTrackingEvent({ type: stopType, ...pos, address: ca, currentPrice, gain: gain.toFixed(1) });
+      logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
@@ -1332,7 +1335,7 @@ async function checkTrackedPositions(trendingTokens) {
       var target = TARGETS[highestIdx];
       var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
-      logTrackingEvent({ type: 'TERCAPAI', ...pos, address: ca, currentPrice, target, gain: gain.toFixed(1) });
+      logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
       var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
