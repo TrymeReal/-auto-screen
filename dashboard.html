@@ -584,11 +584,57 @@ function copyCA(ca) {
   navigator.clipboard?.writeText(ca).then(() => toast('✓ CA di-copy!'));
 }
 
-function openDex(ca, symbol) {
+async function openDex(ca, symbol) {
+  // Kalau CA ada, langsung ke halaman token-nya — paling akurat.
   if (ca) {
     window.open('https://dexscreener.com/solana/' + ca, '_blank');
-  } else if (symbol) {
-    window.open('https://dexscreener.com/search?q=' + encodeURIComponent(symbol), '_blank');
+    return;
+  }
+  if (!symbol) { toast('⚠️ Gak ada CA maupun simbol buat token ini'); return; }
+
+  // Gak ada CA (biasanya token yang udah di-stop-track & kehapus dari positions.json).
+  // Buka tab kosong DULU (biar gak ke-block popup blocker karena ini async),
+  // baru kita isi setelah hasil search ketemu.
+  const tab = window.open('', '_blank');
+  if (tab) {
+    tab.document.write(
+      '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<style>body{background:#0c0e13;color:#d1d5db;font-family:Inter,-apple-system,sans-serif;' +
+      'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:13px;' +
+      'gap:8px}.dot{width:5px;height:5px;border-radius:50%;background:#4f6ef7;animation:p 1s infinite}' +
+      '@keyframes p{0%,100%{opacity:1}50%{opacity:.3}}</style></head>' +
+      '<body><span class="dot"></span> Mencari "' + symbol + '" di Dexscreener (Solana)...</body></html>'
+    );
+    tab.document.close();
+  }
+
+  const fallbackURL = 'https://dexscreener.com/search?q=' + encodeURIComponent(symbol);
+  try {
+    const res = await fetch('https://api.dexscreener.com/latest/dex/search?q=' + encodeURIComponent(symbol));
+    if (!res.ok) throw new Error('search api error');
+    const data = await res.json();
+    const pairs = Array.isArray(data.pairs) ? data.pairs : [];
+
+    // Filter cuma chain Solana, biar gak kebanjiran token sama nama dari chain lain
+    const solanaPairs = pairs.filter(p => p.chainId === 'solana');
+    // Lebih prioritasin yang simbolnya exact match (case-insensitive), baru sortir by likuiditas tertinggi
+    const exact = solanaPairs.filter(p => (p.baseToken?.symbol||'').toLowerCase() === symbol.toLowerCase());
+    const pool = (exact.length ? exact : solanaPairs)
+      .sort((a,b) => (b.liquidity?.usd||0) - (a.liquidity?.usd||0));
+    const best = pool[0];
+
+    if (best && best.pairAddress) {
+      if (tab) tab.location = 'https://dexscreener.com/solana/' + best.pairAddress;
+      else window.open('https://dexscreener.com/solana/' + best.pairAddress, '_blank');
+    } else {
+      toast('🔎 Token "' + symbol + '" gak ketemu di Solana — coba search manual');
+      if (tab) tab.location = fallbackURL;
+      else window.open(fallbackURL, '_blank');
+    }
+  } catch (err) {
+    console.error('[openDex] search error:', err.message);
+    if (tab) tab.location = fallbackURL;
+    else window.open(fallbackURL, '_blank');
   }
 }
 
