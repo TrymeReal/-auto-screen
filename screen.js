@@ -511,23 +511,7 @@ async function sendTelegram(msg, replyTo, threadId) {
   }
 }
 
-const GIST_ID_SCREEN = '7872aefdf9114d37a56a1e9187406800';
-const GITHUB_TOKEN_SCREEN = process.env.GH_TOKEN || '';
 
-async function readGist() {
-  if (!GITHUB_TOKEN_SCREEN || !GIST_ID_SCREEN) return [];
-  try {
-    const res = await axios.get(
-      `https://api.github.com/gists/${GIST_ID_SCREEN}`,
-      { headers: { Authorization: `token ${GITHUB_TOKEN_SCREEN}` }, timeout: 5000 }
-    );
-    const content = res.data.files['confirmed_bandars.json'].content;
-    return JSON.parse(content);
-  } catch (e) {
-    log('Gagal baca Gist: ' + e.message);
-    return [];
-  }
-}
 
 async function sendEntrySignal(t, rug, grade, f) {
   const msg =
@@ -1062,8 +1046,6 @@ function buildSignalMsg(t) {
 // ─────────────────────────────────────────────
 async function processTokens() {
   log('========== SCREENING ==========');
-  const confirmedBandars = await readGist();
-  log('Confirmed bandars dari Gist: ' + confirmedBandars.length);
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
   var swingTokens     = fetchGmgnTrending();
@@ -1191,11 +1173,6 @@ async function processTokens() {
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
 
-    if (confirmedBandars.includes(t.address)) {
-      const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'MIGRATION');
-      await sendEntrySignal(t, rug, grade, f);
-    }
-
     if (t.price && Number(t.price) > 0) {
       TRACKED.set(t.address, {
         symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
@@ -1238,10 +1215,6 @@ async function processTokens() {
       const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
       totalNotified++;
 
-      if (confirmedBandars.includes(t.address)) {
-        const f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, 'SWING');
-        await sendEntrySignal(t, rug, grade, f);
-      }
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
