@@ -512,20 +512,18 @@ function renderAvg(tracking) {
   const losses = lossTokens.map(t => Number(t.stopEvent.gain)).filter(n => !isNaN(n));
   const avgLoss = losses.length > 0 ? (losses.reduce((a,b)=>a+b,0)/losses.length).toFixed(1) : null;
 
-  // ── HIT RATE PER LEVEL ──
+  // ── HIT RATE AVG ──
   const hitRateBar = document.getElementById('hitRateBar');
   if (closedTokens.length > 0) {
-    const pills = TARGETS.map(t => {
-      const hitCount = closedTokens.filter(tok =>
+    const totalHits = TARGETS.reduce((sum, t) => {
+      return sum + closedTokens.filter(tok =>
         tok.tercapaiEvents.some(e => Number(e.target) >= t)
       ).length;
-      const pct = ((hitCount / closedTokens.length) * 100).toFixed(0);
-      const col = pct >= 50 ? 'var(--green-b)' : pct >= 25 ? 'var(--yellow-b)' : 'var(--red-b)';
-      return `<span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;white-space:nowrap;color:var(--muted);font-weight:500">+${t}% <span style="color:var(--text);font-weight:700">${pct}%</span></span>`;
-    }).join('<span style="color:var(--border);margin:0 3px">·</span>');
-    hitRateBar.innerHTML = pills;
+    }, 0);
+    const avgHit = ((totalHits / (TARGETS.length * closedTokens.length)) * 100).toFixed(0);
+    hitRateBar.innerHTML = `<span style="font-size:12px;font-weight:700;color:var(--text)">${avgHit}%</span>`;
   } else {
-    hitRateBar.innerHTML = '<span style="font-size:10px;color:var(--muted);font-family:\'Inter\',-apple-system,sans-serif">—</span>';
+    hitRateBar.innerHTML = '<span style="font-size:12px;font-weight:700;color:var(--text)">—</span>';
   }
 
   // ── WIN RATE PER MODE ──
