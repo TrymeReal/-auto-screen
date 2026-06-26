@@ -346,6 +346,25 @@ async function fetchPaidDex(address) {
   }
 }
 
+// Cek apakah token punya approved tokenProfile order di DexScreener (khusus New Migration)
+async function fetchDexOrders(address) {
+  try {
+    const res = await getWithRetry(
+      'https://api.dexscreener.com/orders/v1/solana/' + address,
+      { timeout: 8000 },
+      2
+    );
+    const orders = res.data;
+    if (!Array.isArray(orders)) return false;
+    return orders.some(order =>
+      order.status === 'approved' && order.type === 'tokenProfile'
+    );
+  } catch (e) {
+    log('DEX Orders error ' + (address || '').slice(0, 8) + ': ' + e.message);
+    return false;
+  }
+}
+
 function getCreatorTokenCount(walletAddress) {
   if (!walletAddress || walletAddress === '?' || walletAddress.length < 30) return 0;
   try {
@@ -1117,6 +1136,14 @@ async function processTokens() {
     var paidDex = await fetchPaidDex(t.address);
     if (!paidDex) {
       log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+      continue;
+    }
+
+    // Gate: cek approved tokenProfile order di DexScreener (New Migration only)
+    log('[MIG] Cek DEX tokenProfile ' + t.symbol + '...');
+    var hasTokenProfile = await fetchDexOrders(t.address);
+    if (!hasTokenProfile) {
+      log('SKIP [MIG] ' + t.symbol + ' (Belum ada approved tokenProfile di DexScreener)');
       continue;
     }
 
