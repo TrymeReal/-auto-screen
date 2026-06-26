@@ -165,10 +165,11 @@
     </div>
   </div>
 
-  <!-- Kolom 3: LOSS + HIT -->
+  <!-- Kolom 3: AVG CL + EV -->
   <div style="display:flex;align-items:center;gap:8px;padding:0 10px;overflow:hidden">
-    <span style="font-size:9px;color:var(--red-b);font-weight:600;flex-shrink:0">LOSS <span id="avgLoss" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
-    <span style="font-size:9px;color:var(--muted);font-weight:600;flex-shrink:0">HIT <span id="hitRateBar" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:8px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;font-weight:600;flex-shrink:0">MED CL</span>
+    <span style="font-size:9px;color:var(--red-b);font-weight:600;flex-shrink:0"><span id="avgLoss" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:9px;color:var(--yellow-b);font-weight:600;flex-shrink:0">EV <span id="avgEV" style="font-size:11px;font-weight:700;color:var(--text)">—</span></span>
   </div>
 
 </div>
@@ -472,9 +473,9 @@ function renderAvg(tracking) {
   const allTokens = Object.values(tokenMap);
   const closedTokens = allTokens.filter(t => t.stopEvent !== null || t.tercapaiEvents.length > 0);
 
-  // WIN = pernah hit target minimal 1x
-  const winTokens  = closedTokens.filter(t => t.tercapaiEvents.length > 0);
-  // LOSS = murni STOP_TRACK, tidak pernah profit
+  // WIN = pernah hit target ATAU stop after profit
+  const winTokens  = closedTokens.filter(t => t.tercapaiEvents.length > 0 || t.stopEvent?.type === 'STOP_TRACK_WAS_PROFIT');
+  // LOSS = murni STOP_TRACK negatif, tidak pernah profit
   const lossTokens = closedTokens.filter(t => t.tercapaiEvents.length === 0 && t.stopEvent?.type === 'STOP_TRACK');
   const totalUnique = winTokens.length + lossTokens.length;
 
@@ -488,22 +489,22 @@ function renderAvg(tracking) {
   }).filter(n => !isNaN(n));
   const avgGain = gains.length > 0 ? (gains.reduce((a,b)=>a+b,0)/gains.length).toFixed(1) : null;
 
-  // ── Avg Loss (pure stop track) ──
-  const losses = lossTokens.map(t => Number(t.stopEvent.gain)).filter(n => !isNaN(n));
-  const avgLoss = losses.length > 0 ? (losses.reduce((a,b)=>a+b,0)/losses.length).toFixed(1) : null;
+  // ── Median CL — lebih robust dari avg, ga keganggu outlier ──
+  const clTokens = closedTokens.filter(t => t.stopEvent?.type === 'STOP_TRACK');
+  const clValues = clTokens.map(t => Number(t.stopEvent.gain)).filter(n => !isNaN(n) && n < 0).sort((a,b) => a - b);
+  let avgLoss = null;
+  if (clValues.length > 0) {
+    const mid = Math.floor(clValues.length / 2);
+    const median = clValues.length % 2 !== 0 ? clValues[mid] : (clValues[mid-1] + clValues[mid]) / 2;
+    avgLoss = median.toFixed(1);
+  }
 
-  // ── HIT RATE AVG ──
-  const hitRateBar = document.getElementById('hitRateBar');
-  if (closedTokens.length > 0) {
-    const totalHits = TARGETS.reduce((sum, t) => {
-      return sum + closedTokens.filter(tok =>
-        tok.tercapaiEvents.some(e => Number(e.target) >= t)
-      ).length;
-    }, 0);
-    const avgHit = ((totalHits / (TARGETS.length * closedTokens.length)) * 100).toFixed(0);
-    hitRateBar.textContent = avgHit + '%';
-  } else {
-    hitRateBar.textContent = '—';
+  // ── EV = (WR × avgGain) + ((1-WR) × avgCL) ──
+  let evVal = null;
+  if (winRate !== null && avgGain !== null && avgLoss !== null) {
+    const wr = parseFloat(winRate) / 100;
+    const ev = (wr * parseFloat(avgGain)) + ((1 - wr) * parseFloat(avgLoss));
+    evVal = ev.toFixed(1);
   }
 
   // ── WIN RATE PER MODE ──
@@ -526,7 +527,12 @@ function renderAvg(tracking) {
   // ── Update DOM ──
   document.getElementById('avgWR').textContent   = winRate  !== null ? winRate  + '%'      : '—';
   document.getElementById('avgGain').textContent = avgGain  !== null ? '+' + avgGain + '%' : '—';
-  document.getElementById('avgLoss').textContent = avgLoss  !== null ? avgLoss  + '%'      : '—';
+  document.getElementById('avgLoss').textContent = avgLoss  !== null ? avgLoss + '%'       : '—';
+  const evEl = document.getElementById('avgEV');
+  if (evEl) {
+    evEl.textContent = evVal !== null ? (parseFloat(evVal) >= 0 ? '+' : '') + evVal + '%' : '—';
+    evEl.style.color = evVal !== null ? (parseFloat(evVal) >= 0 ? 'var(--green-b)' : 'var(--red-b)') : 'var(--text)';
+  }
   const totalClosedEl = document.getElementById('totalClosed');
   if (totalClosedEl) totalClosedEl.textContent = totalUnique || '—';
 }
