@@ -1141,23 +1141,27 @@ async function processTokens() {
       continue;
     }
 
-    // Gate: Social Score via DEX Screener (Twitter wajib + Website/TG salah satu)
+    // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
+    // Kalau DexScreener belum index token (dexInfo null) — itu masalah timing data,
+    // BUKAN bukti token tanpa sosial — jadi token tetap diloloskan biar gak
+    // kehilangan entry fresh. Gate sosial hanya menghukum token yang DATANYA ADA
+    // tapi beneran 0 sosial.
     log('[MIG] Cek Social Score ' + t.symbol + '...');
     const dexInfo = await fetchDexInfo(t.address);
-    if (!dexInfo) {
-      log('SKIP [MIG] ' + t.symbol + ' (DEX data gagal)');
-      continue;
-    }
 
     let socialScore = 0;
-    if (dexInfo.hasImage)    socialScore++;
-    if (dexInfo.hasWebsite)  socialScore++;
-    if (dexInfo.hasTwitter)  socialScore++;
-    if (dexInfo.hasTelegram) socialScore++;
+    if (dexInfo) {
+      if (dexInfo.hasImage)    socialScore++;
+      if (dexInfo.hasWebsite)  socialScore++;
+      if (dexInfo.hasTwitter)  socialScore++;
+      if (dexInfo.hasTelegram) socialScore++;
 
-    if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-      log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Score:' + socialScore + '/4]');
-      continue;
+      if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
+        log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Score:' + socialScore + '/4]');
+        continue;
+      }
+    } else {
+      log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
     }
 
     // RugCheck — filter identik dengan Swing 1D
@@ -1184,7 +1188,7 @@ async function processTokens() {
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + socialScore + '/4)');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
