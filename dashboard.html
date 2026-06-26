@@ -46,23 +46,17 @@
   .btn-r:hover{border-color:var(--accent);color:var(--accent)}
 
   /* STATS */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:30px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:38px}
   .sc{background:var(--bg2);padding:0 7px;display:flex;align-items:center;gap:6px}
   .si{width:16px;height:16px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0}
-  .si.w{background:var(--blue-d)} .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
+  .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
   .sl{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;line-height:1}
   .sv{font-size:13px;font-weight:700;line-height:1.1}
   .sv.b{color:var(--blue)} .sv.p{color:var(--purple)} .sv.g{color:var(--green-b)} .sv.r{color:var(--red-b)}
 
-  /* STATS 2 — AVG BAR */
-  .stats2{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:26px}
-  .s2c{background:var(--bg);padding:0 7px;display:flex;align-items:center;gap:5px}
-  .s2l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
-  .s2v{font-size:11px;font-weight:700}
-  .s2v.g{color:var(--green-b)} .s2v.r{color:var(--red-b)} .s2v.y{color:var(--yellow-b)} .s2v.w{color:var(--text)}
-
   /* MAIN GRID */
-  .main{display:grid;grid-template-columns:repeat(4,1fr);height:calc(100vh - 30px - 26px);overflow:hidden}
+  .s2v{font-weight:700} .s2v.g{color:var(--green-b)} .s2v.r{color:var(--red-b)} .s2v.y{color:var(--yellow-b)}
+  .main{display:grid;grid-template-columns:repeat(3,1fr);height:calc(100vh - 24px - 38px);overflow:hidden}
   .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
   .panel:last-child{border-right:none}
 
@@ -161,37 +155,52 @@
 <!-- live dot hidden, still needed for setStatus -->
 <div id="liveDot" style="display:none"></div>
 
-<!-- STATS -->
+<!-- STATS UNIFIED — 3 kolom sesuai panel -->
 <div class="stats">
-  <div class="sc"><div class="si w">🔍</div><div><div class="sl">Waiting List</div><div class="sv b" id="stW">—</div></div></div>
-  <div class="sc"><div class="si e">📍</div><div><div class="sl">Entry Area</div><div class="sv p" id="stE">—</div></div></div>
-  <div class="sc"><div class="si t">✅</div><div><div class="sl">Target Tercapai</div><div class="sv g" id="stT">—</div></div></div>
-  <div class="sc"><div class="si s">🗑️</div><div><div class="sl">Stop Track</div><div style="display:flex;align-items:baseline;gap:5px"><div class="sv r" id="stS">—</div><div style="font-size:9px;color:var(--muted)">💀<span id="stSN">0</span> · 📉<span id="stSW">0</span></div></div></div></div>
-</div>
-
-<!-- STATS 2 — AVG BAR -->
-<div class="stats2">
-  <div class="s2c"><div class="s2l">Win Rate</div><div class="s2v g" id="avgWR">—</div></div>
-  <div class="s2c"><div class="s2l">Avg Gain</div><div class="s2v g" id="avgGain">—</div></div>
-  <div class="s2c"><div class="s2l">Avg Loss</div><div class="s2v r" id="avgLoss">—</div></div>
-  <div class="s2c"><div class="s2l">Best Target</div><div class="s2v y" id="avgBest">—</div></div>
+  <div class="sc">
+    <div class="si e">📍</div>
+    <div style="flex:1">
+      <div class="sl">Entry Area</div>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <div class="sv p" id="stE">—</div>
+        <div style="display:flex;gap:8px;margin-left:4px">
+          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">WR <span class="s2v g" id="avgWR" style="font-size:9px">—</span></span>
+          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">AVG <span class="s2v g" id="avgGain" style="font-size:9px">—</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sc">
+    <div class="si t">✅</div>
+    <div style="flex:1">
+      <div class="sl">Target Tercapai</div>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <div class="sv g" id="stT">—</div>
+        <div style="margin-left:4px">
+          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">BEST <span class="s2v y" id="avgBest" style="font-size:9px">—</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="sc">
+    <div class="si s">🗑️</div>
+    <div style="flex:1">
+      <div class="sl">Stop Track</div>
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <div class="sv r" id="stS">—</div>
+        <div style="display:flex;gap:8px;margin-left:4px">
+          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">💀<span id="stSN">0</span> · 📉<span id="stSW">0</span></span>
+          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">LOSS <span class="s2v r" id="avgLoss" style="font-size:9px">—</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- PANELS — 4 kolom sejajar -->
 <div class="main">
 
-  <!-- KOL 1: Waiting List -->
-  <div class="panel">
-    <div class="ph">
-      <div class="pt"><div class="dot db"></div>Waiting List</div>
-      <div class="cnt b" id="cW">0</div>
-    </div>
-    <div class="pb" id="lW">
-      <div class="emp"><div class="emp-ic">🔍</div><div class="emp-tx">Menunggu data...</div></div>
-    </div>
-  </div>
-
-  <!-- KOL 2: Entry Area -->
+  <!-- KOL 1: Entry Area -->
   <div class="panel">
     <div class="ph">
       <div class="pt"><div class="dot dp"></div>Entry Area</div>
@@ -202,7 +211,7 @@
     </div>
   </div>
 
-  <!-- KOL 3: Target Tercapai -->
+  <!-- KOL 2: Target Tercapai -->
   <div class="panel">
     <div class="ph">
       <div class="pt"><div class="dot dg"></div>Target Tercapai</div>
@@ -213,7 +222,7 @@
     </div>
   </div>
 
-  <!-- KOL 4: Stop Track -->
+  <!-- KOL 3: Stop Track -->
   <div class="panel">
     <div class="ph">
       <div class="pt"><div class="dot dr"></div>Stop Track</div>
@@ -521,7 +530,6 @@ function emptyHTML(ic, tx, sub) {
 }
 
 function renderAll(data) {
-  renderWaiting(data.seen, data.positions);
   renderEntry(data.positions);
   renderTarget(data.tracking, data.positions);
   renderStop(data.tracking, data.positions);
@@ -544,7 +552,6 @@ async function fetchData() {
   const results = await Promise.allSettled([
     fetch(rawURL('positions.json')),
     fetch(rawURL('tracking_log.json')),
-    fetch(rawURL('seen.json')),
   ]);
 
   async function safeJSON(settled) {
@@ -554,11 +561,11 @@ async function fetchData() {
     } catch { return null; }
   }
 
-  const [positions, tracking, seen] = await Promise.all(results.map(safeJSON));
+  const [positions, tracking] = await Promise.all(results.map(safeJSON));
 
-  if (!positions && !tracking && !seen) throw new Error('Semua file JSON tidak ditemukan di GitHub');
+  if (!positions && !tracking) throw new Error('Semua file JSON tidak ditemukan di GitHub');
 
-  return { positions, tracking, seen, ts: Date.now() };
+  return { positions, tracking, ts: Date.now() };
 }
 
 // ─── POLL LOOP ───────────────────────────────────────
