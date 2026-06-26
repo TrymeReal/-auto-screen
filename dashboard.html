@@ -399,10 +399,9 @@ function renderStop(tracking) {
     const gain      = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
     return `
       <div class="ei">
-        <div class="eic">${ico}</div>
         <div class="ec">
           <div class="et">
-            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span></div>
+            <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span> ${ico}</div>
             <div class="etm">${timeAgo(e.time)}</div>
           </div>
           <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
