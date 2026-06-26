@@ -1155,12 +1155,8 @@ async function processTokens() {
     if (dexInfo.hasTwitter)  socialScore++;
     if (dexInfo.hasTelegram) socialScore++;
 
-    if (!dexInfo.hasTwitter) {
-      log('SKIP [MIG] ' + t.symbol + ' (No Twitter) [Score:' + socialScore + '/4]');
-      continue;
-    }
-    if (!(dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-      log('SKIP [MIG] ' + t.symbol + ' (No Website/TG) [Score:' + socialScore + '/4]');
+    if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
+      log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Score:' + socialScore + '/4]');
       continue;
     }
 
