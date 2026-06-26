@@ -383,7 +383,7 @@ function renderStop(tracking) {
   if (!tracking) { el.innerHTML = emptyHTML('🗑️','tracking_log.json tidak ditemukan di GitHub'); return; }
 
   const events = (Array.isArray(tracking) ? tracking : [])
-    .filter(e => e.type === 'STOP_TRACK')
+    .filter(e => e.type === 'STOP_TRACK' || e.type === 'STOP_TRACK_WAS_PROFIT')
     .sort((a,b) => (b.time||0)-(a.time||0));
 
   document.getElementById('cS').textContent = events.length;
@@ -392,10 +392,14 @@ function renderStop(tracking) {
   if (!events.length) { el.innerHTML = emptyHTML('🗑️','Tidak ada stop track','Bagus! Belum ada yang drop >80%'); return; }
 
   el.innerHTML = events.map(e => {
-    const gain = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
+    const wasProfit = e.type === 'STOP_TRACK_WAS_PROFIT';
+    const ico       = wasProfit ? '📉' : '💀';
+    const label     = wasProfit ? 'Was Profit' : 'Stop Track';
+    const labelClr  = wasProfit ? 'var(--yellow-b)' : 'var(--red-b)';
+    const gain      = e.gain ? (Number(e.gain) >= 0 ? '+' : '') + Number(e.gain).toFixed(1) + '%' : '';
     return `
       <div class="ei">
-        <div class="eic">💀</div>
+        <div class="eic">${ico}</div>
         <div class="ec">
           <div class="et">
             <div class="en">${e.name||e.symbol||'Token'} <span style="color:var(--muted);font-weight:400;font-size:11px">(${e.symbol||''})</span></div>
@@ -404,7 +408,7 @@ function renderStop(tracking) {
           <div class="ed">${modeLabel(e.mode)} · Entry $${e.entryPrice?Number(e.entryPrice).toFixed(8):'?'}</div>
           <div style="margin-top:3px;display:flex;gap:5px;align-items:center">
             ${gradeBadge(e.grade)}
-            <span class="eg stop">Drop ${gain}</span>
+            <span class="eg stop" style="color:${labelClr}">${label} ${gain}</span>
           </div>
         </div>
       </div>`;
