@@ -46,7 +46,6 @@
   .btn-r:hover{border-color:var(--accent);color:var(--accent)}
 
   /* STATS */
-  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);height:38px}
   .sc{background:var(--bg2);padding:0 7px;display:flex;align-items:center;gap:6px}
   .si{width:16px;height:16px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0}
   .si.e{background:var(--purple-d)} .si.t{background:var(--green-d)} .si.s{background:var(--red-d)}
@@ -56,7 +55,7 @@
 
   /* MAIN GRID */
   .s2v{font-weight:700} .s2v.g{color:var(--green-b)} .s2v.r{color:var(--red-b)} .s2v.y{color:var(--yellow-b)}
-  .main{display:grid;grid-template-columns:repeat(3,1fr);height:calc(100vh - 24px - 38px);overflow:hidden}
+  .main{display:grid;grid-template-columns:repeat(3,1fr);height:calc(100vh - 24px - 36px);overflow:hidden}
   .panel{display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
   .panel:last-child{border-right:none}
 
@@ -128,19 +127,12 @@
   .toast{position:fixed;bottom:14px;right:14px;padding:7px 12px;background:var(--bg2);border:1px solid var(--bord2);border-radius:var(--r);font-size:11px;color:var(--text);z-index:999;opacity:0;transform:translateY(6px);transition:all .2s;pointer-events:none}
   .toast.show{opacity:1;transform:translateY(0)}
 
-  /* TERMINAL FONT — biar match sama web besar (VIP Matrix Terminal) */
-  .logo, .upd, .badge-live, .btn-r,
-  .sl, .sv, .s2l, .s2v,
-  .pt, .cnt,
-  .gb, .tp, .eg,
-  .etm, .ts, .ml, .mv,
-  .si {
-    font-family: var(--font-mono);
-    letter-spacing: .2px;
+  /* SEMUA INTER — konsisten di seluruh dashboard */
+  * {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  .tn, .en, .ed { font-family: 'Inter', -apple-system, sans-serif; } /* nama token tetep sans biar gampang dibaca */
 </style>
 </head>
 <body>
@@ -155,49 +147,63 @@
 <!-- live dot hidden, still needed for setStatus -->
 <div id="liveDot" style="display:none"></div>
 
-<!-- STATS UNIFIED — 3 kolom sesuai panel -->
-<div class="stats">
-  <div class="sc">
-    <div class="si e">📍</div>
-    <div style="flex:1">
-      <div class="sl">Entry Area</div>
-      <div style="display:flex;align-items:baseline;gap:6px">
-        <div class="sv p" id="stE">—</div>
-        <div style="display:flex;gap:8px;margin-left:4px">
-          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">WR <span class="s2v g" id="avgWR" style="font-size:9px">—</span></span>
-          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">AVG <span class="s2v g" id="avgGain" style="font-size:9px">—</span></span>
-        </div>
-      </div>
-    </div>
+<!-- STATS — 1 baris tipis, semua info inline -->
+<div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);background:var(--bg2);height:36px;overflow:hidden">
+
+  <!-- Entry Area -->
+  <div style="display:flex;align-items:center;gap:5px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
+    <span style="font-size:10px;color:var(--purple);font-family:'Inter',-apple-system,sans-serif;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Entry</span>
+    <span id="stE" style="font-size:15px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span>
   </div>
-  <div class="sc">
-    <div class="si t">✅</div>
-    <div style="flex:1">
-      <div class="sl">Target Tercapai</div>
-      <div style="display:flex;align-items:baseline;gap:6px">
-        <div class="sv g" id="stT">—</div>
-        <div style="margin-left:4px">
-          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">BEST <span class="s2v y" id="avgBest" style="font-size:9px">—</span></span>
-        </div>
-      </div>
-    </div>
+
+  <!-- Target Tercapai -->
+  <div style="display:flex;align-items:center;gap:5px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
+    <span style="font-size:10px;color:var(--green-b);font-family:'Inter',-apple-system,sans-serif;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Target</span>
+    <span id="stT" style="font-size:15px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span>
   </div>
-  <div class="sc">
-    <div class="si s">🗑️</div>
-    <div style="flex:1">
-      <div class="sl">Stop Track</div>
-      <div style="display:flex;align-items:baseline;gap:6px">
-        <div class="sv r" id="stS">—</div>
-        <div style="display:flex;gap:8px;margin-left:4px">
-          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">💀<span id="stSN">0</span> · 📉<span id="stSW">0</span></span>
-          <span style="font-size:8px;color:var(--muted);font-family:var(--font-mono)">LOSS <span class="s2v r" id="avgLoss" style="font-size:9px">—</span></span>
-        </div>
-      </div>
-    </div>
+
+  <!-- Stop Track -->
+  <div style="display:flex;align-items:center;gap:5px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
+    <span style="font-size:10px;color:var(--red-b);font-family:'Inter',-apple-system,sans-serif;text-transform:uppercase;letter-spacing:.4px;font-weight:600">Stop</span>
+    <span id="stS" style="font-size:15px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span>
+    <span style="font-size:10px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif">💀<span id="stSN">0</span>·📉<span id="stSW">0</span></span>
   </div>
+
+  <!-- Divider label -->
+  <div style="padding:0 10px;flex-shrink:0;border-right:1px solid var(--border)">
+    <span style="font-size:9px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif;letter-spacing:.5px;text-transform:uppercase;font-weight:600">STATS</span>
+  </div>
+
+  <!-- Win Rate + Avg Gain + Avg Loss -->
+  <div style="display:flex;align-items:center;gap:10px;padding:0 12px;border-right:1px solid var(--border);flex-shrink:0">
+    <span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;color:var(--green-b);font-weight:600">WR <span id="avgWR" style="font-size:12px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;color:var(--green-b);font-weight:600">GAIN <span id="avgGain" style="font-size:12px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span></span>
+    <span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;color:var(--red-b);font-weight:600">LOSS <span id="avgLoss" style="font-size:12px;font-family:'Inter',-apple-system,sans-serif;font-weight:700;color:var(--text)">—</span></span>
+  </div>
+
+  <!-- Divider label -->
+  <div style="padding:0 10px;flex-shrink:0;border-right:1px solid var(--border)">
+    <span style="font-size:9px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif;letter-spacing:.5px;text-transform:uppercase;font-weight:600">HIT RATE</span>
+  </div>
+
+  <!-- Hit Rate per Level -->
+  <div id="hitRateBar" style="display:flex;align-items:center;gap:4px;padding:0 10px;border-right:1px solid var(--border);flex-shrink:0">
+    <span style="font-size:10px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif">—</span>
+  </div>
+
+  <!-- Divider label -->
+  <div style="padding:0 10px;flex-shrink:0;border-right:1px solid var(--border)">
+    <span style="font-size:9px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif;letter-spacing:.5px;text-transform:uppercase;font-weight:600">MODE</span>
+  </div>
+
+  <!-- Win Rate per Mode -->
+  <div id="winRateMode" style="display:flex;align-items:center;gap:5px;padding:0 10px;flex:1;overflow:hidden">
+    <span style="font-size:10px;color:var(--muted);font-family:'Inter',-apple-system,sans-serif">—</span>
+  </div>
+
 </div>
 
-<!-- PANELS — 4 kolom sejajar -->
+<!-- PANELS -->
 <div class="main">
 
   <!-- KOL 1: Entry Area -->
@@ -472,57 +478,79 @@ function renderStop(tracking, positions) {
 function renderAvg(tracking) {
   const events = Array.isArray(tracking) ? tracking : [];
 
-  // Gabungkan semua token ke satu map biar ga double count
-  // key = address (paling unik), fallback ke symbol/name
+  // Build token map — key = address || msgId (biar ga double count)
   const tokenMap = {};
   events.forEach(e => {
-    // Pakai address kalau ada (paling akurat), fallback ke msgId (selalu unik per posisi & selalu ada).
-    // JANGAN pakai symbol/name — banyak token beda CA yang kebetulan namanya sama (copycat/re-entry),
-    // kalau dipakai buat key malah nyatuin 2 posisi beda jadi keanggep 1 token & nyembunyiin loss-nya.
     const key = e.address || e.msgId;
     if (!key) return;
-    if (!tokenMap[key]) tokenMap[key] = { tercapaiEvents: [], stopEvent: null };
-    if (e.type === 'TERCAPAI') {
-      tokenMap[key].tercapaiEvents.push(e);
-    } else if (e.type === 'STOP_TRACK' || e.type === 'STOP_TRACK_WAS_PROFIT') {
-      tokenMap[key].stopEvent = e;
-    }
+    if (!tokenMap[key]) tokenMap[key] = { tercapaiEvents: [], stopEvent: null, mode: e.mode || '?' };
+    if (e.type === 'TERCAPAI') tokenMap[key].tercapaiEvents.push(e);
+    else if (e.type === 'STOP_TRACK' || e.type === 'STOP_TRACK_WAS_PROFIT') tokenMap[key].stopEvent = e;
+    if (e.mode) tokenMap[key].mode = e.mode;
   });
 
   const allTokens = Object.values(tokenMap);
+  const closedTokens = allTokens.filter(t => t.stopEvent !== null || t.tercapaiEvents.length > 0);
 
-  // WIN = token yang pernah hit target minimal 1x (termasuk yang later kena WAS_PROFIT)
-  const winTokens  = allTokens.filter(t => t.tercapaiEvents.length > 0);
-  // LOSS = token yang TIDAK pernah hit target, murni STOP_TRACK
-  const lossTokens = allTokens.filter(t => t.tercapaiEvents.length === 0 && t.stopEvent && t.stopEvent.type === 'STOP_TRACK');
-
+  // WIN = pernah hit target minimal 1x
+  const winTokens  = closedTokens.filter(t => t.tercapaiEvents.length > 0);
+  // LOSS = murni STOP_TRACK, tidak pernah profit
+  const lossTokens = closedTokens.filter(t => t.tercapaiEvents.length === 0 && t.stopEvent?.type === 'STOP_TRACK');
   const totalUnique = winTokens.length + lossTokens.length;
 
-  // Win rate — win token vs total (tidak double count)
-  const winRate = totalUnique > 0
-    ? ((winTokens.length / totalUnique) * 100).toFixed(1)
-    : null;
+  // ── Win Rate global ──
+  const winRate = totalUnique > 0 ? ((winTokens.length / totalUnique) * 100).toFixed(1) : null;
 
-  // Avg gain — gain tertinggi per win token
+  // ── Avg Gain (max gain per win token) ──
   const gains = winTokens.map(t => {
     const g = t.tercapaiEvents.map(e => Number(e.gain)).filter(n => !isNaN(n));
     return g.length > 0 ? Math.max(...g) : NaN;
   }).filter(n => !isNaN(n));
-  const avgGain = gains.length > 0 ? (gains.reduce((a,b) => a+b, 0) / gains.length).toFixed(1) : null;
+  const avgGain = gains.length > 0 ? (gains.reduce((a,b)=>a+b,0)/gains.length).toFixed(1) : null;
 
-  // Avg loss — hanya dari token pure STOP_TRACK (tidak pernah profit sama sekali)
+  // ── Avg Loss (pure stop track) ──
   const losses = lossTokens.map(t => Number(t.stopEvent.gain)).filter(n => !isNaN(n));
-  const avgLoss = losses.length > 0 ? (losses.reduce((a,b) => a+b, 0) / losses.length).toFixed(1) : null;
+  const avgLoss = losses.length > 0 ? (losses.reduce((a,b)=>a+b,0)/losses.length).toFixed(1) : null;
 
-  // Best target — target tertinggi yang pernah hit
-  const tercapaiAll = winTokens.flatMap(t => t.tercapaiEvents);
-  const targets   = tercapaiAll.map(e => Number(e.target)).filter(n => !isNaN(n) && n > 0);
-  const bestTarget= targets.length > 0 ? Math.max(...targets) : null;
+  // ── HIT RATE PER LEVEL ──
+  const hitRateBar = document.getElementById('hitRateBar');
+  if (closedTokens.length > 0) {
+    const pills = TARGETS.map(t => {
+      const hitCount = closedTokens.filter(tok =>
+        tok.tercapaiEvents.some(e => Number(e.target) >= t)
+      ).length;
+      const pct = ((hitCount / closedTokens.length) * 100).toFixed(0);
+      const col = pct >= 50 ? 'var(--green-b)' : pct >= 25 ? 'var(--yellow-b)' : 'var(--red-b)';
+      return `<span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;white-space:nowrap;color:var(--muted);font-weight:500">+${t}% <span style="color:var(--text);font-weight:700">${pct}%</span></span>`;
+    }).join('<span style="color:var(--border);margin:0 3px">·</span>');
+    hitRateBar.innerHTML = pills;
+  } else {
+    hitRateBar.innerHTML = '<span style="font-size:10px;color:var(--muted);font-family:\'Inter\',-apple-system,sans-serif">—</span>';
+  }
 
-  document.getElementById('avgWR').textContent   = winRate   !== null ? winRate + '%'   : '—';
-  document.getElementById('avgGain').textContent = avgGain   !== null ? '+' + avgGain + '%' : '—';
-  document.getElementById('avgLoss').textContent = avgLoss   !== null ? avgLoss + '%'   : '—';
-  document.getElementById('avgBest').textContent = bestTarget !== null ? '+' + bestTarget + '%' : '—';
+  // ── WIN RATE PER MODE ──
+  const modes = ['SWING','SIGNAL','MIGRATION'];
+  const modeLabels = { SWING:'Swing', SIGNAL:'Signal', MIGRATION:'Mig' };
+  const winRateModeEl = document.getElementById('winRateMode');
+  const modePills = modes.map(m => {
+    const mTokens = closedTokens.filter(t => (t.mode||'').toUpperCase() === m || (t.mode||'').toUpperCase().includes(m.slice(0,3)));
+    const mWin    = mTokens.filter(t => t.tercapaiEvents.length > 0).length;
+    const mLoss   = mTokens.filter(t => t.tercapaiEvents.length === 0 && t.stopEvent?.type === 'STOP_TRACK').length;
+    const mTotal  = mWin + mLoss;
+    if (mTotal === 0) return '';
+    const mPct = ((mWin / mTotal) * 100).toFixed(0);
+    const col  = mPct >= 60 ? 'var(--green-b)' : mPct >= 40 ? 'var(--yellow-b)' : 'var(--red-b)';
+    const labelCol = m === 'SWING' ? 'var(--blue)' : m === 'SIGNAL' ? 'var(--purple)' : 'var(--yellow-b)';
+    return `<span style="font-size:10px;font-family:'Inter',-apple-system,sans-serif;white-space:nowrap;font-weight:600;color:${labelCol}">${modeLabels[m]} <span style="color:var(--text);font-weight:700">${mPct}%</span><span style="font-size:9px;color:var(--muted);font-weight:400"> (${mTotal})</span></span>`;
+  }).filter(Boolean).join('<span style="color:var(--border);margin:0 3px">·</span>');
+  winRateModeEl.innerHTML = modePills || '<span style="font-size:10px;color:var(--muted);font-family:\'Inter\',-apple-system,sans-serif">—</span>';
+
+  // ── Update DOM ──
+  document.getElementById('avgWR').textContent   = winRate  !== null ? winRate  + '%'      : '—';
+  document.getElementById('avgGain').textContent = avgGain  !== null ? '+' + avgGain + '%' : '—';
+  document.getElementById('avgLoss').textContent = avgLoss  !== null ? avgLoss  + '%'      : '—';
+  const totalClosedEl = document.getElementById('totalClosed');
+  if (totalClosedEl) totalClosedEl.textContent = totalUnique || '—';
 }
 
 function emptyHTML(ic, tx, sub) {
