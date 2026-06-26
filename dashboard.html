@@ -4,7 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>GM2H</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nIzBkMTAxNycvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0nZycgeDE9JzAlJyB5MT0nMTAwJScgeDI9JzEwMCUnIHkyPScwJSc+PHN0b3Agb2Zmc2V0PScwJScgc3RvcC1jb2xvcj0nI2I4ODYwYicvPjxzdG9wIG9mZnNldD0nNTAlJyBzdG9wLWNvbG9yPScjZmJiZjI0Jy8+PHN0b3Agb2Zmc2V0PScxMDAlJyBzdG9wLWNvbG9yPScjZmRlNjhhJy8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGNpcmNsZSBjeD0nMTYnIGN5PScxNycgcj0nMTAnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIGZpbGw9J25vbmUnIHN0cm9rZS1kYXNoYXJyYXk9JzI2IDgnIHRyYW5zZm9ybT0ncm90YXRlKC00NSAxNiAxNyknLz48cGF0aCBkPSdNMTkuNSAxMi41YTUgNSAwIDEgMCAxIDcnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjYnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgZmlsbD0nbm9uZScvPjxwYXRoIGQ9J00yMC41IDEwLjUgTDIzLjUgMTAuNSBMMjMuNSAxMy41IE0yMy41IDEwLjUgTDE4IDE1LjUnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcgZmlsbD0nbm9uZScvPjwvc3ZnPg==">
+<link rel="shortcut icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAzMiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNicgZmlsbD0nIzBkMTAxNycvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0nZycgeDE9JzAlJyB5MT0nMTAwJScgeDI9JzEwMCUnIHkyPScwJSc+PHN0b3Agb2Zmc2V0PScwJScgc3RvcC1jb2xvcj0nI2I4ODYwYicvPjxzdG9wIG9mZnNldD0nNTAlJyBzdG9wLWNvbG9yPScjZmJiZjI0Jy8+PHN0b3Agb2Zmc2V0PScxMDAlJyBzdG9wLWNvbG9yPScjZmRlNjhhJy8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGNpcmNsZSBjeD0nMTYnIGN5PScxNycgcj0nMTAnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIGZpbGw9J25vbmUnIHN0cm9rZS1kYXNoYXJyYXk9JzI2IDgnIHRyYW5zZm9ybT0ncm90YXRlKC00NSAxNiAxNyknLz48cGF0aCBkPSdNMTkuNSAxMi41YTUgNSAwIDEgMCAxIDcnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjYnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgZmlsbD0nbm9uZScvPjxwYXRoIGQ9J00yMC41IDEwLjUgTDIzLjUgMTAuNSBMMjMuNSAxMy41IE0yMy41IDEwLjUgTDE4IDE1LjUnIHN0cm9rZT0ndXJsKCNnKScgc3Ryb2tlLXdpZHRoPScxLjMnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcgc3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcgZmlsbD0nbm9uZScvPjwvc3ZnPg==">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg:     #0c0e13;
@@ -21,6 +23,7 @@
     --blue:   #0ea5e9; --blue-d:  rgba(14,165,233,0.10);
     --purple: #8b5cf6; --purple-d:rgba(139,92,246,0.10);
     --r: 6px; --rs: 4px;
+    --font-mono: 'JetBrains Mono', 'Courier New', monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:11px;line-height:1.4;overflow:hidden}
@@ -130,6 +133,20 @@
   /* TOAST */
   .toast{position:fixed;bottom:14px;right:14px;padding:7px 12px;background:var(--bg2);border:1px solid var(--bord2);border-radius:var(--r);font-size:11px;color:var(--text);z-index:999;opacity:0;transform:translateY(6px);transition:all .2s;pointer-events:none}
   .toast.show{opacity:1;transform:translateY(0)}
+
+  /* TERMINAL FONT — biar match sama web besar (VIP Matrix Terminal) */
+  .logo, .upd, .badge-live, .btn-r,
+  .sl, .sv, .s2l, .s2v,
+  .pt, .cnt,
+  .gb, .tp, .eg,
+  .etm, .ts, .ml, .mv,
+  .si {
+    font-family: var(--font-mono);
+    letter-spacing: .2px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .tn, .en, .ed { font-family: 'Inter', -apple-system, sans-serif; } /* nama token tetep sans biar gampang dibaca */
 </style>
 </head>
 <body>
@@ -314,10 +331,10 @@ function renderWaiting(seen, positions) {
   if (!waiting.length) { el.innerHTML = emptyHTML('🔍','Tidak ada token waiting','Semua token sudah masuk posisi'); return; }
 
   el.innerHTML = waiting.map(([ca, e]) => `
-    <div class="tc oth" onclick="copyCA('${ca}')" title="Klik untuk copy CA">
+    <div class="tc oth" onclick="openDex('${ca}')" title="Klik untuk buka di DexScreener">
       <div class="ct">
         <div>
-          <div class="tn" style="font-size:11px;font-family:monospace;letter-spacing:.3px">${ca.slice(0,8)}…${ca.slice(-6)}</div>
+          <div class="tn" style="font-size:11px;font-family:monospace;letter-spacing:.3px">${ca.slice(0,8)}…${ca.slice(-6)} <span onclick="event.stopPropagation();copyCA('${ca}')" title="Copy CA" style="cursor:pointer;color:var(--muted)">📋</span></div>
           <div class="ts">${modeLabel(e.mode)} · ${timeAgo(e.seenAt||e.firstSeen)}</div>
         </div>
         ${e.lockedReason ? gradeBadge('SKIP') : gradeBadge('SEEN')}
@@ -460,7 +477,10 @@ function renderAvg(tracking) {
   // key = address (paling unik), fallback ke symbol/name
   const tokenMap = {};
   events.forEach(e => {
-    const key = e.address || e.symbol || e.name;
+    // Pakai address kalau ada (paling akurat), fallback ke msgId (selalu unik per posisi & selalu ada).
+    // JANGAN pakai symbol/name — banyak token beda CA yang kebetulan namanya sama (copycat/re-entry),
+    // kalau dipakai buat key malah nyatuin 2 posisi beda jadi keanggep 1 token & nyembunyiin loss-nya.
+    const key = e.address || e.msgId;
     if (!key) return;
     if (!tokenMap[key]) tokenMap[key] = { tercapaiEvents: [], stopEvent: null };
     if (e.type === 'TERCAPAI') {
