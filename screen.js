@@ -1359,14 +1359,17 @@ async function checkTrackedPositions(trendingTokens) {
     var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
 
     if (gain <= -80) {
-      log(pos.symbol + ' dropped >80%, stop tracking');
-      logTrackingEvent({ type: 'STOP_TRACK', ...pos, currentPrice, gain: gain.toFixed(1) });
+      var wasProfit   = (pos.nextTargetIdx || 0) > 0;
+      var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
+      var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
+      log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
+      logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
       var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
       await sendTelegram(
-        gradeEmoji + ' 🗑️ ' + riskLabel + ' | ' + modeLabel + ' | <b>Stop Track</b> | '
+        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
         + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
         pos.msgId,
