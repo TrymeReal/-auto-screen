@@ -1133,14 +1133,6 @@ async function processTokens() {
       continue;
     }
 
-    // Cek paid DEX via DEX Screener API
-    log('[MIG] Cek paid DEX ' + t.symbol + '...');
-    var paidDex = await fetchPaidDex(t.address);
-    if (!paidDex) {
-      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
-      continue;
-    }
-
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
     // Kalau DexScreener belum index token (dexInfo null) — itu masalah timing data,
     // BUKAN bukti token tanpa sosial — jadi token tetap diloloskan biar gak
@@ -1162,6 +1154,14 @@ async function processTokens() {
       }
     } else {
       log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
+    }
+
+    // Cek paid DEX via DEX Screener API
+    log('[MIG] Cek paid DEX ' + t.symbol + '...');
+    var paidDex = await fetchPaidDex(t.address);
+    if (!paidDex) {
+      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+      continue;
     }
 
     // RugCheck — filter identik dengan Swing 1D
