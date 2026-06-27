@@ -18,26 +18,26 @@ const {
 const CFG = {
   // New Migration V2 — base gates
   minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
-  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
-  minVol5m:        Number(process.env.MIN_VOL_5M)        || 7000,
+  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
+  minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 20000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 7000,
-  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 80,
+  minLp:           Number(process.env.MIN_LP)           || 5000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
+  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
   // New Migration extra gates
-  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 20,
-  maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 30,
-  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 15,
-  maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 8,
+  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 25,
+  maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
+  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 20,
+  maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 10,
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
-  minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 150,
+  minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
-  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 10,
-  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 10,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
+  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -105,21 +105,6 @@ function fmtPrice(n) {
   if (v >= 0.0001)   return v.toFixed(6);
   if (v >= 0.000001) return v.toFixed(8);
   return v.toFixed(10);
-}
-
-function firstNumber() {
-  for (var i = 0; i < arguments.length; i++) {
-    if (arguments[i] === undefined || arguments[i] === null || arguments[i] === '') continue;
-    var n = Number(arguments[i]);
-    if (Number.isFinite(n)) return n;
-  }
-  return 0;
-}
-
-function asPct(v) {
-  var n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return n <= 1 ? n * 100 : n;
 }
 
 function timeNow() {
@@ -368,25 +353,15 @@ async function fetchDexInfo(address) {
       { timeout: 8000 }
     );
 
-    const pairs = res.data?.pairs || [];
-    if (!pairs.length) return null;
+    const pair = res.data?.pairs?.[0];
+    if (!pair) return null;
 
-    return pairs.reduce((acc, pair) => {
-      const info = pair.info || {};
-      const socials = info.socials || [];
-      acc.hasImage    = acc.hasImage || !!(info.imageUrl || info.logoUrl || info.logoURI);
-      acc.hasBanner   = acc.hasBanner || !!(info.header || info.headerUrl || info.bannerUrl);
-      acc.hasWebsite  = acc.hasWebsite || (info.websites || []).length > 0;
-      acc.hasTwitter  = acc.hasTwitter || socials.some(s => s.type === 'twitter' || s.type === 'x');
-      acc.hasTelegram = acc.hasTelegram || socials.some(s => s.type === 'telegram');
-      return acc;
-    }, {
-      hasImage: false,
-      hasBanner: false,
-      hasWebsite: false,
-      hasTwitter: false,
-      hasTelegram: false,
-    });
+    return {
+      hasImage:    !!pair.info?.imageUrl,
+      hasWebsite:  (pair.info?.websites || []).length > 0,
+      hasTwitter:  (pair.info?.socials || []).some(s => s.type === 'twitter'),
+      hasTelegram: (pair.info?.socials || []).some(s => s.type === 'telegram'),
+    };
   } catch {
     return null;
   }
@@ -572,16 +547,6 @@ function gradeToken(lp, vol, rugScore) {
   if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
   if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
   if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
-  if (score >= 80) return 'GOLD';
-  if (score >= 60) return 'POTENSIAL';
-  return 'SKIP';
-}
-
-function gradeMigrationToken(lp, vol, rugScore) {
-  let score = 0;
-  if (lp >= 100000) score += 35; else if (lp >= 50000) score += 30; else if (lp >= 30000) score += 25; else if (lp >= CFG.minLp) score += 20;
-  if (vol >= 100000) score += 35; else if (vol >= CFG.minVol1h) score += 25; else if (vol >= 30000) score += 15;
-  if (rugScore <= 40) score += 30; else if (rugScore <= CFG.maxRugScore) score += 20; else score -= 10;
   if (score >= 80) return 'GOLD';
   if (score >= 60) return 'POTENSIAL';
   return 'SKIP';
@@ -1176,81 +1141,28 @@ async function processTokens() {
       continue;
     }
 
-    // Gate MIG: wajib minimal 1 social dan 1 media branding.
-    log('[MIG] Cek Social/Media ' + t.symbol + '...');
+    // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
+    // Kalau DexScreener belum index token (dexInfo null) — itu masalah timing data,
+    // BUKAN bukti token tanpa sosial — jadi token tetap diloloskan biar gak
+    // kehilangan entry fresh. Gate sosial hanya menghukum token yang DATANYA ADA
+    // tapi beneran 0 sosial.
+    log('[MIG] Cek Social Score ' + t.symbol + '...');
     const dexInfo = await fetchDexInfo(t.address);
-    if (!dexInfo) {
-      log('SKIP [MIG] ' + t.symbol + ' (DexScreener belum ada data social/media)');
-      continue;
-    }
 
-    const socialScore = (dexInfo.hasTwitter ? 1 : 0) + (dexInfo.hasWebsite ? 1 : 0) + (dexInfo.hasTelegram ? 1 : 0);
-    const mediaScore  = (dexInfo.hasImage ? 1 : 0) + (dexInfo.hasBanner ? 1 : 0);
-    const socialOk = socialScore >= 1;
-    const mediaOk  = mediaScore >= 1;
+    let socialScore = 0;
+    if (dexInfo) {
+      if (dexInfo.hasImage)    socialScore++;
+      if (dexInfo.hasWebsite)  socialScore++;
+      if (dexInfo.hasTwitter)  socialScore++;
+      if (dexInfo.hasTelegram) socialScore++;
 
-    if (!socialOk) {
-      log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Social:' + socialScore + '/3]');
-      continue;
+      if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
+        log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Score:' + socialScore + '/4]');
+        continue;
+      }
+    } else {
+      log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
     }
-    if (!mediaOk) {
-      log('SKIP [MIG] ' + t.symbol + ' (No Logo/Banner — butuh min 1 media) [Media:' + mediaScore + '/2]');
-      continue;
-    }
-
-    var vol1h = firstNumber(tokenInfo?.price?.volume_1h, t.volume_1h, t.volume);
-    var lp = firstNumber(t.liquidity, tokenInfo?.liquidity, tokenInfo?.price?.liquidity);
-    var holdersMig = firstNumber(t.holder_count, tokenInfo?.holder_count, tokenInfo?.token?.holder_count);
-    var top10Pct = asPct(firstNumber(t.top_10_holder_rate, tokenInfo?.top_10_holder_rate, tokenInfo?.token?.top_10_holder_rate));
-    var bundlerPct = asPct(firstNumber(t.bundler_rate, t.bundler_trader_amount_rate, tokenInfo?.bundler_trader_amount_rate, tokenInfo?.token?.bundler_trader_amount_rate));
-    var devHoldPct = asPct(firstNumber(t.dev_team_hold_rate, tokenInfo?.dev_team_hold_rate, tokenInfo?.token?.dev_team_hold_rate));
-    var sniperPct = asPct(firstNumber(t.top70_sniper_hold_rate, tokenInfo?.top70_sniper_hold_rate, tokenInfo?.token?.top70_sniper_hold_rate));
-    var change1h = firstNumber(t.price_change_percent1h, tokenInfo?.price_change_percent1h, tokenInfo?.price?.price_change_percent1h);
-    var creatorTokens = firstNumber(t.creator_created_count, tokenInfo?.creator_created_count, tokenInfo?.token?.creator_created_count);
-    if (!creatorTokens && t.creator) creatorTokens = getCreatorTokenCount(t.creator);
-    var volLpRatio = lp > 0 ? vol1h / lp : 999;
-
-    if (holdersMig < CFG.minHoldersMig) {
-      log('SKIP [MIG] ' + t.symbol + ' (Holders ' + holdersMig + ' < ' + CFG.minHoldersMig + ')');
-      continue;
-    }
-    if (top10Pct > CFG.maxTop10Holders) {
-      log('SKIP [MIG] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)');
-      continue;
-    }
-    if (bundlerPct > CFG.maxBundlerPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Bundler ' + bundlerPct.toFixed(1) + '% > ' + CFG.maxBundlerPct + '%)');
-      continue;
-    }
-    if (devHoldPct > CFG.maxDevHold) {
-      log('SKIP [MIG] ' + t.symbol + ' (Dev hold ' + devHoldPct.toFixed(1) + '% > ' + CFG.maxDevHold + '%)');
-      continue;
-    }
-    if (sniperPct > CFG.maxSniperPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Sniper ' + sniperPct.toFixed(1) + '% > ' + CFG.maxSniperPct + '%)');
-      continue;
-    }
-    if (volLpRatio > CFG.maxVolLpRatio) {
-      log('SKIP [MIG] ' + t.symbol + ' (Vol/LP ' + volLpRatio.toFixed(1) + 'x > ' + CFG.maxVolLpRatio + 'x)');
-      continue;
-    }
-    if (creatorTokens > CFG.maxCreatorTokens) {
-      log('SKIP [MIG] ' + t.symbol + ' (Creator bikin ' + creatorTokens + ' token > ' + CFG.maxCreatorTokens + ')');
-      continue;
-    }
-    if (change1h > CFG.maxPriceChange1h) {
-      log('SKIP [MIG] ' + t.symbol + ' (Pump 1h +' + change1h.toFixed(1) + '% > ' + CFG.maxPriceChange1h + '%)');
-      continue;
-    }
-
-    t.volume = vol1h;
-    t.liquidity = lp;
-    t.holder_count = holdersMig;
-    t.top_10_holder_rate = top10Pct / 100;
-    t.bundler_rate = bundlerPct / 100;
-    t.dev_team_hold_rate = devHoldPct / 100;
-    t.top70_sniper_hold_rate = sniperPct / 100;
-    t.creator_created_count = creatorTokens;
 
     // RugCheck — filter identik dengan Swing 1D
     log('[MIG] Cek RugCheck ' + t.symbol + '...');
@@ -1265,7 +1177,10 @@ async function processTokens() {
       continue;
     }
 
-    const grade = gradeMigrationToken(t.liquidity, t.volume, rug.score);
+    var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
+    // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
+    t.volume = vol1h;
+    const grade = gradeToken(t.liquidity, t.volume, rug.score);
     if (grade === 'SKIP') {
       log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol terlalu kecil)');
       continue;
@@ -1273,7 +1188,7 @@ async function processTokens() {
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + socialScore + '/3 Media:' + mediaScore + '/2)');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
