@@ -1532,15 +1532,8 @@ log('');
 loadSeen();
 loadPositions();
 
-const runOnce = process.env.CI === 'true' || process.env.RUN_ONCE === 'true' || process.env.GITHUB_ACTIONS === 'true';
-
-if (runOnce) {
-  processTokens()
-    .then(() => process.exit(0))
-    .catch(e => {
-      log('FATAL: ' + (e?.message || e));
-      process.exit(1);
-    });
+if (process.env.CI === 'true') {
+  processTokens().then(() => process.exit(0));
 } else {
   runLoop();
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
