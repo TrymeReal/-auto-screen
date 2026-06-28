@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 concurrency:
   group: screen
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   screen:
     runs-on: ubuntu-latest
@@ -29,7 +29,8 @@ jobs:
       - run: npm install -g gmgn-cli
       - run: node screen.js
         env:
-          CI: 'false'
+          CI: 'true'
+          RUN_ONCE: 'true'
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
