@@ -40,6 +40,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          RADAR_BRIDGE_URL: ${{ secrets.RADAR_BRIDGE_URL }}
+          RADAR_BRIDGE_SECRET: ${{ secrets.RADAR_BRIDGE_SECRET }}
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
           MAX_RUG_SCORE: ${{ secrets.MAX_RUG_SCORE }}

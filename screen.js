@@ -66,6 +66,8 @@ const CFG = {
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
   tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
   tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
+  radarBridgeUrl:  process.env.RADAR_BRIDGE_URL,
+  radarBridgeSecret: process.env.RADAR_BRIDGE_SECRET,
 };
 
 if (!CFG.tgToken || !CFG.tgChatId) {
@@ -528,6 +530,68 @@ async function sendTelegram(msg, replyTo, threadId) {
   } catch (e) {
     const desc = e.response?.data?.description || e.message;
     log('TG error: ' + desc);
+    return null;
+  }
+}
+
+async function sendRadarBridge(t, mode, extra = {}) {
+  if (!CFG.radarBridgeUrl || !CFG.radarBridgeSecret) {
+    log('[BRIDGE] Skip ' + mode + ' — RADAR_BRIDGE_URL/RADAR_BRIDGE_SECRET belum diset');
+    return null;
+  }
+
+  if (!t || !t.address) {
+    log('[BRIDGE] Skip ' + mode + ' — CA kosong');
+    return null;
+  }
+
+  const top10 = t.top_10_holder_rate != null
+    ? Number(t.top_10_holder_rate) * 100
+    : t.stat?.top_10_holder_rate != null
+      ? Number(t.stat.top_10_holder_rate) * 100
+      : undefined;
+  const bundlerPct = t.top_bundler_trader_percentage != null
+    ? Number(t.top_bundler_trader_percentage) * 100
+    : t.bundler_rate != null
+      ? Number(t.bundler_rate) * 100
+      : undefined;
+
+  const payload = {
+    source: 'auto-screen',
+    mode,
+    ca: t.address,
+    symbol: t.symbol,
+    name: t.name,
+    grade: extra.grade,
+    rugScore: extra.rugScore,
+    insiderPct: extra.insiderPct,
+    holders: t.holder_count,
+    top10,
+    bundlerPct,
+    smartWallets: t.smart_degen_count || (t.smart_degen_wallets || []).length || undefined,
+    socialScore: extra.socialScore,
+    liquidity: t.liquidity,
+    volume: t.volume,
+    price: t.price
+  };
+
+  try {
+    const res = await axios.post(CFG.radarBridgeUrl, payload, {
+      timeout: 15000,
+      headers: {
+        'content-type': 'application/json',
+        'x-radar-bridge-secret': CFG.radarBridgeSecret
+      }
+    });
+    const data = res.data || {};
+    const eligible = data.validation?.eligible ? 'YES' : 'NO';
+    const sent = data.telegram?.sent || 0;
+    const reasons = (data.validation?.reasons || []).join(' | ');
+    log('[BRIDGE] ' + mode + ' ' + (t.symbol || '?') + ' eligible=' + eligible + ' sent=' + sent + (reasons ? ' — ' + reasons : ''));
+    return data;
+  } catch (e) {
+    const desc = e.response?.data?.detail || e.response?.data?.error || e.message;
+    log('[BRIDGE] Error ' + mode + ' ' + (t.symbol || '?') + ': ' + desc);
     return null;
   }
 }
@@ -1191,6 +1255,12 @@ async function processTokens() {
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    await sendRadarBridge(t, 'MIGRATION', {
+      grade,
+      rugScore: rug.score,
+      insiderPct: rug.insiderPct,
+      socialScore: dexInfo ? socialScore : undefined
+    });
     totalNotified++;
 
     if (t.price && Number(t.price) > 0) {
@@ -1233,6 +1303,11 @@ async function processTokens() {
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
       const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
       const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
+      await sendRadarBridge(t, 'SWING', {
+        grade,
+        rugScore: rug.score,
+        insiderPct: rug.insiderPct
+      });
       totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
@@ -1301,6 +1376,11 @@ async function processTokens() {
     log('[SIGNAL] ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Holders:' + t.holder_count + ' Rug:' + rugScore + ')');
     var fullMsg = buildSignalMsg(t);
     var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
+    await sendRadarBridge(t, 'SMART_MONEY', {
+      grade: 'SIGNAL',
+      rugScore,
+      insiderPct: (t.suspected_insider_hold_rate || 0) * 100
+    });
     totalNotified++;
     // Delay 1.5s antar notif signal biar gak kena TG rate limit
     await new Promise(r => setTimeout(r, 1500));
