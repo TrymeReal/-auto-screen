@@ -254,4 +254,4 @@ module.exports = {
   checkSwaps5m,
   checkVol5m,
   shouldSkipNewMigration,
-};
+}; 
