@@ -5,7 +5,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const {
   shouldSkipNewMigration,
-  shouldSkipMigration,
+  shouldSkipMigrationHardRisk,
   checkBaseLiquidity,
   checkBaseAgeHours,
   checkVol1h,
@@ -297,7 +297,7 @@ function fetchGmgnTrenches() {
       '--limit 50',
       '--min-smart-degen-count 1',
       '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
+      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // umur < maxAgeHours jam
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
@@ -1228,7 +1228,7 @@ async function processTokens() {
   log('Swing 1D candidates: ' + swingCandidates.length);
   log('Signal candidates: ' + uniqueSignal.length);
 
-  // — Proses New Migration V2 (6 base gates only) —
+  // — Proses New Migration —
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
 
@@ -1240,7 +1240,13 @@ async function processTokens() {
       continue;
     }
 
-    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m
+    var narrativeGate = checkNewMigrationNarrative(t);
+    if (narrativeGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
+      continue;
+    }
+    log('[MIG] Narasi OK ' + t.symbol + ' (' + narrativeGate.reason + ')');
+
     var migCfg = {
       minLp:        CFG.minLp,
       maxAgeHours:  CFG.maxAgeHours,
@@ -1248,15 +1254,24 @@ async function processTokens() {
       minSwaps5m:   CFG.minSwaps5m,
       minVol5m:     CFG.minVol5m,
     };
-    var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
-    if (migResult.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
+
+    var lpGate = checkBaseLiquidity(t.liquidity, CFG.minLp);
+    if (lpGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + lpGate.reason + ')');
       continue;
     }
 
-    // Filter ketat (bundler/top10/devhold/priceChg/holders/sniper/volLP) — sebelumnya
-    // disiapin di CFG tapi gak pernah dipanggil. Dipasang di sini sebelum narrative
-    // check biar token yang gagal ke-skip lebih awal (hemat call RugCheck/DexScreener).
+    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours);
+    if (ageGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + ageGate.reason + ')');
+      continue;
+    }
+
+    var momentumGate = shouldSkipNewMigration(t, tokenInfo, migCfg);
+    if (momentumGate.skip) {
+      log('[MIG] WARN ' + t.symbol + ' (' + momentumGate.reason + ') — narasi cocok, lanjut cek risk');
+    }
+
     var migCfgStrict = {
       minBuyRatio:      CFG.minBuyRatio,
       minVol:           CFG.minVol,
@@ -1271,18 +1286,11 @@ async function processTokens() {
       maxRugScore:      CFG.maxRugScore,
       maxInsiderPct:    CFG.maxInsiderPct,
     };
-    var migResultStrict = shouldSkipMigration(t, migCfgStrict);
-    if (migResultStrict.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + migResultStrict.reason + ')');
+    var hardRisk = shouldSkipMigrationHardRisk(t, migCfgStrict);
+    if (hardRisk.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + hardRisk.reason + ')');
       continue;
     }
-
-    var narrativeGate = checkNewMigrationNarrative(t);
-    if (narrativeGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
-      continue;
-    }
-    log('[MIG] Narasi OK ' + t.symbol + ' (' + narrativeGate.reason + ')');
 
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
     // Kalau DexScreener belum index token (dexInfo null) — itu masalah timing data,
@@ -1300,8 +1308,7 @@ async function processTokens() {
       if (dexInfo.hasTelegram) socialScore++;
 
       if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-        log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Score:' + socialScore + '/4]');
-        continue;
+        log('[MIG] WARN ' + t.symbol + ' (No Social — narasi cocok, lanjut) [Score:' + socialScore + '/4]');
       }
     } else {
       log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
@@ -1311,8 +1318,7 @@ async function processTokens() {
     log('[MIG] Cek paid DEX ' + t.symbol + '...');
     var paidDex = await fetchPaidDex(t.address);
     if (!paidDex) {
-      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
-      continue;
+      log('[MIG] WARN ' + t.symbol + ' (Belum paid DEX — narasi cocok, lanjut)');
     }
 
     // RugCheck — filter identik dengan Swing 1D
@@ -1333,13 +1339,12 @@ async function processTokens() {
     t.volume = vol1h;
     const grade = gradeToken(t.liquidity, t.volume, rug.score);
     if (grade === 'SKIP') {
-      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol terlalu kecil)');
-      continue;
+      log('[MIG] WARN ' + t.symbol + ' (Grade SKIP — LP/Vol kecil, narasi cocok)');
     }
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     await sendRadarBridge(t, 'MIGRATION', {
@@ -1595,11 +1600,11 @@ log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis dibuang');
+log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
+log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau momentum/grade lemah');
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
-log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
-log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
+log('  CreatorHold < ' + CFG.maxDevHold + '% | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
+log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
