@@ -947,9 +947,18 @@ function normalizeNarrativeText(value) {
     .trim();
 }
 
+function escapeNarrativeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function hasNarrativeKeyword(text, keywords) {
+  // Word-boundary match (bukan substring polos) biar 'ai' gak nyangkut di 'chain'/'claim',
+  // 'test' gak nyangkut di 'fastest'/'contest', dst. \b juga aman buat ticker '$AI'.
   for (var i = 0; i < keywords.length; i++) {
-    if (text.includes(normalizeNarrativeText(keywords[i]))) return keywords[i];
+    var kw = normalizeNarrativeText(keywords[i]);
+    if (!kw) continue;
+    var re = new RegExp('\\b' + escapeNarrativeRegex(kw) + '\\b');
+    if (re.test(text)) return keywords[i];
   }
   return '';
 }
