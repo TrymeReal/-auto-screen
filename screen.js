@@ -938,6 +938,53 @@ function detectNarrative(name, symbol) {
   return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
 }
 
+function normalizeNarrativeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[_\-./]+/g, ' ')
+    .replace(/[^a-z0-9\s$]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasNarrativeKeyword(text, keywords) {
+  for (var i = 0; i < keywords.length; i++) {
+    if (text.includes(normalizeNarrativeText(keywords[i]))) return keywords[i];
+  }
+  return '';
+}
+
+function checkNewMigrationNarrative(t) {
+  var name = String(t.name || '');
+  var symbol = String(t.symbol || '');
+  var text = normalizeNarrativeText(name + ' ' + symbol);
+  var compact = normalizeNarrativeText(name + symbol).replace(/\s+/g, '');
+  var generic = ['official token', 'official coin', 'new token', 'new coin', 'test', 'testing', 'token coin', 'sol token', 'pump token'];
+  var buckets = [
+    { label: 'KOL/Celebrity', keywords: ['ansem', 'mitch', 'murad', 'musk', 'elon', 'trump', 'kanye', 'cz', 'vitalik', 'saylor', 'taylor'] },
+    { label: 'Animal', keywords: ['dog', 'cat', 'frog', 'pepe', 'wif', 'bonk', 'bull', 'bear', 'shark', 'whale', 'monkey', 'penguin', 'duck', 'rat'] },
+    { label: 'AI/Agent', keywords: ['ai', 'agent', 'gpt', 'grok', 'claude', 'bot', 'robot', 'neural', 'agi', 'llm'] },
+    { label: 'Gaming', keywords: ['game', 'gaming', 'pixel', 'minecraft', 'roblox', 'pokemon', 'arcade', 'arena', 'rpg'] },
+    { label: 'Solana meta', keywords: ['pumpfun', 'pump fun', 'pump', 'bonk', 'jup', 'raydium', 'moonshot', 'letsbonk', 'bags'] },
+    { label: 'Culture meme', keywords: ['chad', 'sigma', 'wojak', 'npc', 'based', 'fren', 'gm', 'wagmi', 'degen', 'moon', 'wen'] },
+    { label: 'Brainrot', keywords: ['tung', 'sahur', 'tralalero', 'tralala', 'bombardiro', 'crocodilo', 'capuchino', 'chimpanzini', 'ballerina', 'brainrot'] },
+    { label: 'Anime/Asia', keywords: ['anime', 'waifu', 'neko', 'manga', 'vtuber', 'senpai', 'kawaii', 'japan', 'china', 'korea'] },
+    { label: 'Tech/Brand', keywords: ['tesla', 'apple', 'google', 'meta', 'nvidia', 'openai', 'xai', 'spacex', 'iphone'] },
+  ];
+
+  var genericHit = hasNarrativeKeyword(text, generic);
+  if (genericHit) return { skip: true, reason: 'Narasi generic: ' + genericHit };
+  if (/[0-9]{4,}/.test(symbol) || /[0-9]{5,}/.test(name)) return { skip: true, reason: 'Angka random di symbol/name' };
+  if (compact.length >= 12 && !/[aeiou]/.test(compact)) return { skip: true, reason: 'Symbol/name susah dibaca' };
+
+  for (var i = 0; i < buckets.length; i++) {
+    var hit = hasNarrativeKeyword(text, buckets[i].keywords);
+    if (hit) return { skip: false, reason: buckets[i].label + ': ' + hit, category: buckets[i].label, keyword: hit };
+  }
+
+  return { skip: true, reason: 'Narasi tidak cocok' };
+}
+
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
@@ -1196,6 +1243,13 @@ async function processTokens() {
       log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
       continue;
     }
+
+    var narrativeGate = checkNewMigrationNarrative(t);
+    if (narrativeGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
+      continue;
+    }
+    log('[MIG] Narasi OK ' + t.symbol + ' (' + narrativeGate.reason + ')');
 
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
     // Kalau DexScreener belum index token (dexInfo null) — itu masalah timing data,
