@@ -5,6 +5,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const {
   shouldSkipNewMigration,
+  shouldSkipMigration,
   checkBaseLiquidity,
   checkBaseAgeHours,
   checkVol1h,
@@ -1250,6 +1251,29 @@ async function processTokens() {
     var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
     if (migResult.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
+      continue;
+    }
+
+    // Filter ketat (bundler/top10/devhold/priceChg/holders/sniper/volLP) — sebelumnya
+    // disiapin di CFG tapi gak pernah dipanggil. Dipasang di sini sebelum narrative
+    // check biar token yang gagal ke-skip lebih awal (hemat call RugCheck/DexScreener).
+    var migCfgStrict = {
+      minBuyRatio:      CFG.minBuyRatio,
+      minVol:           CFG.minVol,
+      minLp:            CFG.minLp,
+      maxBundlerPct:    CFG.maxBundlerPct,
+      maxTop10Holders:  CFG.maxTop10Holders,
+      maxDevHold:       CFG.maxDevHold,
+      maxPriceChange1h: CFG.maxPriceChange1h,
+      minHolders:       CFG.minHoldersMig,
+      maxSniperPct:     CFG.maxSniperPct,
+      maxVolLpRatio:    CFG.maxVolLpRatio,
+      maxRugScore:      CFG.maxRugScore,
+      maxInsiderPct:    CFG.maxInsiderPct,
+    };
+    var migResultStrict = shouldSkipMigration(t, migCfgStrict);
+    if (migResultStrict.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + migResultStrict.reason + ')');
       continue;
     }
 
