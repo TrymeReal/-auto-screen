@@ -39,6 +39,10 @@ const CFG = {
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
+  narrativeTopK:      Number(process.env.NARRATIVE_TOP_K)      || 3,
+  narrativeMinCluster:Number(process.env.NARRATIVE_MIN_CLUSTER)|| 2,
+  narrativeMinHeat:   Number(process.env.NARRATIVE_MIN_HEAT)   || 4,
+  narrativeDynamic:   process.env.NARRATIVE_DYNAMIC_ENABLED !== 'false',
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -955,11 +959,14 @@ function escapeNarrativeRegex(s) {
 function hasNarrativeKeyword(text, keywords) {
   // Word-boundary match (bukan substring polos) biar 'ai' gak nyangkut di 'chain'/'claim',
   // 'test' gak nyangkut di 'fastest'/'contest', dst. \b juga aman buat ticker '$AI'.
+  var compactText = normalizeNarrativeText(text).replace(/\s+/g, '');
   for (var i = 0; i < keywords.length; i++) {
     var kw = normalizeNarrativeText(keywords[i]);
     if (!kw) continue;
     var re = new RegExp('\\b' + escapeNarrativeRegex(kw) + '\\b');
     if (re.test(text)) return keywords[i];
+    var compactKw = kw.replace(/\s+/g, '');
+    if (compactKw.length >= 4 && compactText.includes(compactKw)) return keywords[i];
   }
   return '';
 }
@@ -971,10 +978,10 @@ function checkNewMigrationNarrative(t) {
   var compact = normalizeNarrativeText(name + symbol).replace(/\s+/g, '');
   var generic = ['official token', 'official coin', 'new token', 'new coin', 'test', 'testing', 'token coin', 'sol token', 'pump token'];
   var buckets = [
-    { label: 'KOL/Celebrity', keywords: ['ansem', 'mitch', 'murad', 'musk', 'elon', 'trump', 'kanye', 'cz', 'vitalik', 'saylor', 'taylor'] },
-    { label: 'Animal', keywords: ['dog', 'cat', 'frog', 'pepe', 'wif', 'bonk', 'bull', 'bear', 'shark', 'whale', 'monkey', 'penguin', 'duck', 'rat'] },
+    { label: 'KOL/Celebrity', keywords: ['ansem', 'mitch', 'murad', 'musk', 'elon', 'trump', 'kanye', 'cz', 'vitalik', 'saylor', 'taylor', 'powell'] },
+    { label: 'Animal', keywords: ['dog', 'cat', 'catwif', 'catwifhat', 'dogwif', 'wifhat', 'frog', 'pepe', 'wif', 'bonk', 'bull', 'bear', 'shark', 'whale', 'monkey', 'ape', 'penguin', 'duck', 'rat', 'goat', 'cow', 'pig', 'horse', 'lion', 'tiger', 'rabbit', 'bunny', 'hamster', 'chicken', 'shrimp', 'crab', 'fish', 'bird', 'panda'] },
     { label: 'AI/Agent', keywords: ['ai', 'agent', 'gpt', 'grok', 'claude', 'bot', 'robot', 'neural', 'agi', 'llm'] },
-    { label: 'Gaming', keywords: ['game', 'gaming', 'pixel', 'minecraft', 'roblox', 'pokemon', 'arcade', 'arena', 'rpg'] },
+    { label: 'Gaming', keywords: ['game', 'gaming', 'pixel', 'minecraft', 'roblox', 'pokemon', 'arcade', 'arena', 'rpg', 'xbox', 'playstation', 'gta', 'rust', 'valorant'] },
     { label: 'Solana meta', keywords: ['pumpfun', 'pump fun', 'pump', 'bonk', 'jup', 'raydium', 'moonshot', 'letsbonk', 'bags'] },
     { label: 'Culture meme', keywords: ['chad', 'sigma', 'wojak', 'npc', 'based', 'fren', 'gm', 'wagmi', 'degen', 'moon', 'wen'] },
     { label: 'Brainrot', keywords: ['tung', 'sahur', 'tralalero', 'tralala', 'bombardiro', 'crocodilo', 'capuchino', 'chimpanzini', 'ballerina', 'brainrot'] },
@@ -993,6 +1000,93 @@ function checkNewMigrationNarrative(t) {
   }
 
   return { skip: true, reason: 'Narasi tidak cocok' };
+}
+
+function narrativeHeatScore(t) {
+  var liquidity = Number(t.liquidity) || 0;
+  var volume = Number(t.volume) || Number(t.volume_1h) || Number(t.volume_24h) || 0;
+  var smart = Number(t.smart_degen_count || t.smart_degen_count_24h || t.smart_degen_count_6h) || 0;
+  var tx = (Number(t.buys) || 0) + (Number(t.sells) || 0);
+  return 1
+    + Math.min(4, Math.log10(liquidity + 1) / 1.5)
+    + Math.min(4, Math.log10(volume + 1) / 1.5)
+    + Math.min(3, smart * 0.5)
+    + Math.min(2, tx / 250);
+}
+
+function buildNewMigrationNarrativePulse(tokens) {
+  var map = new Map();
+  var scanned = 0;
+  var matched = 0;
+
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (!t || !t.address) continue;
+    if (!isMigratedDex(t)) continue;
+    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
+    scanned++;
+
+    var gate = checkNewMigrationNarrative(t);
+    if (gate.skip || !gate.category) continue;
+    matched++;
+
+    var current = map.get(gate.category) || {
+      label: gate.category,
+      count: 0,
+      heat: 0,
+      examples: []
+    };
+    current.count++;
+    current.heat += narrativeHeatScore(t);
+    if (current.examples.length < 3) current.examples.push(t.symbol || t.name || '?');
+    map.set(gate.category, current);
+  }
+
+  var ranked = Array.from(map.values()).sort(function(a, b) {
+    return b.count - a.count || b.heat - a.heat;
+  });
+  var hot = ranked.filter(function(item) {
+    return item.count >= CFG.narrativeMinCluster || item.heat >= CFG.narrativeMinHeat;
+  }).slice(0, CFG.narrativeTopK);
+  var hotLabels = new Set(hot.map(function(item) { return item.label; }));
+  var summary = hot.length
+    ? hot.map(function(item) {
+        return item.label + ' x' + item.count + ' heat ' + item.heat.toFixed(1) + ' [' + item.examples.join(', ') + ']';
+      }).join(' | ')
+    : 'belum ada cluster dominan';
+
+  return {
+    scanned: scanned,
+    matched: matched,
+    ranked: ranked,
+    hot: hot,
+    hotLabels: hotLabels,
+    summary: summary
+  };
+}
+
+function applyDynamicNarrativeGate(gate, pulse) {
+  if (gate.skip || !CFG.narrativeDynamic) return gate;
+  if (!pulse || pulse.hotLabels.size === 0) {
+    return {
+      skip: false,
+      reason: gate.reason + ' | belum ada cluster hot, pakai narasi kuat',
+      category: gate.category,
+      keyword: gate.keyword
+    };
+  }
+  if (!pulse.hotLabels.has(gate.category)) {
+    return {
+      skip: true,
+      reason: 'Narasi belum hot: ' + gate.category + ' (' + gate.keyword + '). Hot: ' + pulse.summary
+    };
+  }
+  return {
+    skip: false,
+    reason: gate.reason + ' | HOT Dex cluster: ' + pulse.summary,
+    category: gate.category,
+    keyword: gate.keyword
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -1167,6 +1261,7 @@ async function processTokens() {
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
   var swingTokens     = fetchGmgnTrending();
+  var migrationNarrativePulse = buildNewMigrationNarrativePulse(migrationTokens);
 
   var newMigration = [];
   var swingCandidates = [];
@@ -1225,6 +1320,7 @@ async function processTokens() {
   }
 
   log('New Migration candidates: ' + newMigration.length);
+  log('New Migration narrative pulse: scanned ' + migrationNarrativePulse.scanned + ' | matched ' + migrationNarrativePulse.matched + ' | hot ' + migrationNarrativePulse.summary);
   log('Swing 1D candidates: ' + swingCandidates.length);
   log('Signal candidates: ' + uniqueSignal.length);
 
@@ -1240,7 +1336,7 @@ async function processTokens() {
       continue;
     }
 
-    var narrativeGate = checkNewMigrationNarrative(t);
+    var narrativeGate = applyDynamicNarrativeGate(checkNewMigrationNarrative(t), migrationNarrativePulse);
     if (narrativeGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
       continue;
