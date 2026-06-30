@@ -121,33 +121,41 @@ function shouldSkipMigration(token, cfg) {
   return { skip: false, reason: '' };
 }
 
-function shouldSkipMigrationHardRisk(token, cfg) {
+function collectMigrationHardRiskReasons(token, cfg) {
   var t = token;
+  var reasons = [];
 
   var bundlerPct = (t.bundler_rate || 0) * 100;
   if (bundlerPct > cfg.maxBundlerPct) {
-    return { skip: true, reason: 'Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%' };
+    reasons.push('Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%');
   }
 
   var top10 = (t.top_10_holder_rate || 0) * 100;
   if (top10 > cfg.maxTop10Holders) {
-    return { skip: true, reason: 'Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%' };
+    reasons.push('Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%');
   }
 
   var devHold = checkDevHoldRate(t.dev_team_hold_rate, cfg.maxDevHold);
-  if (devHold.skip) return devHold;
+  if (devHold.skip) reasons.push(devHold.reason);
 
   var sniper = checkSniperRate(t.top70_sniper_hold_rate, cfg.maxSniperPct);
-  if (sniper.skip) return sniper;
+  if (sniper.skip) reasons.push(sniper.reason);
 
   var volLp = checkVolLpRatio(t.volume, t.liquidity, cfg.maxVolLpRatio);
-  if (volLp.skip) return volLp;
+  if (volLp.skip) reasons.push(volLp.reason);
 
   var rug = checkRugRatio(t.rug_ratio, cfg.maxRugScore);
-  if (rug.skip) return rug;
+  if (rug.skip) reasons.push(rug.reason);
 
   var insider = checkInsiderRate(t.suspected_insider_hold_rate, cfg.maxInsiderPct);
-  if (insider.skip) return insider;
+  if (insider.skip) reasons.push(insider.reason);
+
+  return reasons;
+}
+
+function shouldSkipMigrationHardRisk(token, cfg) {
+  var reasons = collectMigrationHardRiskReasons(token, cfg);
+  if (reasons.length > 0) return { skip: true, reason: reasons[0] };
 
   return { skip: false, reason: '' };
 }
@@ -238,6 +246,7 @@ module.exports = {
   checkRugRatio,
   checkInsiderRate,
   shouldSkipMigration,
+  collectMigrationHardRiskReasons,
   shouldSkipMigrationHardRisk,
   checkBaseLiquidity,
   checkBaseAgeHours,
