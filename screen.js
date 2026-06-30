@@ -5,7 +5,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const {
   shouldSkipNewMigration,
-  shouldSkipMigrationHardRisk,
+  collectMigrationHardRiskReasons,
   checkBaseLiquidity,
   checkBaseAgeHours,
   checkVol1h,
@@ -1286,10 +1286,9 @@ async function processTokens() {
       maxRugScore:      CFG.maxRugScore,
       maxInsiderPct:    CFG.maxInsiderPct,
     };
-    var hardRisk = shouldSkipMigrationHardRisk(t, migCfgStrict);
-    if (hardRisk.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + hardRisk.reason + ')');
-      continue;
+    var gmgnRiskReasons = collectMigrationHardRiskReasons(t, migCfgStrict);
+    if (gmgnRiskReasons.length > 0) {
+      log('[MIG] WARN ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ') — narasi cocok, lanjut RugCheck');
     }
 
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
@@ -1601,9 +1600,9 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau momentum/grade lemah');
-log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
-log('  CreatorHold < ' + CFG.maxDevHold + '% | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
+log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau GMGN risk/momentum/grade lemah');
+log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
+log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
