@@ -3,9 +3,9 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { buyToken, sellToken, setDryRun } = require('./buyer');
 const {
   shouldSkipNewMigration,
-  collectMigrationHardRiskReasons,
   checkBaseLiquidity,
   checkBaseAgeHours,
   checkVol1h,
@@ -67,9 +67,18 @@ const CFG = {
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
   tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
   tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
-  radarBridgeUrl:  process.env.RADAR_BRIDGE_URL,
-  radarBridgeSecret: process.env.RADAR_BRIDGE_SECRET,
+  tgThreadAuto:    Number(process.env.TG_THREAD_AUTO)    || undefined,  // Autobuy / Autosell
 };
+
+const AUTO_BUY = {
+  ENABLED:      process.env.AUTO_BUY_ENABLED === 'true' || false,
+  DRY_RUN:      process.env.AUTO_BUY_DRY_RUN !== 'false',
+  AMOUNT_SOL:   Number(process.env.AUTO_BUY_AMOUNT)     || 0.01,
+  MAX_PER_CYCLE:Number(process.env.AUTO_BUY_MAX_PER)    || 3,
+  SLIPPAGE_BPS: Number(process.env.AUTO_BUY_SLIPPAGE)   || 500,
+  ONLY_GRADE:   process.env.AUTO_BUY_GRADE             || 'ALL',
+};
+setDryRun(AUTO_BUY.DRY_RUN);
 
 if (!CFG.tgToken || !CFG.tgChatId) {
   console.error('Isi TG_TOKEN dan TG_CHAT_ID di .env');
@@ -297,7 +306,7 @@ function fetchGmgnTrenches() {
       '--limit 50',
       '--min-smart-degen-count 1',
       '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // umur < maxAgeHours jam
+      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
@@ -331,6 +340,23 @@ function fetchTokenInfo(address) {
   }
 }
 
+async function fetchDexInfo(address) {
+  try {
+    const res = await axios.get(
+      'https://api.dexscreener.com/latest/dex/tokens/' + address,
+      { timeout: 8000 }
+    );
+    const pair = res.data?.pairs?.[0];
+    if (!pair) return null;
+    return {
+      hasImage: !!pair.info?.imageUrl,
+      hasWebsite: (pair.info?.websites || []).length > 0,
+      hasTwitter: (pair.info?.socials || []).some(s => s.type === 'twitter'),
+      hasTelegram: (pair.info?.socials || []).some(s => s.type === 'telegram'),
+    };
+  } catch { return null; }
+}
+
 async function fetchPaidDex(address) {
   try {
     const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + address, { timeout: 8000 }, 2);
@@ -346,27 +372,6 @@ async function fetchPaidDex(address) {
   } catch (e) {
     log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
     return false;
-  }
-}
-
-async function fetchDexInfo(address) {
-  try {
-    const res = await axios.get(
-      'https://api.dexscreener.com/latest/dex/tokens/' + address,
-      { timeout: 8000 }
-    );
-
-    const pair = res.data?.pairs?.[0];
-    if (!pair) return null;
-
-    return {
-      hasImage:    !!pair.info?.imageUrl,
-      hasWebsite:  (pair.info?.websites || []).length > 0,
-      hasTwitter:  (pair.info?.socials || []).some(s => s.type === 'twitter'),
-      hasTelegram: (pair.info?.socials || []).some(s => s.type === 'telegram'),
-    };
-  } catch {
-    return null;
   }
 }
 
@@ -531,68 +536,6 @@ async function sendTelegram(msg, replyTo, threadId) {
   } catch (e) {
     const desc = e.response?.data?.description || e.message;
     log('TG error: ' + desc);
-    return null;
-  }
-}
-
-async function sendRadarBridge(t, mode, extra = {}) {
-  if (!CFG.radarBridgeUrl || !CFG.radarBridgeSecret) {
-    log('[BRIDGE] Skip ' + mode + ' — RADAR_BRIDGE_URL/RADAR_BRIDGE_SECRET belum diset');
-    return null;
-  }
-
-  if (!t || !t.address) {
-    log('[BRIDGE] Skip ' + mode + ' — CA kosong');
-    return null;
-  }
-
-  const top10 = t.top_10_holder_rate != null
-    ? Number(t.top_10_holder_rate) * 100
-    : t.stat?.top_10_holder_rate != null
-      ? Number(t.stat.top_10_holder_rate) * 100
-      : undefined;
-  const bundlerPct = t.top_bundler_trader_percentage != null
-    ? Number(t.top_bundler_trader_percentage) * 100
-    : t.bundler_rate != null
-      ? Number(t.bundler_rate) * 100
-      : undefined;
-
-  const payload = {
-    source: 'auto-screen',
-    mode,
-    ca: t.address,
-    symbol: t.symbol,
-    name: t.name,
-    grade: extra.grade,
-    rugScore: extra.rugScore,
-    insiderPct: extra.insiderPct,
-    holders: t.holder_count,
-    top10,
-    bundlerPct,
-    smartWallets: t.smart_degen_count || (t.smart_degen_wallets || []).length || undefined,
-    socialScore: extra.socialScore,
-    liquidity: t.liquidity,
-    volume: t.volume,
-    price: t.price
-  };
-
-  try {
-    const res = await axios.post(CFG.radarBridgeUrl, payload, {
-      timeout: 15000,
-      headers: {
-        'content-type': 'application/json',
-        'x-radar-bridge-secret': CFG.radarBridgeSecret
-      }
-    });
-    const data = res.data || {};
-    const eligible = data.validation?.eligible ? 'YES' : 'NO';
-    const sent = data.telegram?.sent || 0;
-    const reasons = (data.validation?.reasons || []).join(' | ');
-    log('[BRIDGE] ' + mode + ' ' + (t.symbol || '?') + ' eligible=' + eligible + ' sent=' + sent + (reasons ? ' — ' + reasons : ''));
-    return data;
-  } catch (e) {
-    const desc = e.response?.data?.detail || e.response?.data?.error || e.message;
-    log('[BRIDGE] Error ' + mode + ' ' + (t.symbol || '?') + ': ' + desc);
     return null;
   }
 }
@@ -939,62 +882,6 @@ function detectNarrative(name, symbol) {
   return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
 }
 
-function normalizeNarrativeText(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[_\-./]+/g, ' ')
-    .replace(/[^a-z0-9\s$]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function escapeNarrativeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function hasNarrativeKeyword(text, keywords) {
-  // Word-boundary match (bukan substring polos) biar 'ai' gak nyangkut di 'chain'/'claim',
-  // 'test' gak nyangkut di 'fastest'/'contest', dst. \b juga aman buat ticker '$AI'.
-  for (var i = 0; i < keywords.length; i++) {
-    var kw = normalizeNarrativeText(keywords[i]);
-    if (!kw) continue;
-    var re = new RegExp('\\b' + escapeNarrativeRegex(kw) + '\\b');
-    if (re.test(text)) return keywords[i];
-  }
-  return '';
-}
-
-function checkNewMigrationNarrative(t) {
-  var name = String(t.name || '');
-  var symbol = String(t.symbol || '');
-  var text = normalizeNarrativeText(name + ' ' + symbol);
-  var compact = normalizeNarrativeText(name + symbol).replace(/\s+/g, '');
-  var generic = ['official token', 'official coin', 'new token', 'new coin', 'test', 'testing', 'token coin', 'sol token', 'pump token'];
-  var buckets = [
-    { label: 'KOL/Celebrity', keywords: ['ansem', 'mitch', 'murad', 'musk', 'elon', 'trump', 'kanye', 'cz', 'vitalik', 'saylor', 'taylor'] },
-    { label: 'Animal', keywords: ['dog', 'cat', 'frog', 'pepe', 'wif', 'bonk', 'bull', 'bear', 'shark', 'whale', 'monkey', 'penguin', 'duck', 'rat'] },
-    { label: 'AI/Agent', keywords: ['ai', 'agent', 'gpt', 'grok', 'claude', 'bot', 'robot', 'neural', 'agi', 'llm'] },
-    { label: 'Gaming', keywords: ['game', 'gaming', 'pixel', 'minecraft', 'roblox', 'pokemon', 'arcade', 'arena', 'rpg'] },
-    { label: 'Solana meta', keywords: ['pumpfun', 'pump fun', 'pump', 'bonk', 'jup', 'raydium', 'moonshot', 'letsbonk', 'bags'] },
-    { label: 'Culture meme', keywords: ['chad', 'sigma', 'wojak', 'npc', 'based', 'fren', 'gm', 'wagmi', 'degen', 'moon', 'wen'] },
-    { label: 'Brainrot', keywords: ['tung', 'sahur', 'tralalero', 'tralala', 'bombardiro', 'crocodilo', 'capuchino', 'chimpanzini', 'ballerina', 'brainrot'] },
-    { label: 'Anime/Asia', keywords: ['anime', 'waifu', 'neko', 'manga', 'vtuber', 'senpai', 'kawaii', 'japan', 'china', 'korea'] },
-    { label: 'Tech/Brand', keywords: ['tesla', 'apple', 'google', 'meta', 'nvidia', 'openai', 'xai', 'spacex', 'iphone'] },
-  ];
-
-  var genericHit = hasNarrativeKeyword(text, generic);
-  if (genericHit) return { skip: true, reason: 'Narasi generic: ' + genericHit };
-  if (/[0-9]{4,}/.test(symbol) || /[0-9]{5,}/.test(name)) return { skip: true, reason: 'Angka random di symbol/name' };
-  if (compact.length >= 12 && !/[aeiou]/.test(compact)) return { skip: true, reason: 'Symbol/name susah dibaca' };
-
-  for (var i = 0; i < buckets.length; i++) {
-    var hit = hasNarrativeKeyword(text, buckets[i].keywords);
-    if (hit) return { skip: false, reason: buckets[i].label + ': ' + hit, category: buckets[i].label, keyword: hit };
-  }
-
-  return { skip: true, reason: 'Narasi tidak cocok' };
-}
-
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
@@ -1228,7 +1115,9 @@ async function processTokens() {
   log('Swing 1D candidates: ' + swingCandidates.length);
   log('Signal candidates: ' + uniqueSignal.length);
 
-  // — Proses New Migration —
+  let buyCount = 0;
+
+  // — Proses New Migration V2 (6 base gates only) —
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
 
@@ -1240,13 +1129,7 @@ async function processTokens() {
       continue;
     }
 
-    var narrativeGate = checkNewMigrationNarrative(t);
-    if (narrativeGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
-      continue;
-    }
-    log('[MIG] Narasi OK ' + t.symbol + ' (' + narrativeGate.reason + ')');
-
+    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m
     var migCfg = {
       minLp:        CFG.minLp,
       maxAgeHours:  CFG.maxAgeHours,
@@ -1254,41 +1137,10 @@ async function processTokens() {
       minSwaps5m:   CFG.minSwaps5m,
       minVol5m:     CFG.minVol5m,
     };
-
-    var lpGate = checkBaseLiquidity(t.liquidity, CFG.minLp);
-    if (lpGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + lpGate.reason + ')');
+    var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
+    if (migResult.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
       continue;
-    }
-
-    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours);
-    if (ageGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + ageGate.reason + ')');
-      continue;
-    }
-
-    var momentumGate = shouldSkipNewMigration(t, tokenInfo, migCfg);
-    if (momentumGate.skip) {
-      log('[MIG] WARN ' + t.symbol + ' (' + momentumGate.reason + ') — narasi cocok, lanjut cek risk');
-    }
-
-    var migCfgStrict = {
-      minBuyRatio:      CFG.minBuyRatio,
-      minVol:           CFG.minVol,
-      minLp:            CFG.minLp,
-      maxBundlerPct:    CFG.maxBundlerPct,
-      maxTop10Holders:  CFG.maxTop10Holders,
-      maxDevHold:       CFG.maxDevHold,
-      maxPriceChange1h: CFG.maxPriceChange1h,
-      minHolders:       CFG.minHoldersMig,
-      maxSniperPct:     CFG.maxSniperPct,
-      maxVolLpRatio:    CFG.maxVolLpRatio,
-      maxRugScore:      CFG.maxRugScore,
-      maxInsiderPct:    CFG.maxInsiderPct,
-    };
-    var gmgnRiskReasons = collectMigrationHardRiskReasons(t, migCfgStrict);
-    if (gmgnRiskReasons.length > 0) {
-      log('[MIG] WARN ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ') — narasi cocok, lanjut RugCheck');
     }
 
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
@@ -1307,7 +1159,8 @@ async function processTokens() {
       if (dexInfo.hasTelegram) socialScore++;
 
       if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-        log('[MIG] WARN ' + t.symbol + ' (No Social — narasi cocok, lanjut) [Score:' + socialScore + '/4]');
+        log('SKIP [MIG] ' + t.symbol + ' (No Social — butuh min 1: Twitter/Website/TG) [Score:' + socialScore + '/4]');
+        continue;
       }
     } else {
       log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
@@ -1317,7 +1170,8 @@ async function processTokens() {
     log('[MIG] Cek paid DEX ' + t.symbol + '...');
     var paidDex = await fetchPaidDex(t.address);
     if (!paidDex) {
-      log('[MIG] WARN ' + t.symbol + ' (Belum paid DEX — narasi cocok, lanjut)');
+      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+      continue;
     }
 
     // RugCheck — filter identik dengan Swing 1D
@@ -1338,20 +1192,15 @@ async function processTokens() {
     t.volume = vol1h;
     const grade = gradeToken(t.liquidity, t.volume, rug.score);
     if (grade === 'SKIP') {
-      log('[MIG] WARN ' + t.symbol + ' (Grade SKIP — LP/Vol kecil, narasi cocok)');
+      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol terlalu kecil)');
+      continue;
     }
 
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅ Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
-    await sendRadarBridge(t, 'MIGRATION', {
-      grade,
-      rugScore: rug.score,
-      insiderPct: rug.insiderPct,
-      socialScore: dexInfo ? socialScore : undefined
-    });
     totalNotified++;
 
     if (t.price && Number(t.price) > 0) {
@@ -1361,6 +1210,53 @@ async function processTokens() {
         threadId: CFG.tgThreadMig,
       });
       log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
+    }
+
+    // — AUTO BUY —
+    if (AUTO_BUY.ENABLED && buyCount < AUTO_BUY.MAX_PER_CYCLE) {
+      log('[AUTOBUY] Checking ' + t.symbol + ' (grade=' + grade + ')');
+      const targetGrades = AUTO_BUY.ONLY_GRADE.split(',').map(g => g.trim());
+      if (targetGrades.includes(grade) || AUTO_BUY.ONLY_GRADE === 'ALL') {
+          try {
+          log('[AUTOBUY] Buying ' + t.symbol + ' (' + AUTO_BUY.AMOUNT_SOL + ' SOL)...');
+          const result = await buyToken(t.address, AUTO_BUY.AMOUNT_SOL, AUTO_BUY.SLIPPAGE_BPS);
+          buyCount++;
+
+          // Update TRACKED map langsung (entryPrice USD dibiarkan untuk gain tracking)
+          const pos = TRACKED.get(t.address);
+          if (pos) {
+            pos.entryPriceSol = result.entryPriceSol;
+            pos.txSignature   = result.txSignature;
+            pos.tokenAmount   = result.tokenAmount;
+            pos.tokenDecimals = result.tokenDecimals || 6;
+            TRACKED.set(t.address, pos);
+          }
+
+          log('[AUTOBUY] Bought ' + t.symbol + ' | tx: ' + result.txSignature);
+
+          var gradeEmoji = grade === 'GOLD' ? '\uD83D\uDFE2' : grade === 'POTENSIAL' ? '\uD83D\uDFE1' : '\uD83D\uDD34';
+          var dryLabel   = AUTO_BUY.DRY_RUN ? ' <i>(DRY RUN)</i>' : '';
+          var buyMsg = '\uD83D\uDED2 <b>AUTOBUY' + dryLabel + '</b> | ' + gradeEmoji + ' ' + grade + ' | \uD83C\uDD95 New Migration\n'
+            + '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n'
+            + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+            + '\uD83D\uDCB0 Amount  : ' + AUTO_BUY.AMOUNT_SOL + ' SOL\n'
+            + '\uD83D\uDCCA Slippage: ' + (AUTO_BUY.SLIPPAGE_BPS / 100) + '%\n'
+            + '\uD83C\uDFF7\uFE0F Entry   : $' + fmtPrice(t.price) + '\n'
+            + '\uD83D\uDC8E Got     : ' + fmt(result.tokenAmount) + ' tokens\n'
+            + '\uD83D\uDD17 Tx: <a href="https://solscan.io/tx/' + result.txSignature + '">' + result.txSignature.slice(0, 12) + '...</a>\n'
+            + '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>'
+            + ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>';
+          await sendTelegram(buyMsg, null, CFG.tgThreadAuto);
+        } catch (err) {
+          log('[AUTOBUY] Failed ' + t.symbol + ': ' + err.message);
+          var failMsg = '\u274C <b>AUTOBUY FAILED</b> | \uD83C\uDD95 New Migration\n'
+            + '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n'
+            + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+            + '\u26A0\uFE0F Error: ' + err.message + '\n'
+            + '<code>' + t.address + '</code>';
+          await sendTelegram(failMsg, null, CFG.tgThreadAuto);
+        }
+      }
     }
   }
 
@@ -1394,11 +1290,6 @@ async function processTokens() {
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
       const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
       const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
-      await sendRadarBridge(t, 'SWING', {
-        grade,
-        rugScore: rug.score,
-        insiderPct: rug.insiderPct
-      });
       totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
@@ -1467,11 +1358,6 @@ async function processTokens() {
     log('[SIGNAL] ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Holders:' + t.holder_count + ' Rug:' + rugScore + ')');
     var fullMsg = buildSignalMsg(t);
     var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
-    await sendRadarBridge(t, 'SMART_MONEY', {
-      grade: 'SIGNAL',
-      rugScore,
-      insiderPct: (t.suspected_insider_hold_rate || 0) * 100
-    });
     totalNotified++;
     // Delay 1.5s antar notif signal biar gak kena TG rate limit
     await new Promise(r => setTimeout(r, 1500));
@@ -1522,23 +1408,55 @@ async function checkTrackedPositions(trendingTokens) {
     var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
     var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
 
-    if (gain <= -80) {
-      var wasProfit   = (pos.nextTargetIdx || 0) > 0;
-      var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
-      var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
-      log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
-      logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
+    // — AUTO SELL: Cut loss 50% —
+    if (gain <= -50) {
+      var gradeEmoji = pos.grade === 'GOLD' ? '\uD83D\uDFE2' : pos.grade === 'POTENSIAL' ? '\uD83D\uDFE1' : '\uD83D\uDD34';
+
+      if (pos.tokenAmount && pos.tokenAmount > 0 && AUTO_BUY.ENABLED && !AUTO_BUY.DRY_RUN) {
+        try {
+          var decimals = pos.tokenDecimals || 6;
+          var sellResult = await sellToken(ca, pos.tokenAmount, decimals, AUTO_BUY.SLIPPAGE_BPS);
+          log('[AUTOSELL] Cut loss ' + pos.symbol + ' @ ' + gain.toFixed(1) + '% | tx: ' + sellResult.txSignature);
+          await sendTelegram(
+            '\u26A0\uFE0F <b>AUTOSELL CUT LOSS</b> \u26A0\uFE0F\n'
+            + gradeEmoji + ' ' + pos.grade + ' | ' + modeLabel + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+            + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+            + '\uD83D\uDCC9 Loss: <b>' + gain.toFixed(1) + '%</b>\n'
+            + '\uD83D\uDD17 Tx: <a href="https://solscan.io/tx/' + sellResult.txSignature + '">' + sellResult.txSignature.slice(0, 12) + '...</a>',
+            null, CFG.tgThreadAuto
+          );
+        } catch (err) {
+          log('[AUTOSELL] Cut loss FAILED ' + pos.symbol + ': ' + err.message);
+          await sendTelegram(
+            '\u274C <b>AUTOSELL CUT LOSS FAILED</b>\n'
+            + gradeEmoji + ' ' + pos.grade + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+            + '\u26A0\uFE0F Error: ' + err.message,
+            null, CFG.tgThreadAuto
+          );
+        }
+      } else if (pos.tokenAmount && pos.tokenAmount > 0 && AUTO_BUY.ENABLED && AUTO_BUY.DRY_RUN) {
+        log('[AUTOSELL] Cut loss DRY RUN ' + pos.symbol + ' @ ' + gain.toFixed(1) + '%');
+        await sendTelegram(
+          '\u26A0\uFE0F <b>AUTOSELL CUT LOSS</b> <i>(DRY RUN)</i> \u26A0\uFE0F\n'
+          + gradeEmoji + ' ' + pos.grade + ' | ' + modeLabel + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+          + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+          + '\uD83D\uDCC9 Loss: <b>' + gain.toFixed(1) + '%</b>\n'
+          + '\uD83E\uDDEA Simulasi sell, tidak ada transaksi real.',
+          null, CFG.tgThreadAuto
+        );
+        logTrackingEvent({ type: 'AUTOSELL_CL_DRY_RUN', ...pos, currentPrice, gain: gain.toFixed(1) });
+      } else {
+        log('[AUTOSELL] Cut loss ' + pos.symbol + ' @ ' + gain.toFixed(1) + '% (no token data, just stop track)');
+        await sendTelegram(
+          '\u26A0\uFE0F <b>CUT LOSS</b> (no token data for auto-sell)\n'
+          + gradeEmoji + ' ' + pos.grade + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+          + '\uD83D\uDCC9 Loss: <b>' + gain.toFixed(1) + '%</b>',
+          null, CFG.tgThreadAuto
+        );
+      }
+
+      logTrackingEvent({ type: 'CUT_LOSS', ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
-      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
-      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
-        + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
-        + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId,
-        safeThread
-      );
       continue;
     }
 
@@ -1548,12 +1466,52 @@ async function checkTrackedPositions(trendingTokens) {
     }
     if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
       var target = TARGETS[highestIdx];
-      var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
+      var emoji  = target >= 100 ? '\uD83D\uDE80' : target >= 50 ? '\uD83D\uDCC8' : '\u2B06\uFE0F';
       log(pos.symbol + ' hit target +' + target + '%');
       logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
-      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
+      var gradeEmoji = pos.grade === 'GOLD' ? '\uD83D\uDFE2' : pos.grade === 'POTENSIAL' ? '\uD83D\uDFE1' : '\uD83D\uDD34';
       var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
       var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
+
+      // — AUTO SELL TP: jual di target pertama (+30%) —
+      if (target === 30 && pos.tokenAmount && pos.tokenAmount > 0 && AUTO_BUY.ENABLED && !AUTO_BUY.DRY_RUN) {
+        try {
+          var decimals = pos.tokenDecimals || 6;
+          var sellResult = await sellToken(ca, pos.tokenAmount, decimals, AUTO_BUY.SLIPPAGE_BPS);
+          log('[AUTOSELL] TP ' + pos.symbol + ' @ +' + target + '% | tx: ' + sellResult.txSignature);
+          await sendTelegram(
+            '\u2705 <b>AUTOSELL TAKE PROFIT</b> \u2705\n'
+            + gradeEmoji + ' ' + pos.grade + ' | ' + modeLabel + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+            + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+            + '\uD83D\uDCC8 Profit: <b>+' + gain.toFixed(1) + '%</b>\n'
+            + '\uD83D\uDD17 Tx: <a href="https://solscan.io/tx/' + sellResult.txSignature + '">' + sellResult.txSignature.slice(0, 12) + '...</a>',
+            null, CFG.tgThreadAuto
+          );
+          logTrackingEvent({ type: 'AUTOSELL_TP', ...pos, currentPrice, target, gain: gain.toFixed(1) });
+          toRemove.push(ca);
+          continue;
+        } catch (err) {
+          log('[AUTOSELL] TP FAILED ' + pos.symbol + ': ' + err.message);
+          await sendTelegram(
+            '\u274C <b>AUTOSELL TP FAILED</b>\n'
+            + gradeEmoji + ' ' + pos.grade + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+            + '\u26A0\uFE0F Error: ' + err.message,
+            null, CFG.tgThreadAuto
+          );
+        }
+      } else if (target === 30 && pos.tokenAmount && pos.tokenAmount > 0 && AUTO_BUY.ENABLED && AUTO_BUY.DRY_RUN) {
+        log('[AUTOSELL] TP DRY RUN ' + pos.symbol + ' @ +' + target + '%');
+        await sendTelegram(
+          '\u2705 <b>AUTOSELL TAKE PROFIT</b> <i>(DRY RUN)</i> \u2705\n'
+          + gradeEmoji + ' ' + pos.grade + ' | ' + modeLabel + ' | ' + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
+          + '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+          + '\uD83D\uDCC8 Profit: <b>+' + gain.toFixed(1) + '%</b>\n'
+          + '\uD83E\uDDEA Simulasi sell, tidak ada transaksi real.',
+          null, CFG.tgThreadAuto
+        );
+        logTrackingEvent({ type: 'AUTOSELL_TP_DRY_RUN', ...pos, currentPrice, target, gain: gain.toFixed(1) });
+      }
+
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
         + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
@@ -1599,11 +1557,11 @@ log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau GMGN risk/momentum/grade lemah');
-log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
-log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
-log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
+log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
+log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis dibuang');
+log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
+log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
+log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
