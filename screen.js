@@ -96,7 +96,7 @@ const AUTO_SELL = {
   SLIPPAGE_BPS:Number(process.env.AUTO_SELL_SLIPPAGE)   || 500,
 };
 
-const NOTIF_ONLY_AUTO = process.env.NOTIF_ONLY_AUTO !== 'false';
+const NOTIF_ONLY_AUTO = process.env.NOTIF_ONLY_AUTO === 'true';
 
 if (!CFG.tgToken || !CFG.tgChatId) {
   console.error('Isi TG_TOKEN dan TG_CHAT_ID di .env');
