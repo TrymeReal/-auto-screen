@@ -1018,34 +1018,6 @@ function buildEntryAreaLines(fib, mode) {
   return lines;
 }
 
-async function buildEntryAreaMsg(t, rug, grade, mode) {
-  var SEP = '━━━━━━━━━━━━━━━━━━━━';
-  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var fibLabel = f.source.startsWith('kline') ? 'candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi';
-  var lines = buildEntryAreaLines(f, mode);
-  var modeLabel = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
-  var gradeEmoji = grade === 'GOLD' ? '🟢' : grade === 'POTENSIAL' ? '🟡' : '🔴';
-
-  var msg = '';
-  msg += '📍 <b>ENTRY AREA</b> | ' + modeLabel + '\n';
-  msg += gradeEmoji + ' <b>' + (t.name || t.symbol) + '</b> (<code>' + t.symbol + '</code>)\n';
-  msg += SEP + '\n';
-  msg += 'Price : $' + fmtPrice(t.price) + '\n';
-  msg += 'Target: +30% → $' + fmtPrice(Number(t.price) * 1.3) + '\n';
-  msg += 'Rug   : ' + rug.score + ' | Grade: ' + grade + '\n';
-  msg += 'Fib   : ' + fibLabel + '\n';
-  lines.forEach(line => { msg += line + '\n'; });
-  msg += 'Support: $' + fmtPrice(f.support) + '\n';
-  msg += 'Fair   : $' + fmtPrice(f.fair) + '\n';
-  msg += 'Resist : $' + fmtPrice(f.resist) + '\n';
-  msg += 'SL     : $' + fmtPrice(f.sl) + '\n';
-  msg += SEP + '\n';
-  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>';
-  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
-  msg += '<code>' + t.address + '</code>';
-  return msg;
-}
-
 async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
   var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
@@ -1393,20 +1365,15 @@ async function processTokens() {
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     let msgId = null;
     let notifyThread = CFG.tgThreadMig;
-    if (!NOTIF_ONLY_AUTO) {
-      const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-      msgId = await sendTelegram(fullMsg, null, notifyThread);
-    } else {
-      const entryMsg = await buildEntryAreaMsg(t, rug, grade, 'MIGRATION');
-      msgId = await sendTelegram(entryMsg, null, notifyThread);
-    }
+    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
+    msgId = await sendTelegram(fullMsg, null, notifyThread);
     await sendRadarBridge(t, 'MIGRATION', {
       grade,
       rugScore: rug.score,
       insiderPct: rug.insiderPct,
       socialScore: dexInfo ? socialScore : undefined
     });
-    if (!NOTIF_ONLY_AUTO) totalNotified++;
+    totalNotified++;
 
     if (t.price && Number(t.price) > 0) {
       TRACKED.set(t.address, {
@@ -1448,19 +1415,14 @@ async function processTokens() {
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
       let msgId = null;
       let notifyThread = CFG.tgThreadId;
-      if (!NOTIF_ONLY_AUTO) {
-        const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
-        msgId = await sendTelegram(fullMsg, null, notifyThread);
-      } else {
-        const entryMsg = await buildEntryAreaMsg(t, rug, grade, 'SWING');
-        msgId = await sendTelegram(entryMsg, null, notifyThread);
-      }
+      const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
+      msgId = await sendTelegram(fullMsg, null, notifyThread);
       await sendRadarBridge(t, 'SWING', {
         grade,
         rugScore: rug.score,
         insiderPct: rug.insiderPct
       });
-      if (!NOTIF_ONLY_AUTO) totalNotified++;
+      totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
         TRACKED.set(t.address, {
