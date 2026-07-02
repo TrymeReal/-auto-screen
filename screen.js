@@ -990,6 +990,62 @@ function getFibDiscountZone(fib) {
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
+function getFibZone(fib, upperLevel, lowerLevel) {
+  if (!fib) return null;
+  var high = Number(fib.swingHigh);
+  var low = Number(fib.swingLow);
+  if (!high || !low || high <= low) return null;
+  var range = high - low;
+  var upperPrice = high - range * upperLevel;
+  var lowerPrice = high - range * lowerLevel;
+  return {
+    lower: Math.min(upperPrice, lowerPrice),
+    upper: Math.max(upperPrice, lowerPrice),
+  };
+}
+
+function buildEntryAreaLines(fib, mode) {
+  var lines = [];
+  if (mode === 'MIGRATION') {
+    var aggressive = getFibZone(fib, 0.382, 0.5);
+    var normal = getFibZone(fib, 0.5, 0.786);
+    if (aggressive) lines.push('⚡ Agresif: $' + fmtPrice(aggressive.lower) + ' - $' + fmtPrice(aggressive.upper) + ' (0.382-0.5)');
+    if (normal) lines.push('🛒 Normal : $' + fmtPrice(normal.lower) + ' - $' + fmtPrice(normal.upper) + ' (0.5-0.786)');
+  } else {
+    var discount = getFibDiscountZone(fib);
+    if (discount) lines.push('🛒 Diskon : $' + fmtPrice(discount.lower) + ' - $' + fmtPrice(discount.upper) + ' (0.618-0.786)');
+  }
+  return lines;
+}
+
+async function buildEntryAreaMsg(t, rug, grade, mode) {
+  var SEP = '━━━━━━━━━━━━━━━━━━━━';
+  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
+  var fibLabel = f.source.startsWith('kline') ? 'candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi';
+  var lines = buildEntryAreaLines(f, mode);
+  var modeLabel = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
+  var gradeEmoji = grade === 'GOLD' ? '🟢' : grade === 'POTENSIAL' ? '🟡' : '🔴';
+
+  var msg = '';
+  msg += '📍 <b>ENTRY AREA</b> | ' + modeLabel + '\n';
+  msg += gradeEmoji + ' <b>' + (t.name || t.symbol) + '</b> (<code>' + t.symbol + '</code>)\n';
+  msg += SEP + '\n';
+  msg += 'Price : $' + fmtPrice(t.price) + '\n';
+  msg += 'Target: +30% → $' + fmtPrice(Number(t.price) * 1.3) + '\n';
+  msg += 'Rug   : ' + rug.score + ' | Grade: ' + grade + '\n';
+  msg += 'Fib   : ' + fibLabel + '\n';
+  lines.forEach(line => { msg += line + '\n'; });
+  msg += 'Support: $' + fmtPrice(f.support) + '\n';
+  msg += 'Fair   : $' + fmtPrice(f.fair) + '\n';
+  msg += 'Resist : $' + fmtPrice(f.resist) + '\n';
+  msg += 'SL     : $' + fmtPrice(f.sl) + '\n';
+  msg += SEP + '\n';
+  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>';
+  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '<code>' + t.address + '</code>';
+  return msg;
+}
+
 async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
   var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
@@ -1092,10 +1148,9 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
   msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
   msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
-  var discountZone = mode === 'SWING' ? getFibDiscountZone(f) : null;
-  if (discountZone) {
-    msg += '🛒 Diskon  : $' + fmtPrice(discountZone.lower) + ' - $' + fmtPrice(discountZone.upper) + ' (0.618-0.786)\n';
-  }
+  buildEntryAreaLines(f, mode).forEach(line => {
+    msg += line + '\n';
+  });
   msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
   msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
 
@@ -1337,9 +1392,14 @@ async function processTokens() {
 
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     let msgId = null;
+    let notifyThread = CFG.tgThreadMig;
     if (!NOTIF_ONLY_AUTO) {
       const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-      msgId = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+      msgId = await sendTelegram(fullMsg, null, notifyThread);
+    } else {
+      const entryMsg = await buildEntryAreaMsg(t, rug, grade, 'MIGRATION');
+      notifyThread = CFG.tgThreadEntry || CFG.tgThreadMig;
+      msgId = await sendTelegram(entryMsg, null, notifyThread);
     }
     await sendRadarBridge(t, 'MIGRATION', {
       grade,
@@ -1353,7 +1413,7 @@ async function processTokens() {
       TRACKED.set(t.address, {
         symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
         entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-        threadId: CFG.tgThreadMig,
+        threadId: notifyThread,
       });
       log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
     }
@@ -1388,9 +1448,14 @@ async function processTokens() {
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
       let msgId = null;
+      let notifyThread = CFG.tgThreadId;
       if (!NOTIF_ONLY_AUTO) {
         const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
-        msgId = await sendTelegram(fullMsg, null, CFG.tgThreadId);
+        msgId = await sendTelegram(fullMsg, null, notifyThread);
+      } else {
+        const entryMsg = await buildEntryAreaMsg(t, rug, grade, 'SWING');
+        notifyThread = CFG.tgThreadEntry || CFG.tgThreadId;
+        msgId = await sendTelegram(entryMsg, null, notifyThread);
       }
       await sendRadarBridge(t, 'SWING', {
         grade,
@@ -1403,7 +1468,7 @@ async function processTokens() {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
           entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-          threadId: CFG.tgThreadId,
+          threadId: notifyThread,
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
       }
