@@ -3,12 +3,9 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { buyToken, sellToken, setDryRun } = require('./buyer');
 const {
-  shouldSkipNewMigration,
   collectMigrationHardRiskReasons,
   checkBaseLiquidity,
-  checkBaseAgeHours,
   checkVol1h,
   checkSwaps5m,
   checkVol5m,
@@ -20,12 +17,11 @@ const {
 const CFG = {
   // New Migration V2 — base gates
   minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
-  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
+  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
-  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 5000,
+  minLp:           Number(process.env.MIN_LP)           || 15000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
@@ -47,13 +43,12 @@ const CFG = {
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
-  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 20000,
+  swingMinVol24h:  Number(process.env.SWING_MIN_VOL24H)  || 450000,
   swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 15,   // tidak sedang pump >15% per jam
   swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
   swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
   swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
-  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -86,10 +81,9 @@ const AUTO_BUY = {
   ONLY_GRADE:   process.env.AUTO_BUY_GRADE             || 'ALL',
   MODES:        process.env.AUTO_BUY_MODES             || 'SWING',
 };
-setDryRun(AUTO_BUY.DRY_RUN);
 
 const AUTO_SELL = {
-  ENABLED:     process.env.AUTO_SELL_ENABLED !== 'false',
+  ENABLED:     false,
   CUTLOSS_PCT: Number(process.env.AUTO_SELL_CUTLOSS_PCT) || 50,
   TRAILING_START_PCT: Number(process.env.AUTO_SELL_TRAILING_START_PCT || process.env.AUTO_SELL_TP_PCT) || 30,
   TRAILING_DROP_PCT:  Number(process.env.AUTO_SELL_TRAILING_DROP_PCT) || 15,
@@ -325,7 +319,6 @@ function fetchGmgnTrenches() {
       '--limit 50',
       '--min-smart-degen-count 1',
       '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // umur < maxAgeHours jam
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
@@ -567,6 +560,7 @@ async function sendTelegram(msg, replyTo, threadId) {
 //  AUTO BUY
 // ─────────────────────────────────────────────
 async function tryAutoBuy(ca, t, mode, grade) {
+  return null;
   if (!AUTO_BUY.ENABLED) return null;
   if (boughtThisCycle >= AUTO_BUY.MAX_PER_CYCLE) {
     log('[AUTOBUY] Max per cycle (' + AUTO_BUY.MAX_PER_CYCLE + ') tercapai, skip ' + t.symbol);
@@ -763,7 +757,9 @@ async function checkSwingSignal(t) {
   const change1h  = Number(t.price_change_percent1h)  || 0;
   const change24h = Number(t.price_change_percent24h) || 0;
   const lp        = t.liquidity || 0;
-  const vol1h     = t.volume    || 0;
+  const vol1h     = Number(t.volume_1h ?? t.volume1h ?? t.volume1H ?? t.vol1h ?? t.volume ?? 0) || 0;
+  let vol24h      = Number(t.volume_24h ?? t.volume24h ?? t.volume24H ?? t.vol24h ?? 0) || 0;
+  let tokenInfo   = null;
   // Bedakan "data holder gak tersedia" (null) vs "beneran 0 holder" — sebelumnya
   // dua-duanya numpuk jadi 0 dan gate holder jadi silently bypass tiap kali API
   // gak ngirim field ini.
@@ -772,8 +768,6 @@ async function checkSwingSignal(t) {
   // — Gate 1: usia token —
   if (ageH < CFG.swingMinAge)
     return { pass: false, reason: 'Terlalu baru (' + ageH.toFixed(0) + 'j < ' + CFG.swingMinAge + 'j)' };
-  if (ageH > CFG.swingMaxAge)
-    return { pass: false, reason: 'Terlalu tua (' + Math.floor(ageH / 24) + 'h > ' + (CFG.swingMaxAge / 24) + 'h)' };
 
   // — Gate 2: LP cukup untuk swing —
   if (lp < CFG.swingMinLp)
@@ -785,9 +779,16 @@ async function checkSwingSignal(t) {
   if (change24h > CFG.swingMaxChange24h)
     return { pass: false, reason: 'Sudah pump 24h +' + change24h.toFixed(1) + '% (terlambat)' };
 
-  // — Gate 4: Volume 1h minimal —
-  if (vol1h < CFG.swingMinVol1h)
-    return { pass: false, reason: 'Vol 1h terlalu kecil ($' + fmt(vol1h) + ')' };
+  // — Gate 4: Volume 24h minimal —
+  if (!vol24h && t.address) {
+    tokenInfo = fetchTokenInfo(t.address);
+    vol24h = Number(tokenInfo?.price?.volume_24h ?? tokenInfo?.volume_24h ?? 0) || 0;
+  }
+  if (vol24h < CFG.swingMinVol24h)
+    return { pass: false, reason: 'Vol 24h terlalu kecil ($' + fmt(vol24h) + ')' };
+  t.volume_1h = vol1h;
+  t.volume_24h = vol24h;
+  t.volume = vol24h;
 
   // — Gate 5: Holder cukup (likuiditas sosial) —
   if (holders !== null && holders < CFG.swingMinHolders)
@@ -802,7 +803,7 @@ async function checkSwingSignal(t) {
     return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy)' };
 
   // — Analisa kline 1D untuk konfirmasi sinyal —
-  const signals = [];
+  const signals = ['Vol 24h kuat $' + fmt(vol24h)];
   const klines  = await fetchSwingKlines(t.address);
 
   if (klines && klines.length >= 3) {
@@ -829,8 +830,6 @@ async function checkSwingSignal(t) {
 
     if (candles.length < 3) {
       log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
-      if (vol1h >= CFG.swingMinVol1h)
-        signals.push('Vol 1h cukup $' + fmt(vol1h));
       if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
         signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
       if (change24h < 0)
@@ -857,15 +856,15 @@ async function checkSwingSignal(t) {
       const swingLow    = Math.min(...lows);
       const priceRange  = swingHigh - swingLow;
 
-      // Sinyal 1 (GATE wajib, bukan opsional): Volume hari ini (ternormalisasi)
-      // harus spike vs rata-rata candle sebelumnya. Kalau gak ada spike, langsung
-      // gagal — jadi sinyal 2/3/4 di bawah itu cuma konfirmasi tambahan, bukan
-      // pengganti gate ini.
+      // Sinyal 1: Volume hari ini (ternormalisasi) dibanding rata-rata candle sebelumnya.
+      // Ini konfirmasi tambahan, bukan hard gate. Hard gate volume untuk Swing
+      // pakai Vol 24h di atas.
       const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
-      if (volSpike < CFG.swingVolSpikeMin) {
-        return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x, hari baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
+      if (volSpike >= CFG.swingVolSpikeMin) {
+        signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+      } else {
+        signals.push('[WARN] Vol spike 1D rendah (' + volSpike.toFixed(1) + 'x, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
       }
-      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
 
       // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
       if (priceRange > 0) {
@@ -892,8 +891,6 @@ async function checkSwingSignal(t) {
   } else {
     // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
     log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
-    if (vol1h >= CFG.swingMinVol1h)
-      signals.push('Vol 1h cukup $' + fmt(vol1h));
     if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
       signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
     if (change24h < 0)
@@ -981,6 +978,22 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
 // ─────────────────────────────────────────────
 //  NARRATIVE DETECTION
 // ─────────────────────────────────────────────
+function getFibDiscountZone(fib) {
+  if (!fib) return null;
+  var high = Number(fib.swingHigh);
+  var low = Number(fib.swingLow);
+  if (!high || !low || high <= low) return null;
+  var range = high - low;
+  var level618 = high - range * 0.618;
+  var level786 = high - range * 0.786;
+  return {
+    level618,
+    level786,
+    lower: Math.min(level618, level786),
+    upper: Math.max(level618, level786),
+  };
+}
+
 function detectNarrative(name, symbol) {
   var s = ((name || '') + ' ' + (symbol || '')).toLowerCase();
   var cat = [], tag = [];
@@ -1098,7 +1111,6 @@ function buildNewMigrationNarrativePulse(tokens) {
     var t = tokens[i];
     if (!t || !t.address) continue;
     if (!isMigratedDex(t)) continue;
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
     scanned++;
 
     var gate = checkNewMigrationNarrative(t);
@@ -1270,6 +1282,10 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
   msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
   msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
+  var discountZone = mode === 'SWING' ? getFibDiscountZone(f) : null;
+  if (discountZone) {
+    msg += '🛒 Diskon  : $' + fmtPrice(discountZone.lower) + ' - $' + fmtPrice(discountZone.upper) + ' (0.618-0.786)\n';
+  }
   msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
   msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
 
@@ -1348,8 +1364,6 @@ async function processTokens() {
     if (!t.address) continue;
     if (SEEN.has(t.address)) continue;          // belum pernah dilihat
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-    // umur < maxAgeHours sudah dijamin server (--max-created), cek lagi sbg pengaman
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
     newMigration.push(t);
   }
 
@@ -1367,7 +1381,7 @@ async function processTokens() {
     }
 
     // Token yang sudah lebih tua (≥ swingMinAge), cek pre-pump signal.
-    if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
+    if (ageH >= CFG.swingMinAge) {
       const seenEntry = SEEN.get(t.address);
 
       // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
@@ -1412,16 +1426,8 @@ async function processTokens() {
       continue;
     }
 
-    var narrativeGate = applyDynamicNarrativeGate(checkNewMigrationNarrative(t), migrationNarrativePulse);
-    if (narrativeGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
-      continue;
-    }
-    log('[MIG] Narasi OK ' + t.symbol + ' (' + narrativeGate.reason + ')');
-
     var migCfg = {
       minLp:        CFG.minLp,
-      maxAgeHours:  CFG.maxAgeHours,
       minVol1h:     CFG.minVol1h,
       minSwaps5m:   CFG.minSwaps5m,
       minVol5m:     CFG.minVol5m,
@@ -1433,15 +1439,23 @@ async function processTokens() {
       continue;
     }
 
-    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours);
-    if (ageGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + ageGate.reason + ')');
+    var priceInfo = tokenInfo.price || {};
+    var vol1hGate = checkVol1h(priceInfo.volume_1h, migCfg.minVol1h);
+    if (vol1hGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + vol1hGate.reason + ')');
       continue;
     }
 
-    var momentumGate = shouldSkipNewMigration(t, tokenInfo, migCfg);
-    if (momentumGate.skip) {
-      log('[MIG] WARN ' + t.symbol + ' (' + momentumGate.reason + ') — narasi cocok, lanjut cek risk');
+    var swaps5mGate = checkSwaps5m(priceInfo.swaps_5m, migCfg.minSwaps5m);
+    if (swaps5mGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + swaps5mGate.reason + ')');
+      continue;
+    }
+
+    var vol5mGate = checkVol5m(priceInfo.volume_5m, migCfg.minVol5m);
+    if (vol5mGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + vol5mGate.reason + ')');
+      continue;
     }
 
     var migCfgStrict = {
@@ -1479,7 +1493,8 @@ async function processTokens() {
       if (dexInfo.hasTelegram) socialScore++;
 
       if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-        log('[MIG] WARN ' + t.symbol + ' (No Social — narasi cocok, lanjut) [Score:' + socialScore + '/4]');
+        log('SKIP [MIG] ' + t.symbol + ' (No Social - butuh minimal 1 social: Twitter/Website/Telegram) [Score:' + socialScore + '/4]');
+        continue;
       }
     } else {
       log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
@@ -1533,9 +1548,6 @@ async function processTokens() {
         threadId: CFG.tgThreadMig,
       });
       log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
-      // AUTO BUY
-      var buyResult = await tryAutoBuy(t.address, t, 'MIGRATION', grade);
-      if (buyResult) Object.assign(TRACKED.get(t.address), buyResult);
     }
   }
 
@@ -1586,9 +1598,6 @@ async function processTokens() {
           threadId: CFG.tgThreadId,
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
-        // AUTO BUY
-        var buyResult = await tryAutoBuy(t.address, t, 'SWING', grade);
-        if (buyResult) Object.assign(TRACKED.get(t.address), buyResult);
       }
     } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
   }
@@ -1860,17 +1869,18 @@ log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
 log('╚══════════════════════════════════════╝');
 log('');
 log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau GMGN risk/momentum/grade lemah');
+log('  LP >= $' + CFG.minLp.toLocaleString() + ' | Rug <= ' + CFG.maxRugScore + ' [RugCheck API]');
+log('  Age: no limit');
+log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API]');
 log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
 log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
-log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
+log('  Momentum hard skip: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
-log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
+log('  LP >= $' + CFG.swingMinLp.toLocaleString() + ' | Vol24h >= $' + CFG.swingMinVol24h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
-log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
-log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
+log('  Vol spike signal: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
+log('  Age: >= ' + CFG.swingMinAge + 'j');
 if (CFG.signalEnabled) {
   log('[ Mode 3: Smart Money Signal ]');
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
