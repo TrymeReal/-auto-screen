@@ -1398,7 +1398,6 @@ async function processTokens() {
       msgId = await sendTelegram(fullMsg, null, notifyThread);
     } else {
       const entryMsg = await buildEntryAreaMsg(t, rug, grade, 'MIGRATION');
-      notifyThread = CFG.tgThreadEntry || CFG.tgThreadMig;
       msgId = await sendTelegram(entryMsg, null, notifyThread);
     }
     await sendRadarBridge(t, 'MIGRATION', {
@@ -1454,7 +1453,6 @@ async function processTokens() {
         msgId = await sendTelegram(fullMsg, null, notifyThread);
       } else {
         const entryMsg = await buildEntryAreaMsg(t, rug, grade, 'SWING');
-        notifyThread = CFG.tgThreadEntry || CFG.tgThreadId;
         msgId = await sendTelegram(entryMsg, null, notifyThread);
       }
       await sendRadarBridge(t, 'SWING', {
