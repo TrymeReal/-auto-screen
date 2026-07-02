@@ -36,6 +36,10 @@ const CFG = {
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
+  narrativeTopK:      Number(process.env.NARRATIVE_TOP_K)      || 3,
+  narrativeMinCluster:Number(process.env.NARRATIVE_MIN_CLUSTER)|| 2,
+  narrativeMinHeat:   Number(process.env.NARRATIVE_MIN_HEAT)   || 4,
+  narrativeDynamic:   process.env.NARRATIVE_DYNAMIC_ENABLED !== 'false',
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -971,6 +975,9 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
   }
 }
 
+// ─────────────────────────────────────────────
+//  NARRATIVE DETECTION
+// ─────────────────────────────────────────────
 function getFibDiscountZone(fib) {
   if (!fib) return null;
   var high = Number(fib.swingHigh);
@@ -984,6 +991,188 @@ function getFibDiscountZone(fib) {
     level786,
     lower: Math.min(level618, level786),
     upper: Math.max(level618, level786),
+  };
+}
+
+function detectNarrative(name, symbol) {
+  var s = ((name || '') + ' ' + (symbol || '')).toLowerCase();
+  var cat = [], tag = [];
+
+  var animalKws = {dog:'🐕',cat:'🐱',frog:'🐸',pepe:'🐸',horse:'🐴',bird:'🐦',fish:'🐟',
+    wolf:'🐺',bear:'🐻',bull:'🐂',dragon:'🐉',whale:'🐋',shark:'🦈',lion:'🦁',
+    tiger:'🐯',panda:'🐼',snake:'🐍',rabbit:'🐇',turtle:'🐢',duck:'🦆',seal:'🦭',
+    koala:'🐨',monkey:'🐵',gorilla:'🦍',hippo:'🦛',fox:'🦊',rat:'🐀',hamster:'🐹',
+    owl:'🦉',eagle:'🦅',penguin:'🐧'};
+  for (var kw in animalKws) { if (s.includes(kw)) { cat.push(animalKws[kw] + ' Animal'); tag.push(kw[0].toUpperCase() + kw.slice(1)); break; } }
+
+  var celebKws = ['trump','musk','elon','kanye','biden','obama','hawk','pnut','taylor','kamala','vance','melania','barron'];
+  for (var i = 0; i < celebKws.length; i++) { if (s.includes(celebKws[i])) { cat.push('🎭 Celebrity'); tag.push(celebKws[i][0].toUpperCase() + celebKws[i].slice(1)); break; } }
+
+  var aiKws = ['ai','gpt','claude','agent','neural','deep','grok','chatbot','llm','tokenai','bot','predict'];
+  for (var j = 0; j < aiKws.length; j++) { if (s.includes(aiKws[j]) && !cat.length) { cat.push('🤖 AI/Agent'); tag.push('AI'); break; } }
+
+  var gameKws = ['game','play','guild','raid','arena','legends','gaming','rpg','pixel'];
+  for (var k = 0; k < gameKws.length; k++) { if (s.includes(gameKws[k])) { cat.push('🎮 Gaming'); tag.push('Gaming'); break; } }
+
+  var defiKws = ['swap','lend','borrow','stake','yield','vault','farm','defi','liquid'];
+  for (var l = 0; l < defiKws.length; l++) { if (s.includes(defiKws[l])) { cat.push('🏛️ DeFi'); tag.push('DeFi'); break; } }
+
+  var cultureKws = ['degen','based','wagmi','ngmi','fren','ser','dao','moon','lambo','wen','gm','chad','soy','normie'];
+  for (var m = 0; m < cultureKws.length; m++) { if (s.includes(cultureKws[m]) && !cat.length) { cat.push('💎 Culture'); tag.push('Culture'); break; } }
+
+  var infraKws = ['bridge','oracle','layer','protocol','infra','cross','inter'];
+  for (var n = 0; n < infraKws.length; n++) { if (s.includes(infraKws[n])) { cat.push('🔧 Infra'); tag.push('Infra'); break; } }
+
+  if (!cat.length) {
+    var symDigits = (symbol || '').replace(/[^a-zA-Z]/g, '');
+    if (symDigits !== (symbol || '')) { cat.push('🔄 Copycat'); tag.push('Copycat'); }
+    else { cat.push('🔷 Meme'); tag.push('Meme'); }
+  }
+  return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
+}
+
+function normalizeNarrativeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[_\-./]+/g, ' ')
+    .replace(/[^a-z0-9\s$]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeNarrativeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasNarrativeKeyword(text, keywords) {
+  // Word-boundary match (bukan substring polos) biar 'ai' gak nyangkut di 'chain'/'claim',
+  // 'test' gak nyangkut di 'fastest'/'contest', dst. \b juga aman buat ticker '$AI'.
+  var compactText = normalizeNarrativeText(text).replace(/\s+/g, '');
+  for (var i = 0; i < keywords.length; i++) {
+    var kw = normalizeNarrativeText(keywords[i]);
+    if (!kw) continue;
+    var re = new RegExp('\\b' + escapeNarrativeRegex(kw) + '\\b');
+    if (re.test(text)) return keywords[i];
+    var compactKw = kw.replace(/\s+/g, '');
+    if (compactKw.length >= 4 && compactText.includes(compactKw)) return keywords[i];
+  }
+  return '';
+}
+
+function checkNewMigrationNarrative(t) {
+  var name = String(t.name || '');
+  var symbol = String(t.symbol || '');
+  var text = normalizeNarrativeText(name + ' ' + symbol);
+  var compact = normalizeNarrativeText(name + symbol).replace(/\s+/g, '');
+  var generic = ['official token', 'official coin', 'new token', 'new coin', 'test', 'testing', 'token coin', 'sol token', 'pump token'];
+  var buckets = [
+    { label: 'KOL/Celebrity', keywords: ['ansem', 'mitch', 'murad', 'musk', 'elon', 'trump', 'kanye', 'cz', 'vitalik', 'saylor', 'taylor', 'powell'] },
+    { label: 'Animal', keywords: ['dog', 'cat', 'catwif', 'catwifhat', 'dogwif', 'wifhat', 'frog', 'pepe', 'wif', 'bonk', 'bull', 'bear', 'shark', 'whale', 'monkey', 'ape', 'penguin', 'duck', 'rat', 'goat', 'cow', 'pig', 'horse', 'lion', 'tiger', 'rabbit', 'bunny', 'hamster', 'chicken', 'shrimp', 'crab', 'fish', 'bird', 'panda'] },
+    { label: 'AI/Agent', keywords: ['ai', 'agent', 'gpt', 'grok', 'claude', 'bot', 'robot', 'neural', 'agi', 'llm'] },
+    { label: 'Gaming', keywords: ['game', 'gaming', 'pixel', 'minecraft', 'roblox', 'pokemon', 'arcade', 'arena', 'rpg', 'xbox', 'playstation', 'gta', 'rust', 'valorant'] },
+    { label: 'Solana meta', keywords: ['pumpfun', 'pump fun', 'pump', 'bonk', 'jup', 'raydium', 'moonshot', 'letsbonk', 'bags'] },
+    { label: 'Culture meme', keywords: ['chad', 'sigma', 'wojak', 'npc', 'based', 'fren', 'gm', 'wagmi', 'degen', 'moon', 'wen'] },
+    { label: 'Brainrot', keywords: ['tung', 'sahur', 'tralalero', 'tralala', 'bombardiro', 'crocodilo', 'capuchino', 'chimpanzini', 'ballerina', 'brainrot'] },
+    { label: 'Anime/Asia', keywords: ['anime', 'waifu', 'neko', 'manga', 'vtuber', 'senpai', 'kawaii', 'japan', 'china', 'korea'] },
+    { label: 'Tech/Brand', keywords: ['tesla', 'apple', 'google', 'meta', 'nvidia', 'openai', 'xai', 'spacex', 'iphone'] },
+  ];
+
+  var genericHit = hasNarrativeKeyword(text, generic);
+  if (genericHit) return { skip: true, reason: 'Narasi generic: ' + genericHit };
+  if (/[0-9]{4,}/.test(symbol) || /[0-9]{5,}/.test(name)) return { skip: true, reason: 'Angka random di symbol/name' };
+  if (compact.length >= 12 && !/[aeiou]/.test(compact)) return { skip: true, reason: 'Symbol/name susah dibaca' };
+
+  for (var i = 0; i < buckets.length; i++) {
+    var hit = hasNarrativeKeyword(text, buckets[i].keywords);
+    if (hit) return { skip: false, reason: buckets[i].label + ': ' + hit, category: buckets[i].label, keyword: hit };
+  }
+
+  return { skip: true, reason: 'Narasi tidak cocok' };
+}
+
+function narrativeHeatScore(t) {
+  var liquidity = Number(t.liquidity) || 0;
+  var volume = Number(t.volume) || Number(t.volume_1h) || Number(t.volume_24h) || 0;
+  var smart = Number(t.smart_degen_count || t.smart_degen_count_24h || t.smart_degen_count_6h) || 0;
+  var tx = (Number(t.buys) || 0) + (Number(t.sells) || 0);
+  return 1
+    + Math.min(4, Math.log10(liquidity + 1) / 1.5)
+    + Math.min(4, Math.log10(volume + 1) / 1.5)
+    + Math.min(3, smart * 0.5)
+    + Math.min(2, tx / 250);
+}
+
+function buildNewMigrationNarrativePulse(tokens) {
+  var map = new Map();
+  var scanned = 0;
+  var matched = 0;
+
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (!t || !t.address) continue;
+    if (!isMigratedDex(t)) continue;
+    scanned++;
+
+    var gate = checkNewMigrationNarrative(t);
+    if (gate.skip || !gate.category) continue;
+    matched++;
+
+    var current = map.get(gate.category) || {
+      label: gate.category,
+      count: 0,
+      heat: 0,
+      examples: []
+    };
+    current.count++;
+    current.heat += narrativeHeatScore(t);
+    if (current.examples.length < 3) current.examples.push(t.symbol || t.name || '?');
+    map.set(gate.category, current);
+  }
+
+  var ranked = Array.from(map.values()).sort(function(a, b) {
+    return b.count - a.count || b.heat - a.heat;
+  });
+  var hot = ranked.filter(function(item) {
+    return item.count >= CFG.narrativeMinCluster || item.heat >= CFG.narrativeMinHeat;
+  }).slice(0, CFG.narrativeTopK);
+  var hotLabels = new Set(hot.map(function(item) { return item.label; }));
+  var summary = hot.length
+    ? hot.map(function(item) {
+        return item.label + ' x' + item.count + ' heat ' + item.heat.toFixed(1) + ' [' + item.examples.join(', ') + ']';
+      }).join(' | ')
+    : 'belum ada cluster dominan';
+
+  return {
+    scanned: scanned,
+    matched: matched,
+    ranked: ranked,
+    hot: hot,
+    hotLabels: hotLabels,
+    summary: summary
+  };
+}
+
+function applyDynamicNarrativeGate(gate, pulse) {
+  if (gate.skip || !CFG.narrativeDynamic) return gate;
+  if (!pulse || pulse.hotLabels.size === 0) {
+    return {
+      skip: false,
+      reason: gate.reason + ' | belum ada cluster hot, pakai narasi kuat',
+      category: gate.category,
+      keyword: gate.keyword
+    };
+  }
+  if (!pulse.hotLabels.has(gate.category)) {
+    return {
+      skip: true,
+      reason: 'Narasi belum hot: ' + gate.category + ' (' + gate.keyword + '). Hot: ' + pulse.summary
+    };
+  }
+  return {
+    skip: false,
+    reason: gate.reason + ' | HOT Dex cluster: ' + pulse.summary,
+    category: gate.category,
+    keyword: gate.keyword
   };
 }
 
@@ -1028,12 +1217,13 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var creatorHold = ((t.dev_team_hold_rate || 0) * 100).toFixed(1);
   var SEP         = '━━━━━━━━━━━━━━━━━━━━';
 
+  var nar        = detectNarrative(t.name, t.symbol);
   var modeLabel  = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
   var gradeEmoji = grade === 'GOLD' ? '🟢' : grade === 'POTENSIAL' ? '🟡' : '🔴';
   var riskLabel  = grade === 'GOLD' ? 'Grade A' : grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
 
   var msg = '';
-  msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + modeLabel + '\n';
+  msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + modeLabel + ' | ' + nar.category + '\n';
   msg += '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
   msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
@@ -1163,6 +1353,7 @@ async function processTokens() {
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
   var swingTokens     = fetchGmgnTrending();
+  var migrationNarrativePulse = buildNewMigrationNarrativePulse(migrationTokens);
 
   var newMigration = [];
   var swingCandidates = [];
@@ -1219,6 +1410,7 @@ async function processTokens() {
   }
 
   log('New Migration candidates: ' + newMigration.length);
+  log('New Migration narrative pulse: scanned ' + migrationNarrativePulse.scanned + ' | matched ' + migrationNarrativePulse.matched + ' | hot ' + migrationNarrativePulse.summary);
   log('Swing 1D candidates: ' + swingCandidates.length);
   log('Signal candidates: ' + uniqueSignal.length);
 
