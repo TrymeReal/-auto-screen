@@ -90,7 +90,7 @@ const AUTO_SELL = {
   SLIPPAGE_BPS:Number(process.env.AUTO_SELL_SLIPPAGE)   || 500,
 };
 
-const NOTIF_ONLY_AUTO = isTruthyFlag(process.env.NOTIF_ONLY_AUTO);
+const NOTIF_ONLY_AUTO = process.env.NOTIF_ONLY_AUTO !== 'false';
 
 if (!CFG.tgToken || !CFG.tgChatId) {
   console.error('Isi TG_TOKEN dan TG_CHAT_ID di .env');
@@ -541,56 +541,18 @@ async function getRugCheck(ca, insiderThreshold) {
   }
 }
 
-function telegramErrorDesc(e) {
-  return e.response?.data?.description || e.message || String(e);
-}
-
-function isTelegramReplyError(desc) {
-  var s = String(desc || '').toLowerCase();
-  return (s.includes('reply') || s.includes('replied')) &&
-         (s.includes('not found') || s.includes('invalid'));
-}
-
-function isTelegramThreadError(desc) {
-  var s = String(desc || '').toLowerCase();
-  return s.includes('message thread not found') ||
-         s.includes('thread not found') ||
-         s.includes('message_thread_id');
-}
-
-async function postTelegramPayload(payload) {
-  var res = await axios.post(TG_API, payload, { timeout: 10000 });
-  return res.data.result?.message_id || null;
-}
-
 async function sendTelegram(msg, replyTo, threadId) {
-  var resolvedThread = threadId !== undefined ? threadId : null;
-  var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
-  if (resolvedThread)  payload.message_thread_id  = resolvedThread;
-  if (replyTo)         payload.reply_to_message_id = replyTo;
-
-  var retriedNoReply = false;
-  var retriedNoThread = false;
-  while (true) {
-    try {
-      return await postTelegramPayload(payload);
-    } catch (e) {
-      var desc = telegramErrorDesc(e);
-      if (!retriedNoThread && payload.message_thread_id && isTelegramThreadError(desc)) {
-        retriedNoThread = true;
-        delete payload.message_thread_id;
-        log('TG thread error: ' + desc + ' (retry main chat)');
-        continue;
-      }
-      if (!retriedNoReply && payload.reply_to_message_id && isTelegramReplyError(desc)) {
-        retriedNoReply = true;
-        delete payload.reply_to_message_id;
-        log('TG reply error: ' + desc + ' (retry without reply)');
-        continue;
-      }
-      log('TG error: ' + desc);
-      return null;
-    }
+  if (threadId === undefined) return null; // Thread tidak dikonfigurasi, skip
+  try {
+    var resolvedThread = threadId !== undefined ? threadId : null;    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+    if (resolvedThread)  payload.message_thread_id  = resolvedThread;
+    if (replyTo)         payload.reply_to_message_id = replyTo;
+    var res = await axios.post(TG_API, payload, { timeout: 10000 });
+    return res.data.result?.message_id || null;
+  } catch (e) {
+    const desc = e.response?.data?.description || e.message;
+    log('TG error: ' + desc);
+    return null;
   }
 }
 
