@@ -27,7 +27,7 @@ const CFG = {
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
   // New Migration extra gates
-  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 25,
+  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 15,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
   maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 20,
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 10,
@@ -1293,6 +1293,20 @@ async function processTokens() {
       continue;
     }
 
+    var holderHardSkipReasons = [];
+    var bundlerPct = Number(t.bundler_rate || 0) * 100;
+    if (bundlerPct > CFG.maxBundlerPct) {
+      holderHardSkipReasons.push('Bundler ' + bundlerPct.toFixed(0) + '% > ' + CFG.maxBundlerPct + '%');
+    }
+    var top10Pct = Number(t.top_10_holder_rate || 0) * 100;
+    if (top10Pct > CFG.maxTop10Holders) {
+      holderHardSkipReasons.push('Top10 ' + top10Pct.toFixed(0) + '% > ' + CFG.maxTop10Holders + '%');
+    }
+    if (holderHardSkipReasons.length > 0) {
+      log('SKIP [MIG] ' + t.symbol + ' (GMGN holder hard skip: ' + holderHardSkipReasons.join(' | ') + ')');
+      continue;
+    }
+
     var migCfgStrict = {
       minBuyRatio:      CFG.minBuyRatio,
       minVol:           CFG.minVol,
@@ -1705,8 +1719,8 @@ log('[ Mode 1: New Migration ]');
 log('  LP >= $' + CFG.minLp.toLocaleString() + ' | Rug <= ' + CFG.maxRugScore + ' [RugCheck API]');
 log('  Age: no limit');
 log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API]');
-log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
-log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
+log('  GMGN holder hard skip: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '%');
+log('  GMGN risk warning: CreatorHold > ' + CFG.maxDevHold + '% | Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum hard skip: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
