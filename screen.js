@@ -25,6 +25,9 @@ const CFG = {
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
+  // GMGN dedicated rug_ratio (dari `gmgn-cli token security` / field rug_ratio yang udah kebawa
+  // di trenches & trending). Skala 0-1 (0.25 = 25%). Default 0.30 = skip kalau rug_ratio > 30%.
+  gmgnRugMaxRatio: process.env.GMGN_RUG_MAX_RATIO !== undefined ? Number(process.env.GMGN_RUG_MAX_RATIO) : 0.30,
 
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 15,
@@ -126,6 +129,23 @@ function fmtPrice(n) {
   if (v >= 0.0001)   return v.toFixed(6);
   if (v >= 0.000001) return v.toFixed(8);
   return v.toFixed(10);
+}
+
+// GMGN rug_ratio (0-1) → persen dibulatkan. rug_ratio dipakai apa adanya dari
+// field GMGN (trenches/trending/token security), bukan dihitung ulang.
+function gmgnRugPct(t) {
+  return Math.round((Number(t && t.rug_ratio) || 0) * 100);
+}
+
+// Cek gate GMGN rug_ratio. Return { skip, reason, pct } — dipakai di 3 mode
+// (Migration, Swing, Signal) biar konsisten.
+function checkGmgnRug(t, maxRatio) {
+  var pct = gmgnRugPct(t);
+  var ratio = Number(t && t.rug_ratio) || 0;
+  if (ratio > maxRatio) {
+    return { skip: true, pct: pct, reason: 'GMGN Rug ' + pct + '% > ' + Math.round(maxRatio * 100) + '%' };
+  }
+  return { skip: false, pct: pct, reason: '' };
 }
 
 function timeNow() {
@@ -1105,6 +1125,8 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '🎯 Snipers : ' + snipers + '%\n';
   msg += '👤 Creator : ' + creatorHold + '%\n';
   msg += '♻️ Burn    : ' + burnPct + '%\n';
+  var gmgnRe = gmgnRugPct(t) < 50 ? '✅' : '🚨';
+  msg += gmgnRe + ' GMGN Rug: ' + gmgnRugPct(t) + '%\n';
   // Mint/Freeze/Honeypot tidak ditampilkan: di sumber trenches field renounce
   // selalu kosong (tampil ❌) → misleading. Patokan keamanan pakai RugCheck.
   msg += '💎 Smart   : ' + (t.smart_degen_count || 0) + '\n';
@@ -1356,6 +1378,16 @@ async function processTokens() {
       log('[MIG] WARN ' + t.symbol + ' (Belum paid DEX — narasi cocok, lanjut)');
     }
 
+    // GMGN dedicated rug_ratio — cek duluan sebelum RugCheck biar hemat API call
+    // kalau udah keburu jelas rug tinggi dari GMGN sendiri.
+    var gmgnRugGate = checkGmgnRug(t, CFG.gmgnRugMaxRatio);
+    log('[MIG] GMGN Rug ' + t.symbol + ': ' + gmgnRugGate.pct + '%');
+    if (gmgnRugGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + gmgnRugGate.reason + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'gmgn_rug_ratio' });
+      continue;
+    }
+
     // RugCheck — filter identik dengan Swing 1D
     log('[MIG] Cek RugCheck ' + t.symbol + '...');
     const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
@@ -1413,6 +1445,14 @@ async function processTokens() {
     }
 
     log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
+
+    var gmgnRugGateSwing = checkGmgnRug(t, CFG.gmgnRugMaxRatio);
+    log('[SWING] GMGN Rug ' + t.symbol + ': ' + gmgnRugGateSwing.pct + '%');
+    if (gmgnRugGateSwing.skip) {
+      log('SKIP [SWING] ' + t.symbol + ' (' + gmgnRugGateSwing.reason + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'swing', lockedReason: 'gmgn_rug_ratio' });
+      continue;
+    }
 
     try {
       const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
@@ -1480,11 +1520,12 @@ async function processTokens() {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
       continue;
     }
-    // Gate 7: rug ratio
-    var rugScore = Math.round((t.rug_ratio || 0) * 100);
-    if (rugScore > CFG.maxRugScore) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
+    // Gate 7: GMGN rug_ratio (dedicated threshold, bukan nebeng maxRugScore RugCheck)
+    var gmgnRugGateSignal = checkGmgnRug(t, CFG.gmgnRugMaxRatio);
+    log('[SIGNAL] GMGN Rug ' + t.symbol + ': ' + gmgnRugGateSignal.pct + '%');
+    if (gmgnRugGateSignal.skip) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (' + gmgnRugGateSignal.reason + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'gmgn_rug_ratio' });
       continue;
     }
     // Gate 8: bot degen rate
@@ -1717,6 +1758,8 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP >= $' + CFG.minLp.toLocaleString() + ' | Rug <= ' + CFG.maxRugScore + ' [RugCheck API]');
+log('  GMGN Rug <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '% [gmgn-cli rug_ratio, cek sebelum RugCheck]');
+log('  (GMGN Rug gate <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '% berlaku juga di Swing & Signal)');
 log('  Age: no limit');
 log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API]');
 log('  GMGN holder hard skip: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '%');
