@@ -619,9 +619,25 @@ async function getRugCheck(ca, insiderThreshold) {
         }
       });
     }
+    // PENTING: RugCheck API punya 2 field skor berbeda:
+    //   d.score            -> skor MENTAH, skala BISA RIBUAN (bukan 0-100!)
+    //   d.score_normalised -> skor sudah dinormalisasi ke skala 0-100 (makin tinggi makin risky)
+    // Semua filter di kode ini (CFG.maxRugScore, dst) dibandingkan ke skala 0-100,
+    // jadi field `score` yang dipakai untuk filter HARUS diisi dari score_normalised,
+    // bukan skor mentah — kalau tidak, hampir semua token akan ke-skip karena
+    // skor mentahnya kelihatan besar padahal token-nya sebenarnya aman.
+    const scoreNormalisedVal = d.score_normalised ?? null;
+    const scoreRawVal = d.score ?? 0;
+    // Fallback kalau API entah kenapa tidak mengirim score_normalised: skor mentah
+    // dibagi skala umum (ribuan) supaya tetap masuk rentang 0-100 secara kasar,
+    // lebih aman daripada memakai skor mentah mentah-mentah sebagai skala 0-100.
+    const effectiveScore = scoreNormalisedVal !== null
+      ? scoreNormalisedVal
+      : Math.min(100, Math.round(scoreRawVal / 100));
     return {
-      score:           d.score || 0,
-      scoreNormalised: d.score_normalised ?? -1,
+      score:           effectiveScore,
+      scoreRaw:        scoreRawVal,
+      scoreNormalised: scoreNormalisedVal ?? -1,
       risks:           riskNames.join(', '),
       creator:         d.creator || d.owner || '?',
       topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
@@ -632,7 +648,7 @@ async function getRugCheck(ca, insiderThreshold) {
       insiderPct:      maxInsiderPct,
     };
   } catch {
-    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
+    return { score: 999, scoreRaw: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
              topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
              insiderPct: 0 };
   }
