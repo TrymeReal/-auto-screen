@@ -619,25 +619,9 @@ async function getRugCheck(ca, insiderThreshold) {
         }
       });
     }
-    // PENTING: RugCheck API punya 2 field skor berbeda:
-    //   d.score            -> skor MENTAH, skala BISA RIBUAN (bukan 0-100!)
-    //   d.score_normalised -> skor sudah dinormalisasi ke skala 0-100 (makin tinggi makin risky)
-    // Semua filter di kode ini (CFG.maxRugScore, dst) dibandingkan ke skala 0-100,
-    // jadi field `score` yang dipakai untuk filter HARUS diisi dari score_normalised,
-    // bukan skor mentah — kalau tidak, hampir semua token akan ke-skip karena
-    // skor mentahnya kelihatan besar padahal token-nya sebenarnya aman.
-    const scoreNormalisedVal = d.score_normalised ?? null;
-    const scoreRawVal = d.score ?? 0;
-    // Fallback kalau API entah kenapa tidak mengirim score_normalised: skor mentah
-    // dibagi skala umum (ribuan) supaya tetap masuk rentang 0-100 secara kasar,
-    // lebih aman daripada memakai skor mentah mentah-mentah sebagai skala 0-100.
-    const effectiveScore = scoreNormalisedVal !== null
-      ? scoreNormalisedVal
-      : Math.min(100, Math.round(scoreRawVal / 100));
     return {
-      score:           effectiveScore,
-      scoreRaw:        scoreRawVal,
-      scoreNormalised: scoreNormalisedVal ?? -1,
+      score:           d.score || 0,
+      scoreNormalised: d.score_normalised ?? -1,
       risks:           riskNames.join(', '),
       creator:         d.creator || d.owner || '?',
       topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
@@ -648,7 +632,7 @@ async function getRugCheck(ca, insiderThreshold) {
       insiderPct:      maxInsiderPct,
     };
   } catch {
-    return { score: 999, scoreRaw: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
+    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
              topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
              insiderPct: 0 };
   }
@@ -2402,54 +2386,71 @@ async function checkTrackedPositions(trendingTokens) {
       var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
       log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
       logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
+      var stopThread = pos.autoBuyMsgId
+        ? CFG.tgThreadAuto
+        : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
+      try {
+        await sendTelegram(
+          '🛑 <b>STOP TRACK</b>' + (wasProfit ? ' (sempat profit)' : '') + '\n' +
+          '<b>' + esc(pos.name) + '</b> (<code>' + esc(pos.symbol) + '</code>)\n' +
+          'Entry: $' + fmtPrice(pos.entryPrice) + '\n' +
+          'Sekarang: $' + fmtPrice(currentPrice) + '\n' +
+          'Gain: <b>' + gain.toFixed(1) + '%</b>\n' +
+          'Status: turun >80% dari entry, berhenti tracking\n' +
+          '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
+          ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+          pos.autoBuyMsgId || pos.msgId || null,
+          stopThread
+        );
+      } catch (e) {
+        log('[STOPTRACK] Gagal kirim notif ' + pos.symbol + ': ' + e.message);
+      }
       toRemove.push(ca);
       continue;
     }
 
-    if (pos.bought) {
-      var highestIdx = -1;
-      for (var ti = 0; ti < TARGETS.length; ti++) {
-        if (gain >= TARGETS[ti]) highestIdx = ti;
-      }
-      if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
-        var target = TARGETS[highestIdx];
-        log(pos.symbol + ' hit target +' + target + '%');
-        logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
-        var targetEmoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '🎯';
-        var modeLabel = pos.mode === 'SWING' ? 'Swing' : 'New Migration';
-        var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-        var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
-        var targetThread = pos.autoBuyMsgId
-          ? CFG.tgThreadAuto
-          : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
+    var highestIdx = -1;
+    for (var ti = 0; ti < TARGETS.length; ti++) {
+      if (gain >= TARGETS[ti]) highestIdx = ti;
+    }
+    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
+      var target = TARGETS[highestIdx];
+      log(pos.symbol + ' hit target +' + target + '%');
+      logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
+      var targetEmoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '🎯';
+      var modeLabel = pos.mode === 'SWING' ? 'Swing' : 'New Migration';
+      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
+      var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var targetThread = pos.autoBuyMsgId
+        ? CFG.tgThreadAuto
+        : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
 
-        // Estimasi profit SOL — hanya tersedia kalau posisi ini hasil autobuy (punya amountSol & tokenAmount)
-        // Format disamakan dengan notif Trailing TP / Cutloss: baris "SOL Keluar → Dapat" + baris "PNL" terpisah
-        var profitLine = '';
-        if (pos.amountSol && pos.tokenAmount) {
-          var solIn  = pos.amountSol;
-          var solOut = solIn * (1 + gain / 100); // estimasi searah dgn gain%, sama seperti dry-run di trailing TP
-          var solPnl = solOut - solIn;
-          profitLine = 'SOL Keluar: ' + solIn.toFixed(4) + ' → Dapat: ' + solOut.toFixed(4) + ' SOL\n' +
-                       'PNL: <b>+' + solPnl.toFixed(4) + ' SOL</b>\n';
-        }
-
-        await sendTelegram(
-          gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + targetEmoji + ' <b>TP' + (highestIdx + 1) + ' +' + target + '% Tercapai</b>\n' +
-          '<b>' + esc(pos.name) + '</b> (<code>' + esc(pos.symbol) + '</code>)\n' +
-          'Entry: $' + fmtPrice(pos.entryPrice) + '\n' +
-          'Sekarang: $' + fmtPrice(currentPrice) + '\n' +
-          'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
-          profitLine +
-          'Status: tracking target, bukan auto sell\n' +
-          '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
-          ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-          pos.autoBuyMsgId || pos.msgId || null,
-          targetThread
-        );
-        pos.nextTargetIdx = highestIdx + 1;
-        savePositions();
+      // Estimasi profit SOL — hanya tersedia kalau posisi ini hasil autobuy (punya amountSol & tokenAmount)
+      // Format disamakan dengan notif Trailing TP / Cutloss: baris "SOL Keluar → Dapat" + baris "PNL" terpisah
+      var profitLine = '';
+      if (pos.amountSol && pos.tokenAmount) {
+        var solIn  = pos.amountSol;
+        var solOut = solIn * (1 + gain / 100); // estimasi searah dgn gain%, sama seperti dry-run di trailing TP
+        var solPnl = solOut - solIn;
+        profitLine = 'SOL Keluar: ' + solIn.toFixed(4) + ' → Dapat: ' + solOut.toFixed(4) + ' SOL\n' +
+                     'PNL: <b>+' + solPnl.toFixed(4) + ' SOL</b>\n';
       }
+
+      await sendTelegram(
+        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + targetEmoji + ' <b>TP' + (highestIdx + 1) + ' +' + target + '% Tercapai</b>\n' +
+        '<b>' + esc(pos.name) + '</b> (<code>' + esc(pos.symbol) + '</code>)\n' +
+        'Entry: $' + fmtPrice(pos.entryPrice) + '\n' +
+        'Sekarang: $' + fmtPrice(currentPrice) + '\n' +
+        'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
+        profitLine +
+        'Status: tracking target, bukan auto sell\n' +
+        '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
+        ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+        pos.autoBuyMsgId || pos.msgId || null,
+        targetThread
+      );
+      pos.nextTargetIdx = highestIdx + 1;
+      savePositions();
     }
   }
 
@@ -2528,4 +2529,4 @@ if (process.env.CI === 'true') {
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
-} 
+}
