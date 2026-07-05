@@ -372,9 +372,6 @@ function normalizeTrench(t) {
     price:              supply > 0 ? mc / supply : 0,
     market_cap:         mc,
     creation_timestamp: t.created_timestamp,
-    // Waktu migrasi/graduate ke DEX (BUKAN waktu token dibuat di bonding curve).
-    // Dipakai khusus utk filter umur "New Migration" (migMinAgeMin/migMaxAgeH).
-    migration_timestamp: t.open_timestamp || t.complete_timestamp || t.created_timestamp,
     volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
     buys:               t.buys_24h,
     sells:              t.sells_24h,
@@ -1760,10 +1757,7 @@ async function processTokens() {
 
     // Jeda kecil setelah migrasi — bukan filter kualitas, cuma kasih waktu
     // data LP/vol dari API settle dulu biar gak baca angka yang belum akurat.
-    // PAKAI migration_timestamp (waktu migrasi ke DEX), BUKAN creation_timestamp
-    // (waktu token dibuat di bonding curve) — token bisa nongkrong lama di pump.fun
-    // sebelum migrasi, jadi umur sejak migrasi harus dihitung terpisah dari umur sejak mint.
-    const ageMigMin = tokenAgeHours(t.migration_timestamp) * 60;
+    const ageMigMin = tokenAgeHours(t.creation_timestamp) * 60;
     if (ageMigMin < CFG.migMinAgeMin) {
       log('SKIP [MIGRATION] ' + (t.symbol || '?') + ' — baru migrasi ' + ageMigMin.toFixed(1) + 'm (< ' + CFG.migMinAgeMin + 'm, tunggu data settle)');
       continue;
