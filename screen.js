@@ -14,7 +14,9 @@ async function buyToken() {
 async function sellToken(ca, tokenAmount, tokenDecimals, slippageBps, estValueUsd) {
   return { success: true, txSignature: null, solReceived: null, simulated: true };
 }
-const { calculateFibFromBirdeye } = require('./birdeye');
+// screen_github.js tidak punya birdeye.js (BIRDEYE_API_KEY tidak dipakai di versi ini).
+// Selalu return null → kode otomatis fallback ke GMGN kline (sudah ada try/catch + fallback bawaan).
+async function calculateFibFromBirdeye() { return null; }
 const {
   collectMigrationHardRiskReasons,
   checkBaseLiquidity,
