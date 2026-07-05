@@ -1617,10 +1617,10 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var areaBlue  = zoneSorted[1];
   var areaGreen = zoneSorted[2];
 
-  var tp1 = price * (1 + TARGETS[0] / 100);
-  var tp2 = price * (1 + TARGETS[1] / 100);
-  var tp3 = price * (1 + TARGETS[2] / 100);
-  var sl  = price * 0.2;
+  var tp1 = areaGreen * (1 + TARGETS[0] / 100);
+  var tp2 = areaGreen * (1 + TARGETS[1] / 100);
+  var tp3 = areaGreen * (1 + TARGETS[2] / 100);
+  var sl  = areaGreen * 0.2;
 
   var ai = buildRuleBasedAiReport(t, rug, grade, f, top10, bundlerPct);
   var SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
