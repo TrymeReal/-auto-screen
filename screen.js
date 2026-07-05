@@ -3,6 +3,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { buyToken, sellToken, setDryRun } = require('./buyer');
+const { calculateFibFromBirdeye } = require('./birdeye');
 const {
   collectMigrationHardRiskReasons,
   checkBaseLiquidity,
@@ -19,23 +21,30 @@ const CFG = {
   minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
-
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
-  minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
+  // GMGN dedicated rug_ratio (dari `gmgn-cli token security` / field rug_ratio yang udah kebawa
+  // di trenches & trending). Skala 0-1 (0.25 = 25%). Default 0.30 = skip kalau rug_ratio > 30%.
+  gmgnRugMaxRatio: process.env.GMGN_RUG_MAX_RATIO !== undefined ? Number(process.env.GMGN_RUG_MAX_RATIO) : 0.30,
 
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 15,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
   maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 20,
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 10,
-  maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
-  minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
+  // TIGHT mode MIGRATION — env-configurable fib zone & momentum
+  migTightFibUpper:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_UPPER)    || 0.5,
+  migTightFibLower:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_LOWER)    || 0.786,
+  migTightMinBuyRatio:     Number(process.env.AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO)|| 51,
+  migTightRequireMomentum: process.env.AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM !== 'false',
+  // Fibonacci — Birdeye zigzag major swing (% reversal minimal biar dianggap "major")
+  fibZigzagThresholdMig:   Number(process.env.FIB_ZIGZAG_THRESHOLD_MIG)   || 35,
+  fibZigzagThresholdSwing: Number(process.env.FIB_ZIGZAG_THRESHOLD_SWING) || 12,
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
@@ -45,6 +54,12 @@ const CFG = {
   swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
   swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
+  // New Migration — jeda kecil setelah migrasi ke DEX, biar data LP/vol sempet settle
+  // (BUKAN filter kualitas seperti swingMinAge, cuma buffer data — jadi satuannya menit)
+  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 2,    // menit
+  // New Migration — batas umur MAKSIMAL, biar token yang udah gak "fresh"
+  // (momentum awal migrasi udah lewat) gak ikut masuk kandidat.
+  migMaxAgeH:      Number(process.env.MIG_MAX_AGE_H)      || 24,   // jam
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -58,14 +73,14 @@ const CFG = {
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
   healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
   seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
+  autoBuyWaitEntryMaxMin: Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN) || 30,
   tgToken:         process.env.TG_TOKEN,
   tgChatId:        process.env.TG_CHAT_ID,
+  telegramNotificationsEnabled: process.env.TELEGRAM_NOTIFICATIONS_ENABLED !== 'false',
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
   tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
   tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
   tgThreadAuto:    Number(process.env.TG_THREAD_AUTO)    || undefined,  // Autobuy / Autosell
-  radarBridgeUrl:  process.env.RADAR_BRIDGE_URL,
-  radarBridgeSecret: process.env.RADAR_BRIDGE_SECRET,
 };
 
 const AUTO_BUY = {
@@ -76,15 +91,33 @@ const AUTO_BUY = {
   SLIPPAGE_BPS: Number(process.env.AUTO_BUY_SLIPPAGE)   || 500,
   ONLY_GRADE:   process.env.AUTO_BUY_GRADE             || 'ALL',
   MODES:        process.env.AUTO_BUY_MODES             || 'SWING',
+  MIG_ENTRY_MODE: normalizeMigEntryMode(process.env.AUTO_BUY_MIG_ENTRY_MODE),
 };
+setDryRun(AUTO_BUY.DRY_RUN);
+
+const AUTO_SELL_TP_MODE = normalizeEnvChoice(process.env.AUTO_SELL_TP_MODE, ['FIXED', 'TRAILING', 'OFF'], 'FIXED');
 
 const AUTO_SELL = {
-  ENABLED:     false,
+  ENABLED:     process.env.AUTO_SELL_ENABLED !== 'false',
+  TP_MODE: AUTO_SELL_TP_MODE,
+  TRAILING_ENABLED: AUTO_SELL_TP_MODE === 'TRAILING',
+  FIXED_TP_ENABLED: AUTO_SELL_TP_MODE === 'FIXED',
+  FIXED_TP_PCT: Number(process.env.AUTO_SELL_FIXED_TP_PCT ?? process.env.AUTO_SELL_SIGNAL_TP_PCT) || 30,
   CUTLOSS_PCT: Number(process.env.AUTO_SELL_CUTLOSS_PCT) || 50,
   TRAILING_START_PCT: Number(process.env.AUTO_SELL_TRAILING_START_PCT || process.env.AUTO_SELL_TP_PCT) || 30,
   TRAILING_DROP_PCT:  Number(process.env.AUTO_SELL_TRAILING_DROP_PCT) || 15,
   SLIPPAGE_BPS:Number(process.env.AUTO_SELL_SLIPPAGE)   || 500,
 };
+
+function formatAutoSellPlan() {
+  if (!AUTO_SELL.ENABLED) return 'AutoSell: OFF';
+  var tpPlan = AUTO_SELL.TP_MODE === 'FIXED'
+    ? 'Fixed TP +' + AUTO_SELL.FIXED_TP_PCT + '%'
+    : AUTO_SELL.TP_MODE === 'TRAILING'
+      ? 'Trailing start +' + AUTO_SELL.TRAILING_START_PCT + '% drop ' + AUTO_SELL.TRAILING_DROP_PCT + '%'
+      : 'TP OFF';
+  return 'AutoSell: ' + tpPlan + ' | Cutloss -' + AUTO_SELL.CUTLOSS_PCT + '%';
+}
 
 const NOTIF_ONLY_AUTO = process.env.NOTIF_ONLY_AUTO !== 'false';
 
@@ -126,6 +159,52 @@ function fmtPrice(n) {
   if (v >= 0.0001)   return v.toFixed(6);
   if (v >= 0.000001) return v.toFixed(8);
   return v.toFixed(10);
+}
+
+// GMGN rug_ratio (0-1) → persen dibulatkan. rug_ratio dipakai apa adanya dari
+// field GMGN (trenches/trending/token security), bukan dihitung ulang.
+function gmgnRugPct(t) {
+  return Math.round((Number(t && t.rug_ratio) || 0) * 100);
+}
+
+// Cek gate GMGN rug_ratio. Return { skip, reason, pct } — dipakai di 3 mode
+// (Migration, Swing, Signal) biar konsisten.
+function checkGmgnRug(t, maxRatio) {
+  var pct = gmgnRugPct(t);
+  var ratio = Number(t && t.rug_ratio) || 0;
+  if (ratio > maxRatio) {
+    return { skip: true, pct: pct, reason: 'GMGN Rug ' + pct + '% > ' + Math.round(maxRatio * 100) + '%' };
+  }
+  return { skip: false, pct: pct, reason: '' };
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+}
+
+function normalizeEnvChoice(value, allowed, fallback) {
+  var normalized = String(value || fallback || '').trim().toUpperCase();
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function normalizeMigEntryMode(value) {
+  var normalized = String(value || 'TIGHT').trim().toUpperCase();
+  if (normalized === 'SIGNAL') return 'LOOSE';
+  if (normalized === 'FIB') return 'TIGHT';
+  return ['LOOSE', 'TIGHT'].includes(normalized) ? normalized : 'TIGHT';
+}
+
+function isLooseMigEntryMode(value) {
+  var normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'LOOSE' || normalized === 'SIGNAL';
+}
+
+function firstNumber() {
+  for (var i = 0; i < arguments.length; i++) {
+    var n = Number(arguments[i]);
+    if (Number.isFinite(n) && n !== 0) return n;
+  }
+  return 0;
 }
 
 function timeNow() {
@@ -464,30 +543,37 @@ function normalizeSignal(signals) {
 }
 
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
+  // GANTI: sebelumnya raw HTTP langsung ke openapi.gmgn.ai dengan client_id
+  // buatan sendiri ('ax' + base36 timestamp + random) — GMGN mewajibkan
+  // client_id berformat UUID buat anti-replay di endpoint /v1/market/*.
+  // Format lama gak match, jadi request "diterima" (code:0, message:success)
+  // tapi list-nya selalu kosong. Sekarang lewat gmgn-cli resmi, sama kayak
+  // fetchGmgnTrenches/fetchTokenInfo/fetchGmgnSignal yang udah terbukti jalan.
   try {
-    const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
-    const ts   = Math.floor(Date.now() / 1000);
-    const cid  = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
-    const url  = host + '/v1/market/token_kline?chain=sol&address=' + address
-               + '&resolution=' + resolution
-               + '&from=' + Math.floor(fromSec)
-               + '&to='   + Math.floor(toSec)
-               + '&timestamp=' + ts + '&client_id=' + cid;
-    const res  = await axios.get(url, {
-      headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
-      timeout: 10000,
+    const args = [
+      'market kline',
+      '--chain sol',
+      '--address ' + address,
+      '--resolution ' + resolution,
+      '--from ' + Math.floor(fromSec),
+      '--to ' + Math.floor(toSec),
+      '--raw',
+    ].join(' ');
+    const out = execSync('npx gmgn-cli ' + args, {
+      encoding: 'utf8', timeout: 15000,
+      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' },
     });
+    const d = JSON.parse(out);
 
-    // Dulu cuma coba res.data.list — kalau API-nya bungkus payload di level
-    // "data" (kayak endpoint trending: d.data.rank), .list bakal selalu
-    // undefined dan fungsi ini diam-diam balik null tanpa error sama sekali.
-    // Coba dua kemungkinan struktur sekaligus:
-    const list = res.data?.list ?? res.data?.data?.list ?? null;
+    // Dok resmi gmgn-cli bilang --raw balikin { list: [...] }. Tetap defensif
+    // jaga-jaga kalau ternyata array langsung atau ke-bungkus .data.list —
+    // sama kayak defensifnya fetchGmgnTrenches/birdeye.js.
+    const list = Array.isArray(d) ? d : (d?.list ?? d?.data?.list ?? null);
 
     if (!list || list.length < 3) {
       log('[DEBUG KLINE] ' + address.slice(0, 8)
         + ' — list: ' + (list ? list.length + ' candle' : 'null')
-        + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
+        + ' | raw: ' + out.slice(0, 400));
     }
 
     return list;
@@ -538,11 +624,16 @@ async function getRugCheck(ca, insiderThreshold) {
 }
 
 async function sendTelegram(msg, replyTo, threadId) {
-  if (threadId === undefined) return null; // Thread tidak dikonfigurasi, skip
+  if (!CFG.telegramNotificationsEnabled) {
+    log('[TG muted] ' + String(msg || '').split('\n')[0]);
+    return null;
+  }
   try {
-    var resolvedThread = threadId !== undefined ? threadId : null;    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
-    if (resolvedThread)  payload.message_thread_id  = resolvedThread;
-    if (replyTo)         payload.reply_to_message_id = replyTo;
+    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+    if (threadId !== undefined && threadId !== null && !Number.isNaN(threadId)) {
+      payload.message_thread_id = threadId;
+    }
+    if (replyTo) payload.reply_to_message_id = replyTo;
     var res = await axios.post(TG_API, payload, { timeout: 10000 });
     return res.data.result?.message_id || null;
   } catch (e) {
@@ -555,114 +646,552 @@ async function sendTelegram(msg, replyTo, threadId) {
 // ─────────────────────────────────────────────
 //  AUTO BUY
 // ─────────────────────────────────────────────
-async function tryAutoBuy(ca, t, mode, grade) {
-  return null;
-  if (!AUTO_BUY.ENABLED) return null;
-  if (boughtThisCycle >= AUTO_BUY.MAX_PER_CYCLE) {
-    log('[AUTOBUY] Max per cycle (' + AUTO_BUY.MAX_PER_CYCLE + ') tercapai, skip ' + t.symbol);
+function getFibDiscountZone(fib) {
+  if (!fib) return null;
+  var high = Number(fib.swingHigh);
+  var low = Number(fib.swingLow);
+  if (!high || !low || high <= low) return null;
+
+  var range = high - low;
+  var source = String(fib.source || '').toLowerCase();
+
+  if (source.includes('_bullish')) {
+    var level618 = high - range * 0.618;
+    var level786 = high - range * 0.786;
+    return {
+      direction: 'bullish',
+      level618,
+      level786,
+      lower: Math.min(level618, level786),
+      upper: Math.max(level618, level786),
+    };
+  } else if (source.includes('_bearish')) {
+    return { direction: 'bearish', unsupported: true };
+  } else {
     return null;
   }
+}
+
+function getFibZone(fib, upperLevel, lowerLevel) {
+  if (!fib) return null;
+  var high = Number(fib.swingHigh);
+  var low = Number(fib.swingLow);
+  if (!high || !low || high <= low) return null;
+
+  var range = high - low;
+  var source = String(fib.source || '').toLowerCase();
+  if (source.includes('_bearish')) return { direction: 'bearish', unsupported: true };
+  if (!source.includes('_bullish')) return null;
+
+  var upperPrice = high - range * upperLevel;
+  var lowerPrice = high - range * lowerLevel;
+  return {
+    direction: 'bullish',
+    upperLevel,
+    lowerLevel,
+    upperPrice,
+    lowerPrice,
+    lower: Math.min(upperPrice, lowerPrice),
+    upper: Math.max(upperPrice, lowerPrice),
+  };
+}
+
+function fibLevelLabel(level) {
+  return Number(level).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function makeFibLevel(level, price) {
+  return {
+    label: 'fib' + fibLevelLabel(level),
+    price: price,
+  };
+}
+
+function getMigrationMomentum(t) {
+  var vol5m = Number(t.volume_5m || 0);
+  var swaps5m = Number(t.swaps_5m || 0);
+  var buys5m = Number(t.buys_5m || 0);
+  var sells5m = Number(t.sells_5m || 0);
+  var total5m = buys5m + sells5m;
+  var buyRatio5m = total5m > 0 ? (buys5m / total5m) * 100 : 0;
+
+  var volStrong = vol5m >= CFG.minVol5m;
+  var swapsStrong = swaps5m >= CFG.minSwaps5m;
+  var buyPressureStrong = total5m > 0 && buyRatio5m >= CFG.migTightMinBuyRatio;
+
+  return {
+    vol5m,
+    swaps5m,
+    buys5m,
+    sells5m,
+    buyRatio5m,
+    passMomentum: volStrong && swapsStrong && buyPressureStrong,
+    reason: 'Vol5m $' + fmt(vol5m) + ' | Txns5m ' + swaps5m + ' | Buy ' + buyRatio5m.toFixed(0) + '%',
+  };
+}
+
+function buildAutoBuyDecision(entryGate, status, reason) {
+  var decision = {
+    bought: false,
+    autoBuyStatus: status,
+    autoBuyReason: reason || '',
+    autoBuyCheckedAt: Date.now(),
+  };
+  if (entryGate) {
+    decision.entryZoneLow = entryGate.entryLow || null;
+    decision.entryZoneHigh = entryGate.entryHigh || null;
+    decision.entryZoneLabel = entryGate.entryZoneLabel || null;
+    decision.fibSource = entryGate.fib?.source || 'unknown';
+    decision.fib50 = entryGate.fib50 || null;
+    decision.fib618 = entryGate.fib618 || null;
+    decision.fib786 = entryGate.fib786 || null;
+    decision.fibLevels = entryGate.fibLevels || null;
+    decision.entryMode = entryGate.entryMode || null;
+    decision.momentum = entryGate.momentum || null;
+  }
+  return decision;
+}
+
+function classifyAutoBuyEntryStatus(entryGate) {
+  var reason = String(entryGate?.reason || '').toLowerCase();
+  if (reason.includes('sudah di bawah') || reason.includes('breakdown')) return 'INVALID_ENTRY';
+  if (reason.includes('bearish') || reason.includes('tidak valid') || reason.includes('harga token tidak valid')) return 'SKIP_ENTRY';
+  return 'WAIT_ENTRY';
+}
+
+function mergeAutoBuyResult(pos, result) {
+  if (!pos || !result) return;
+
+  if (['WAIT_ENTRY', 'WAIT_CYCLE'].includes(result.autoBuyStatus)) {
+    var startedAt = Number(pos.waitEntryStartedAt || pos.entryAt || Date.now());
+    result.waitEntryStartedAt = startedAt;
+    result.waitEntryUntil = Number(pos.waitEntryUntil || (startedAt + CFG.autoBuyWaitEntryMaxMin * 60000));
+  }
+
+  Object.assign(pos, result);
+
+  if (result.bought || ['INVALID_ENTRY', 'SKIP_ENTRY', 'BUY_ERROR', 'EXPIRED'].includes(result.autoBuyStatus)) {
+    delete pos.waitEntryStartedAt;
+    delete pos.waitEntryUntil;
+  }
+}
+
+function isTerminalAutoBuyStatus(status) {
+  return ['BOUGHT', 'INVALID_ENTRY', 'EXPIRED'].includes(String(status || '').toUpperCase());
+}
+
+function isRetryableAutoBuyStatus(status) {
+  return ['WAIT_ENTRY', 'WAIT_CYCLE'].includes(String(status || '').toUpperCase());
+}
+
+function buildAutoBuyRetryToken(ca, pos, currentPrice) {
+  var tokenInfo = fetchTokenInfo(ca) || {};
+  var root = tokenInfo.data || tokenInfo.token || tokenInfo;
+  var priceInfo = tokenInfo.price || root.price || {};
+  var mode = String(pos.mode || '').toUpperCase();
+  var vol1h = firstNumber(priceInfo.volume_1h, priceInfo.vol_1h, priceInfo.volume1h, root.volume_1h, pos.volume_1h);
+  var vol24h = firstNumber(priceInfo.volume_24h, priceInfo.vol_24h, priceInfo.volume24h, root.volume_24h, pos.volume_24h);
+
+  return {
+    address: ca,
+    symbol: pos.symbol,
+    name: pos.name,
+    grade: pos.grade,
+    mode: pos.mode,
+    price: firstNumber(priceInfo.price_usd, priceInfo.priceUsd, priceInfo.price, root.price_usd, root.price, currentPrice),
+    price_change_percent1h: firstNumber(priceInfo.price_change_percent1h, priceInfo.price_change_1h, priceInfo.change_1h, root.price_change_percent1h, pos.price_change_percent1h),
+    market_cap: firstNumber(priceInfo.market_cap, priceInfo.usd_market_cap, root.market_cap, root.usd_market_cap, pos.market_cap),
+    history_highest_market_cap: firstNumber(priceInfo.history_highest_market_cap, root.history_highest_market_cap, pos.history_highest_market_cap),
+    liquidity: firstNumber(priceInfo.liquidity, root.liquidity, pos.liquidity),
+    volume: mode === 'SWING' ? firstNumber(vol24h, pos.volume) : firstNumber(vol1h, pos.volume),
+    volume_1h: vol1h,
+    volume_24h: vol24h,
+    volume_5m: firstNumber(priceInfo.volume_5m, priceInfo.vol_5m, priceInfo.volume5m, root.volume_5m, pos.volume_5m),
+    swaps_5m: firstNumber(priceInfo.swaps_5m, priceInfo.txns_5m, priceInfo.transactions_5m, root.swaps_5m, pos.swaps_5m),
+    buys_5m: firstNumber(priceInfo.buys_5m, priceInfo.buy_5m, priceInfo.buy_txns_5m, root.buys_5m, pos.buys_5m),
+    sells_5m: firstNumber(priceInfo.sells_5m, priceInfo.sell_5m, priceInfo.sell_txns_5m, root.sells_5m, pos.sells_5m),
+  };
+}
+
+async function retryPendingAutoBuy(ca, pos, currentPrice) {
+  if (!AUTO_BUY.ENABLED || pos.bought) return false;
+
+  var mode = String(pos.mode || '').toUpperCase();
+  if (!['MIGRATION', 'SWING'].includes(mode)) return false;
+  if (isTerminalAutoBuyStatus(pos.autoBuyStatus)) return false;
+  if (!isRetryableAutoBuyStatus(pos.autoBuyStatus)) return false;
+
+  var now = Date.now();
+  var startedAt = Number(pos.waitEntryStartedAt || pos.entryAt || now);
+  var waitUntil = Number(pos.waitEntryUntil || (startedAt + CFG.autoBuyWaitEntryMaxMin * 60000));
+  if (now > waitUntil) {
+    mergeAutoBuyResult(pos, {
+      bought: false,
+      autoBuyStatus: 'EXPIRED',
+      autoBuyReason: 'wait entry expired > ' + CFG.autoBuyWaitEntryMaxMin + ' menit',
+      autoBuyCheckedAt: now,
+    });
+    log('[AUTOBUY] WAIT_ENTRY expired ' + pos.symbol + ' (> ' + CFG.autoBuyWaitEntryMaxMin + ' menit)');
+    return true;
+  }
+
+  var t = buildAutoBuyRetryToken(ca, pos, currentPrice);
+  log('[AUTOBUY] Recheck WAIT_ENTRY ' + mode + ' ' + pos.symbol + ' @ $' + fmtPrice(t.price));
+  var buyResult = await tryAutoBuy(ca, t, mode, pos.grade || 'POTENSIAL');
+  mergeAutoBuyResult(pos, buyResult);
+  return !!buyResult;
+}
+
+async function checkAutoBuyEntryZone(t, mode) {
+  var price = Number(t.price);
+  if (!price || price <= 0) {
+    return { pass: false, reason: 'harga token tidak valid' };
+  }
+
+  var fib = await calculateFibonacci(t.address, price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
+  var modeKey = String(mode || '').toUpperCase();
+
+  if (modeKey === 'MIGRATION') {
+    var fibUpper = CFG.migTightFibUpper;   // default 0.5
+    var fibLower = CFG.migTightFibLower;   // default 0.786
+    var midPoint = (fibUpper + fibLower) / 2;
+    var fibUpperLabel = fibUpper.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var fibLowerLabel = fibLower.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var midPointLabel = midPoint.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var aggressiveZone = getFibZone(fib, fibUpper, midPoint);
+    var normalZone = getFibZone(fib, midPoint, fibLower);
+    var fullZone = getFibZone(fib, fibUpper, fibLower);
+    var momentum = getMigrationMomentum(t);
+    var migrationFibLevels = fullZone && aggressiveZone && normalZone && !fullZone.unsupported && !aggressiveZone.unsupported && !normalZone.unsupported
+      ? [
+          makeFibLevel(fibUpper, fullZone.upperPrice),
+          makeFibLevel(midPoint, aggressiveZone.lowerPrice),
+          makeFibLevel(fibLower, fullZone.lowerPrice),
+        ]
+      : null;
+
+    if (AUTO_BUY.MIG_ENTRY_MODE === 'LOOSE') {
+      var hasValidFibZone = fullZone && !fullZone.unsupported;
+      return {
+        pass: true,
+        entryMode: 'LOOSE',
+        reason: 'AUTO_BUY_MIG_ENTRY_MODE=LOOSE; longgar, buy langsung di harga signal $' + fmtPrice(price) + ', fib hanya info',
+        fib,
+        fair: hasValidFibZone ? fullZone.upperPrice : price,
+        maxEntry: price,
+        entryLow: hasValidFibZone ? fullZone.lower : null,
+        entryHigh: hasValidFibZone ? fullZone.upper : null,
+        entryZoneLabel: hasValidFibZone ? 'info ' + fibUpperLabel + '-' + fibLowerLabel : 'signal price',
+        fib50: hasValidFibZone ? fullZone.upperPrice : null,
+        fib618: hasValidFibZone && fibLowerLabel === '0.618' ? fullZone.lowerPrice : null,
+        fib786: hasValidFibZone && fibLowerLabel === '0.786' ? fullZone.lowerPrice : null,
+        fibLevels: migrationFibLevels,
+        momentum,
+      };
+    }
+
+    if (fullZone && fullZone.unsupported) {
+      return {
+        pass: false,
+        reason: 'fib masih bearish; zona entry migration jadi resistance, skip auto-buy',
+        fib,
+      };
+    }
+    if (!fullZone || !aggressiveZone || !normalZone) {
+      return { pass: false, reason: 'zona fib migration ' + fibUpperLabel + '-' + fibLowerLabel + ' tidak valid', fib };
+    }
+
+    if (price > fullZone.upper) {
+      return {
+        pass: false,
+        reason: 'price $' + fmtPrice(price) + ' masih di atas fib' + fibUpperLabel + ' (upper $' + fmtPrice(fullZone.upper) + '), no chase',
+        fib,
+        fair: fullZone.upperPrice,
+        maxEntry: fullZone.upper,
+        entryLow: fullZone.lower,
+        entryHigh: fullZone.upper,
+        entryZoneLabel: 'watch ' + fibUpperLabel + '-' + fibLowerLabel,
+        fib50: fullZone.upperPrice,
+        fib618: fibLowerLabel === '0.618' ? fullZone.lowerPrice : null,
+        fib786: fibLowerLabel === '0.786' ? fullZone.lowerPrice : null,
+        fibLevels: migrationFibLevels,
+        momentum,
+      };
+    }
+    if (price < fullZone.lower) {
+      return {
+        pass: false,
+        reason: 'price $' + fmtPrice(price) + ' sudah di bawah fib' + fibLowerLabel + ' (lower $' + fmtPrice(fullZone.lower) + ', rawan breakdown)',
+        fib,
+        fair: fullZone.upperPrice,
+        maxEntry: fullZone.upper,
+        entryLow: fullZone.lower,
+        entryHigh: fullZone.upper,
+        entryZoneLabel: 'watch ' + fibUpperLabel + '-' + fibLowerLabel,
+        fib50: fullZone.upperPrice,
+        fib618: fibLowerLabel === '0.618' ? fullZone.lowerPrice : null,
+        fib786: fibLowerLabel === '0.786' ? fullZone.lowerPrice : null,
+        fibLevels: migrationFibLevels,
+        momentum,
+      };
+    }
+    if (price >= aggressiveZone.lower && price <= aggressiveZone.upper) {
+      if (CFG.migTightRequireMomentum && !momentum.passMomentum) {
+        return {
+          pass: false,
+          reason: 'price masuk area agresif fib' + fibUpperLabel + '-' + midPointLabel + ' tapi momentum belum cukup (' + momentum.reason + ')',
+          fib,
+          fair: fullZone.upperPrice,
+          maxEntry: aggressiveZone.upper,
+          entryLow: aggressiveZone.lower,
+          entryHigh: aggressiveZone.upper,
+          entryZoneLabel: 'aggressive ' + fibUpperLabel + '-' + midPointLabel,
+          fib50: fullZone.upperPrice,
+          fib618: fibLowerLabel === '0.618' ? fullZone.lowerPrice : null,
+          fib786: fibLowerLabel === '0.786' ? fullZone.lowerPrice : null,
+          fibLevels: migrationFibLevels,
+          momentum,
+        };
+      }
+      return {
+        pass: true,
+        reason: 'price $' + fmtPrice(price) + ' di area agresif fib' + fibUpperLabel + '-' + midPointLabel + (CFG.migTightRequireMomentum ? ' dengan momentum kuat (' + momentum.reason + ')' : ' (momentum check off)'),
+        fib,
+        fair: fullZone.upperPrice,
+        maxEntry: aggressiveZone.upper,
+        entryLow: aggressiveZone.lower,
+        entryHigh: aggressiveZone.upper,
+        entryZoneLabel: 'aggressive ' + fibUpperLabel + '-' + midPointLabel,
+        fib50: fullZone.upperPrice,
+        fib618: fibLowerLabel === '0.618' ? fullZone.lowerPrice : null,
+        fib786: fibLowerLabel === '0.786' ? fullZone.lowerPrice : null,
+        fibLevels: migrationFibLevels,
+        momentum,
+      };
+    }
+    if (CFG.migTightRequireMomentum && !momentum.passMomentum) {
+      return {
+        pass: false,
+        reason: 'price masuk area normal fib' + midPointLabel + '-' + fibLowerLabel + ' tapi momentum belum cukup (' + momentum.reason + ')',
+        fib,
+        fair: fullZone.upperPrice,
+        maxEntry: fullZone.upper,
+        entryLow: normalZone.lower,
+        entryHigh: normalZone.upper,
+        entryZoneLabel: 'normal ' + midPointLabel + '-' + fibLowerLabel,
+        fib50: fullZone.upperPrice,
+        fib618: fibLowerLabel === '0.618' ? normalZone.lowerPrice : null,
+        fib786: fibLowerLabel === '0.786' ? normalZone.lowerPrice : null,
+        fibLevels: migrationFibLevels,
+        momentum,
+      };
+    }
+    return {
+      pass: true,
+      reason: 'price $' + fmtPrice(price) + ' di area normal fib' + midPointLabel + '-' + fibLowerLabel + (CFG.migTightRequireMomentum ? ' dengan momentum kuat (' + momentum.reason + ')' : ' (momentum check off)'),
+      fib,
+      fair: fullZone.upperPrice,
+      maxEntry: fullZone.upper,
+      entryLow: normalZone.lower,
+      entryHigh: normalZone.upper,
+      entryZoneLabel: 'normal ' + midPointLabel + '-' + fibLowerLabel,
+      fib50: fullZone.upperPrice,
+      fib618: fibLowerLabel === '0.618' ? normalZone.lowerPrice : null,
+      fib786: fibLowerLabel === '0.786' ? normalZone.lowerPrice : null,
+      fibLevels: migrationFibLevels,
+      momentum,
+    };
+  }
+
+  if (modeKey === 'SWING') {
+    var zone = getFibDiscountZone(fib);
+    if (zone && zone.unsupported) {
+      return {
+        pass: false,
+        reason: 'fib masih bearish; area 0.618-0.786 jadi resistance, skip auto-buy',
+        fib,
+      };
+    }
+    if (!zone) {
+      return { pass: false, reason: 'zona diskon fib 0.618-0.786 tidak valid', fib };
+    }
+    if (price > zone.upper) {
+      return {
+        pass: false,
+        reason: 'price $' + fmtPrice(price) + ' masih di atas zona diskon 0.618-0.786 (upper $' + fmtPrice(zone.upper) + ')',
+        fib,
+        fair: zone.level618,
+        maxEntry: zone.upper,
+        entryLow: zone.lower,
+        entryHigh: zone.upper,
+        fib618: zone.level618,
+        fib786: zone.level786,
+      };
+    }
+    if (price < zone.lower) {
+      return {
+        pass: false,
+        reason: 'price $' + fmtPrice(price) + ' sudah di bawah 0.786 (lower $' + fmtPrice(zone.lower) + ', rawan breakdown)',
+        fib,
+        fair: zone.level618,
+        maxEntry: zone.upper,
+        entryLow: zone.lower,
+        entryHigh: zone.upper,
+        fib618: zone.level618,
+        fib786: zone.level786,
+      };
+    }
+    return {
+      pass: true,
+      reason: 'price $' + fmtPrice(price) + ' di zona diskon 0.618-0.786 ($' + fmtPrice(zone.lower) + ' - $' + fmtPrice(zone.upper) + ')',
+      fib,
+      fair: zone.level618,
+      maxEntry: zone.upper,
+      entryLow: zone.lower,
+      entryHigh: zone.upper,
+      fib618: zone.level618,
+      fib786: zone.level786,
+    };
+  }
+
+  return { pass: false, reason: 'mode auto-buy tidak didukung: ' + modeKey, fib };
+}
+
+async function tryAutoBuy(ca, t, mode, grade) {
+  if (!AUTO_BUY.ENABLED) {
+    return buildAutoBuyDecision(null, 'OFF', 'AUTO_BUY_ENABLED=false');
+  }
+  if (boughtThisCycle >= AUTO_BUY.MAX_PER_CYCLE) {
+    log('[AUTOBUY] Max per cycle (' + AUTO_BUY.MAX_PER_CYCLE + ') tercapai, skip ' + t.symbol);
+    return buildAutoBuyDecision(null, 'WAIT_CYCLE', 'Max per cycle (' + AUTO_BUY.MAX_PER_CYCLE + ') tercapai');
+  }
   var modes = AUTO_BUY.MODES.split(',').map(function(m) { return m.trim().toUpperCase(); });
-  if (!modes.includes(mode.toUpperCase())) return null;
-  if (AUTO_BUY.ONLY_GRADE !== 'ALL' && grade !== AUTO_BUY.ONLY_GRADE) return null;
+  if (!modes.includes(mode.toUpperCase())) {
+    return buildAutoBuyDecision(null, 'SKIP_MODE', 'Mode ' + mode + ' tidak ada di AUTO_BUY_MODES');
+  }
+  if (AUTO_BUY.ONLY_GRADE !== 'ALL' && grade !== AUTO_BUY.ONLY_GRADE) {
+    return buildAutoBuyDecision(null, 'SKIP_GRADE', 'Grade ' + grade + ' tidak cocok dengan AUTO_BUY_GRADE=' + AUTO_BUY.ONLY_GRADE);
+  }
   if (TRACKED.has(ca) && TRACKED.get(ca).bought) return null;
 
+  var entryGate = null;
   try {
+    entryGate = await checkAutoBuyEntryZone(t, mode);
+    var fibSource = entryGate.fib?.source || 'unknown';
+    var fibMeta = 'via ' + fibSource + ' | fair $' + fmtPrice(entryGate.fair) + ' | max $' + fmtPrice(entryGate.maxEntry);
+    if (entryGate.entryLow && entryGate.entryHigh) {
+      fibMeta = 'via ' + fibSource;
+      if (entryGate.entryZoneLabel) fibMeta += ' | ' + entryGate.entryZoneLabel;
+      if (Array.isArray(entryGate.fibLevels) && entryGate.fibLevels.length > 0) {
+        entryGate.fibLevels.forEach(function(level) {
+          fibMeta += ' | ' + level.label + ' $' + fmtPrice(level.price);
+        });
+      } else {
+        if (entryGate.fib50) fibMeta += ' | fib0.5 $' + fmtPrice(entryGate.fib50);
+        if (entryGate.fib618) fibMeta += ' | fib0.618 $' + fmtPrice(entryGate.fib618);
+        if (entryGate.fib786) fibMeta += ' | fib0.786 $' + fmtPrice(entryGate.fib786);
+      }
+      fibMeta += ' | zone $' + fmtPrice(entryGate.entryLow) + '-' + fmtPrice(entryGate.entryHigh);
+    }
+    if (!entryGate.pass) {
+      var waitStatus = classifyAutoBuyEntryStatus(entryGate);
+      log('[AUTOBUY] ' + waitStatus + ' ' + mode + ' ' + t.symbol + ' (' + fibMeta + ' | entry zone: ' + entryGate.reason + ')');
+      var skipDecision = buildAutoBuyDecision(entryGate, waitStatus, entryGate.reason);
+      logTrackingEvent({
+        type: waitStatus === 'WAIT_ENTRY' ? 'AUTOBUY_WAIT_ENTRY' : 'AUTOBUY_SKIP',
+        ca, name: t.name, symbol: t.symbol, mode, grade,
+        autoBuyStatus: skipDecision.autoBuyStatus,
+        autoBuyReason: skipDecision.autoBuyReason,
+        entryZoneLow: skipDecision.entryZoneLow,
+        entryZoneHigh: skipDecision.entryZoneHigh,
+        entryZoneLabel: skipDecision.entryZoneLabel,
+        fibSource: skipDecision.fibSource,
+        fibLevels: skipDecision.fibLevels,
+        momentum: skipDecision.momentum,
+      });
+      return skipDecision;
+    }
+    log('[AUTOBUY] Entry zone OK ' + t.symbol + ' (' + fibMeta + ' | ' + entryGate.reason + ')');
+
     log('[AUTOBUY] Eksekusi buy ' + t.symbol + ' ' + AUTO_BUY.AMOUNT_SOL + ' SOL' + (AUTO_BUY.DRY_RUN ? ' [DRY RUN]' : ''));
     var result = await buyToken(ca, AUTO_BUY.AMOUNT_SOL, AUTO_BUY.SLIPPAGE_BPS);
     boughtThisCycle++;
+
+    var entryPriceUsd = Number(t.price) || 0;
+    var entryZoneLabel = entryGate.entryZoneLabel || '0.618-0.786';
+    var entryZoneText = entryGate.entryLow && entryGate.entryHigh
+      ? '$' + fmtPrice(entryGate.entryLow) + ' - $' + fmtPrice(entryGate.entryHigh) + ' (' + entryZoneLabel + ')'
+      : '-';
 
     var buyMsg =
       '🟢 AUTO BUY\n' +
       '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n' +
       'Mode: ' + mode + ' | Grade: ' + grade + '\n' +
       'Amount: <b>' + AUTO_BUY.AMOUNT_SOL + ' SOL</b>\n' +
-      'Entry: $' + result.entryPriceSol.toFixed(10) + '\n' +
+      formatAutoSellPlan() + '\n' +
+      'Price USD: $' + fmtPrice(entryPriceUsd) + '\n' +
+      'Zona Fib: ' + entryZoneText + '\n' +
+      'Fib: ' + fibSource + '\n' +
+      'Swap Entry: ' + result.entryPriceSol.toFixed(10) + ' SOL/token\n' +
       'Tokens: ' + result.tokenAmount.toFixed(2) + '\n' +
       (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + result.txSignature + '</code>\n') +
       '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
       ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>';
 
     var autoBuyMsgId = await sendTelegram(buyMsg, null, CFG.tgThreadAuto);
-    log('[AUTOBUY] ✓ ' + t.symbol + ' @ $' + result.entryPriceSol.toFixed(10));
+    log('[AUTOBUY] ✓ ' + t.symbol + ' @ ' + result.entryPriceSol.toFixed(10) + ' SOL/token');
+
+    logTrackingEvent({
+      type: AUTO_BUY.DRY_RUN ? 'AUTOBUY_DRY_RUN' : 'AUTOBUY',
+      ca, name: t.name, symbol: t.symbol, mode, grade,
+      entryPrice: result.entryPriceSol,
+      entryPriceUsd,
+      entryPriceSol: result.entryPriceSol,
+      entryZoneLow: entryGate.entryLow || null,
+      entryZoneHigh: entryGate.entryHigh || null,
+      entryZoneLabel,
+      entryMode: entryGate.entryMode || (String(mode || '').toUpperCase() === 'MIGRATION' ? AUTO_BUY.MIG_ENTRY_MODE : 'TIGHT'),
+      fibSource,
+      momentum: entryGate.momentum || null,
+      amountSol: AUTO_BUY.AMOUNT_SOL,
+      tokenAmount: result.tokenAmount,
+      txBuy: result.txSignature,
+    });
 
     return {
       bought: true,
       autoBuyMsgId: autoBuyMsgId,
       tokenAmount: result.tokenAmount,
       tokenDecimals: result.tokenDecimals,
+      entryPrice: entryPriceUsd,
       entryPriceSol: result.entryPriceSol,
+      entryPriceUsd,
+      entryZoneLow: entryGate.entryLow || null,
+      entryZoneHigh: entryGate.entryHigh || null,
+      entryZoneLabel,
+      entryMode: entryGate.entryMode || (String(mode || '').toUpperCase() === 'MIGRATION' ? AUTO_BUY.MIG_ENTRY_MODE : 'TIGHT'),
+      fibSource,
+      momentum: entryGate.momentum || null,
       amountSol: AUTO_BUY.AMOUNT_SOL,
       txBuy: result.txSignature,
       peak: Number(t.price) || result.entryPriceSol,
       trailingActive: false,
+      autoBuyStatus: 'BOUGHT',
+      autoBuyReason: entryGate.reason,
+      autoBuyCheckedAt: Date.now(),
     };
   } catch (e) {
     log('[AUTOBUY] Error ' + t.symbol + ': ' + e.message);
-    return null;
-  }
-}
-
-
-async function sendRadarBridge(t, mode, extra = {}) {
-  if (!CFG.radarBridgeUrl || !CFG.radarBridgeSecret) {
-    log('[BRIDGE] Skip ' + mode + ' — RADAR_BRIDGE_URL/RADAR_BRIDGE_SECRET belum diset');
-    return null;
-  }
-
-  if (!t || !t.address) {
-    log('[BRIDGE] Skip ' + mode + ' — CA kosong');
-    return null;
-  }
-
-  const top10 = t.top_10_holder_rate != null
-    ? Number(t.top_10_holder_rate) * 100
-    : t.stat?.top_10_holder_rate != null
-      ? Number(t.stat.top_10_holder_rate) * 100
-      : undefined;
-  const bundlerPct = t.top_bundler_trader_percentage != null
-    ? Number(t.top_bundler_trader_percentage) * 100
-    : t.bundler_rate != null
-      ? Number(t.bundler_rate) * 100
-      : undefined;
-
-  const payload = {
-    source: 'auto-screen',
-    mode,
-    ca: t.address,
-    symbol: t.symbol,
-    name: t.name,
-    grade: extra.grade,
-    rugScore: extra.rugScore,
-    insiderPct: extra.insiderPct,
-    holders: t.holder_count,
-    top10,
-    bundlerPct,
-    smartWallets: t.smart_degen_count || (t.smart_degen_wallets || []).length || undefined,
-    socialScore: extra.socialScore,
-    liquidity: t.liquidity,
-    volume: t.volume,
-    price: t.price
-  };
-
-  try {
-    const res = await axios.post(CFG.radarBridgeUrl, payload, {
-      timeout: 15000,
-      headers: {
-        'content-type': 'application/json',
-        'x-radar-bridge-secret': CFG.radarBridgeSecret
-      }
-    });
-    const data = res.data || {};
-    const eligible = data.validation?.eligible ? 'YES' : 'NO';
-    const sent = data.telegram?.sent || 0;
-    const reasons = (data.validation?.reasons || []).join(' | ');
-    log('[BRIDGE] ' + mode + ' ' + (t.symbol || '?') + ' eligible=' + eligible + ' sent=' + sent + (reasons ? ' — ' + reasons : ''));
-    return data;
-  } catch (e) {
-    const desc = e.response?.data?.detail || e.response?.data?.error || e.message;
-    log('[BRIDGE] Error ' + mode + ' ' + (t.symbol || '?') + ': ' + desc);
-    return null;
+    await sendTelegram(
+      '⚠️ AUTO BUY GAGAL\n' +
+      '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n' +
+      'Mode: ' + mode + ' | Grade: ' + grade + '\n' +
+      'Amount: ' + AUTO_BUY.AMOUNT_SOL + ' SOL\n' +
+      'Error: <code>' + esc(e.message) + '</code>\n' +
+      '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+      null, CFG.tgThreadAuto
+    );
+    return buildAutoBuyDecision(entryGate, 'BUY_ERROR', e.message);
   }
 }
 
@@ -754,8 +1283,8 @@ async function checkSwingSignal(t) {
   const change24h = Number(t.price_change_percent24h) || 0;
   const lp        = t.liquidity || 0;
   const vol1h     = Number(t.volume_1h ?? t.volume1h ?? t.volume1H ?? t.vol1h ?? t.volume ?? 0) || 0;
-  let vol24h      = Number(t.volume_24h ?? t.volume24h ?? t.volume24H ?? t.vol24h ?? 0) || 0;
-  let tokenInfo   = null;
+  let vol24h       = Number(t.volume_24h ?? t.volume24h ?? t.volume24H ?? t.vol24h ?? 0) || 0;
+  let tokenInfo    = null;
   // Bedakan "data holder gak tersedia" (null) vs "beneran 0 holder" — sebelumnya
   // dua-duanya numpuk jadi 0 dan gate holder jadi silently bypass tiap kali API
   // gak ngirim field ini.
@@ -775,11 +1304,12 @@ async function checkSwingSignal(t) {
   if (change24h > CFG.swingMaxChange24h)
     return { pass: false, reason: 'Sudah pump 24h +' + change24h.toFixed(1) + '% (terlambat)' };
 
-  // — Gate 4: Volume 24h minimal —
   if (!vol24h && t.address) {
     tokenInfo = fetchTokenInfo(t.address);
     vol24h = Number(tokenInfo?.price?.volume_24h ?? tokenInfo?.volume_24h ?? 0) || 0;
   }
+
+  // — Gate 4: Volume 24h minimal —
   if (vol24h < CFG.swingMinVol24h)
     return { pass: false, reason: 'Vol 24h terlalu kecil ($' + fmt(vol24h) + ')' };
   t.volume_1h = vol1h;
@@ -801,6 +1331,7 @@ async function checkSwingSignal(t) {
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = ['Vol 24h kuat $' + fmt(vol24h)];
   const klines  = await fetchSwingKlines(t.address);
+  let allowAutoBuy = true;
 
   if (klines && klines.length >= 3) {
     // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
@@ -825,6 +1356,7 @@ async function checkSwingSignal(t) {
     }
 
     if (candles.length < 3) {
+      allowAutoBuy = false;
       log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
       if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
         signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
@@ -893,6 +1425,7 @@ async function checkSwingSignal(t) {
 
   } else {
     // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
+    allowAutoBuy = false;
     log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
     if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
       signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
@@ -905,7 +1438,7 @@ async function checkSwingSignal(t) {
   if (positiveSignals.length === 0)
     return { pass: false, reason: 'Tidak ada sinyal pre-pump' };
 
-  return { pass: true, signals };
+  return { pass: true, signals, allowAutoBuy };
 }
 
 // ─────────────────────────────────────────────
@@ -916,6 +1449,15 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
   if (!p || p <= 0) p = 0.0001;
   var floor = p * 0.1;
 
+  // ── TIER 1: Birdeye — major swing pivot (zigzag, paling akurat) ──
+  // Beda dari tier GMGN di bawah: gak ambil literal max/min candle di seluruh
+  // window, tapi cari titik balik (reversal) yang signifikan, dan pakai leg
+  // PALING BARU aja — jadi gak kebawa swing high/low yang udah basi.
+  try {
+    var fibBirdeye = await calculateFibFromBirdeye(address, mode, floor, CFG);
+    if (fibBirdeye) return fibBirdeye;
+  } catch (e) { log('Birdeye fib gagal, fallback ke GMGN kline: ' + e.message); }
+
   // Untuk swing: pakai kline 1D (7 candle), lebih akurat
   const resolution = mode === 'SWING' ? '1d' : '1h';
   const lookback   = mode === 'SWING' ? 7 * 86400 : 86400;
@@ -924,20 +1466,45 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
     const nowSec  = Math.floor(Date.now() / 1000);
     const klines  = await fetchGMGNKline(address, resolution, nowSec - lookback, nowSec);
     if (klines && klines.length >= 3) {
-      var highs      = klines.map(c => Number(c.high)).filter(v => v > 0);
-      var lows       = klines.map(c => Number(c.low)).filter(v => v > 0);
-      var swingHigh  = Math.max(...highs);
-      var swingLow   = Math.min(...lows);
+      var candles = klines
+        .map((c, index) => ({
+          index,
+          time: Number(c.time ?? c.timestamp ?? c.t ?? 0),
+          high: Number(c.high),
+          low: Number(c.low),
+        }))
+        .filter(c => c.high > 0 && c.low > 0)
+        .sort((a, b) => {
+          if (a.time > 0 && b.time > 0) return a.time - b.time;
+          return a.index - b.index;
+        })
+        .map((c, order) => ({ ...c, order }));
+      var swingHighCandle = candles.reduce((best, c) => !best || c.high > best.high ? c : best, null);
+      var swingLowCandle  = candles.reduce((best, c) => !best || c.low < best.low ? c : best, null);
+      var swingHigh       = swingHighCandle ? swingHighCandle.high : 0;
+      var swingLow        = swingLowCandle ? swingLowCandle.low : 0;
       if (swingHigh > swingLow) {
         var range = swingHigh - swingLow;
-        log('Fib dari kline ' + resolution + ': H=' + swingHigh + ' L=' + swingLow);
+        var isBullish = swingLowCandle.order < swingHighCandle.order;
+        var direction = isBullish ? 'bullish' : 'bearish';
+        log('Fib dari kline ' + resolution + ' (' + direction + '): H=' + swingHigh + ' L=' + swingLow);
+        if (isBullish) {
+          return {
+            source: 'kline_' + resolution + '_' + direction,
+            swingHigh, swingLow,
+            support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+            fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
+            resist:  (swingHigh + range * 0.382).toFixed(10),
+            sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
+          };
+        }
         return {
-          source: 'kline_' + resolution,
+          source: 'kline_' + resolution + '_' + direction,
           swingHigh, swingLow,
-          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
-          fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-          resist:  (swingHigh + range * 0.382).toFixed(10),
-          sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
+          support: Math.max(swingLow - range * 0.272, floor).toFixed(10),
+          fair:    Math.max(swingLow + range * 0.382, floor).toFixed(10),
+          resist:  (swingLow + range * 0.618).toFixed(10),
+          sl:      Math.max(swingLow - range * 0.382, floor * 0.5).toFixed(10),
         };
       }
     }
@@ -959,7 +1526,7 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
   if (range < p * 0.05) range = p * 0.1;
   if (priceIsHigh) {
     return {
-      source: 'estimasi',
+      source: 'estimasi_bullish',
       swingHigh: h, swingLow: l,
       support: Math.max(h - range * 0.500, floor).toFixed(10),
       fair:    Math.max(h - range * 0.618, floor).toFixed(10),
@@ -968,7 +1535,7 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
     };
   } else {
     return {
-      source: 'estimasi',
+      source: 'estimasi_bearish',
       swingHigh: h, swingLow: l,
       support: Math.max(l - range * 0.272, floor).toFixed(10),
       fair:    Math.max(l - range * 0.500, floor).toFixed(10),
@@ -978,53 +1545,9 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
   }
 }
 
-function getFibDiscountZone(fib) {
-  if (!fib) return null;
-  var high = Number(fib.swingHigh);
-  var low = Number(fib.swingLow);
-  if (!high || !low || high <= low) return null;
-  var range = high - low;
-  var level618 = high - range * 0.618;
-  var level786 = high - range * 0.786;
-  return {
-    level618,
-    level786,
-    lower: Math.min(level618, level786),
-    upper: Math.max(level618, level786),
-  };
-}
-
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
-function getFibZone(fib, upperLevel, lowerLevel) {
-  if (!fib) return null;
-  var high = Number(fib.swingHigh);
-  var low = Number(fib.swingLow);
-  if (!high || !low || high <= low) return null;
-  var range = high - low;
-  var upperPrice = high - range * upperLevel;
-  var lowerPrice = high - range * lowerLevel;
-  return {
-    lower: Math.min(upperPrice, lowerPrice),
-    upper: Math.max(upperPrice, lowerPrice),
-  };
-}
-
-function buildEntryAreaLines(fib, mode) {
-  var lines = [];
-  if (mode === 'MIGRATION') {
-    var aggressive = getFibZone(fib, 0.382, 0.5);
-    var normal = getFibZone(fib, 0.5, 0.786);
-    if (aggressive) lines.push('⚡ Agresif: $' + fmtPrice(aggressive.lower) + ' - $' + fmtPrice(aggressive.upper) + ' (0.382-0.5)');
-    if (normal) lines.push('🛒 Normal : $' + fmtPrice(normal.lower) + ' - $' + fmtPrice(normal.upper) + ' (0.5-0.786)');
-  } else {
-    var discount = getFibDiscountZone(fib);
-    if (discount) lines.push('🛒 Diskon : $' + fmtPrice(discount.lower) + ' - $' + fmtPrice(discount.upper) + ' (0.618-0.786)');
-  }
-  return lines;
-}
-
 async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
   var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
@@ -1062,7 +1585,6 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var snipers     = ((t.top70_sniper_hold_rate || 0) * 100).toFixed(1);
   var creatorHold = ((t.dev_team_hold_rate || 0) * 100).toFixed(1);
   var SEP         = '━━━━━━━━━━━━━━━━━━━━';
-
   var modeLabel  = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
   var gradeEmoji = grade === 'GOLD' ? '🟢' : grade === 'POTENSIAL' ? '🟡' : '🔴';
   var riskLabel  = grade === 'GOLD' ? 'Grade A' : grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
@@ -1072,7 +1594,7 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
   msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
-  msg += ve + ' Vol 1h  : $' + fmt(t.volume) + '\n';
+  msg += ve + (mode === 'SWING' ? ' Vol 24h : $' : ' Vol 1h  : $') + fmt(t.volume) + '\n';
 
   // Untuk swing: tampilkan Vol 24h juga jika tersedia
   if (mode === 'SWING' && dex24h && dex24h.vol24h > 0)
@@ -1104,7 +1626,10 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
     msg += SEP + '\n';
   }
 
+  var gmgnRugPctVal = gmgnRugPct(t);
+  var gmgnRugEmoji  = gmgnRugPctVal > Math.round(CFG.gmgnRugMaxRatio * 100) ? '🚨' : gmgnRugPctVal > 15 ? '⚠️' : '✅';
   msg += '🛡️ GMGN:\n';
+  msg += gmgnRugEmoji + ' GMGN Rug : ' + gmgnRugPctVal + '%\n';
   msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
   msg += '🔍 Top10   : ' + top10 + '%\n';
   msg += '🔗 Bundler : ' + bundlerPct + '%\n';
@@ -1120,16 +1645,37 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += SEP + '\n';
 
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
+  var fibDirection = f.source.includes('_bullish') ? ' bullish' : f.source.includes('_bearish') ? ' bearish' : '';
+  var fibLabel = f.source.startsWith('birdeye') ? 'major swing Birdeye' + fibDirection
+    : f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') + fibDirection
+    : 'estimasi, cek chart';
   msg += '📊 Entry & Targets:\n';
   msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
   msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
   msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
   msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
   msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
-  buildEntryAreaLines(f, mode).forEach(line => {
-    msg += line + '\n';
-  });
+  if (mode === 'MIGRATION') {
+    var migFibUpper = CFG.migTightFibUpper;
+    var migFibLower = CFG.migTightFibLower;
+    var migMidPoint = (migFibUpper + migFibLower) / 2;
+    var migFibUpperLabel = migFibUpper.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var migFibLowerLabel = migFibLower.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var migMidLabel = migMidPoint.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var migAggressiveZone = getFibZone(f, migFibUpper, migMidPoint);
+    var migNormalZone = getFibZone(f, migMidPoint, migFibLower);
+    if (migAggressiveZone && !migAggressiveZone.unsupported) {
+      msg += '⚡ Agresif : $' + fmtPrice(migAggressiveZone.lower) + ' - $' + fmtPrice(migAggressiveZone.upper) + ' (' + migFibUpperLabel + '-' + migMidLabel + ')\n';
+    }
+    if (migNormalZone && !migNormalZone.unsupported) {
+      msg += '🛒 Normal  : $' + fmtPrice(migNormalZone.lower) + ' - $' + fmtPrice(migNormalZone.upper) + ' (' + migMidLabel + '-' + migFibLowerLabel + ')\n';
+    }
+  } else if (mode === 'SWING') {
+    var discountZone = getFibDiscountZone(f);
+    if (discountZone && !discountZone.unsupported) {
+      msg += '🛒 Diskon  : $' + fmtPrice(discountZone.lower) + ' - $' + fmtPrice(discountZone.upper) + ' (0.618-0.786)\n';
+    }
+  }
   msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
   msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
 
@@ -1165,7 +1711,8 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
 
 function buildSignalMsg(t) {
   var SEP = '━━━━━━━━━━━━━━━━━━━━';
-  var re = (t.rug_ratio || 0) * 100 < 50 ? '✅' : '🚨';
+  var signalRugPct = gmgnRugPct(t);
+  var re = signalRugPct > Math.round(CFG.gmgnRugMaxRatio * 100) ? '🚨' : signalRugPct > 15 ? '⚠️' : '✅';
   var le = t.liquidity > 50000 ? '🟢' : t.liquidity > 10000 ? '🟡' : '🔵';
   var smWallets = t.smart_degen_wallets || [];
   var totalSol = smWallets.reduce(function(a, b) { return a + (b.buy_amount || 0); }, 0);
@@ -1178,7 +1725,7 @@ function buildSignalMsg(t) {
   msg += '💎 SM Buy  : ' + smWallets.length + ' wallets (total ' + totalSol.toFixed(0) + ' SOL, rata2 ' + avgSol + ' SOL)\n';
   msg += '📊 MC trig : $' + fmt(t.trigger_mc) + '\n';
   msg += '📊 MC skrg : $' + fmt(t.market_cap) + '\n';
-  msg += re + ' Rug     : ' + Math.round((t.rug_ratio || 0) * 100) + '\n';
+  msg += re + ' GMGN Rug : ' + signalRugPct + '%\n';
   msg += '👥 Holders : ' + (t.holder_count || 0) + ' | 🤖 Bot ' + ((t.bot_degen_rate || 0) * 100).toFixed(0) + '%\n';
   msg += '🔍 Top10   : ' + ((t.top_10_holder_rate || 0) * 100).toFixed(1) + '%\n';
   msg += SEP + '\n';
@@ -1207,6 +1754,23 @@ async function processTokens() {
     if (!t.address) continue;
     if (SEEN.has(t.address)) continue;          // belum pernah dilihat
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
+
+    // Jeda kecil setelah migrasi — bukan filter kualitas, cuma kasih waktu
+    // data LP/vol dari API settle dulu biar gak baca angka yang belum akurat.
+    const ageMigMin = tokenAgeHours(t.creation_timestamp) * 60;
+    if (ageMigMin < CFG.migMinAgeMin) {
+      log('SKIP [MIGRATION] ' + (t.symbol || '?') + ' — baru migrasi ' + ageMigMin.toFixed(1) + 'm (< ' + CFG.migMinAgeMin + 'm, tunggu data settle)');
+      continue;
+    }
+
+    // Batas umur maksimal — token yang migrasinya udah lewat dari X jam
+    // dianggap sudah tidak "fresh" lagi, momentum awal migrasi sudah lewat.
+    const ageMigH = ageMigMin / 60;
+    if (ageMigH > CFG.migMaxAgeH) {
+      log('SKIP [MIGRATION] ' + (t.symbol || '?') + ' — migrasi sudah ' + ageMigH.toFixed(1) + 'j (> ' + CFG.migMaxAgeH + 'j, tidak fresh lagi)');
+      continue;
+    }
+
     newMigration.push(t);
   }
 
@@ -1267,7 +1831,6 @@ async function processTokens() {
       log('SKIP [MIG] ' + t.symbol + ' (Gagal fetch token info)');
       continue;
     }
-
     var migCfg = {
       minLp:        CFG.minLp,
       minVol1h:     CFG.minVol1h,
@@ -1300,6 +1863,11 @@ async function processTokens() {
       continue;
     }
 
+    t.volume_5m = Number(priceInfo.volume_5m || priceInfo.vol_5m || priceInfo.volume5m || 0);
+    t.swaps_5m = Number(priceInfo.swaps_5m || priceInfo.txns_5m || priceInfo.transactions_5m || 0);
+    t.buys_5m = Number(priceInfo.buys_5m || priceInfo.buy_5m || priceInfo.buy_txns_5m || 0);
+    t.sells_5m = Number(priceInfo.sells_5m || priceInfo.sell_5m || priceInfo.sell_txns_5m || 0);
+
     var holderHardSkipReasons = [];
     var bundlerPct = Number(t.bundler_rate || 0) * 100;
     if (bundlerPct > CFG.maxBundlerPct) {
@@ -1314,23 +1882,29 @@ async function processTokens() {
       continue;
     }
 
+    // GMGN dedicated rug_ratio — cek duluan sebelum RugCheck biar hemat API call
+    // kalau udah keburu jelas rug tinggi dari GMGN sendiri.
+    var gmgnRugGate = checkGmgnRug(t, CFG.gmgnRugMaxRatio);
+    log('[MIG] GMGN Rug ' + t.symbol + ': ' + gmgnRugGate.pct + '%');
+    if (gmgnRugGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (' + gmgnRugGate.reason + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'gmgn_rug_ratio' });
+      continue;
+    }
+
     var migCfgStrict = {
-      minBuyRatio:      CFG.minBuyRatio,
-      minVol:           CFG.minVol,
-      minLp:            CFG.minLp,
       maxBundlerPct:    CFG.maxBundlerPct,
       maxTop10Holders:  CFG.maxTop10Holders,
       maxDevHold:       CFG.maxDevHold,
-      maxPriceChange1h: CFG.maxPriceChange1h,
-      minHolders:       CFG.minHoldersMig,
       maxSniperPct:     CFG.maxSniperPct,
       maxVolLpRatio:    CFG.maxVolLpRatio,
       maxRugScore:      CFG.maxRugScore,
       maxInsiderPct:    CFG.maxInsiderPct,
     };
+
     var gmgnRiskReasons = collectMigrationHardRiskReasons(t, migCfgStrict);
     if (gmgnRiskReasons.length > 0) {
-      log('[MIG] WARN ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ') — narasi cocok, lanjut RugCheck');
+      log('[MIG] WARN ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ') — lanjut RugCheck');
     }
 
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
@@ -1360,7 +1934,7 @@ async function processTokens() {
     log('[MIG] Cek paid DEX ' + t.symbol + '...');
     var paidDex = await fetchPaidDex(t.address);
     if (!paidDex) {
-      log('[MIG] WARN ' + t.symbol + ' (Belum paid DEX — narasi cocok, lanjut)');
+      log('[MIG] WARN ' + t.symbol + ' (Belum paid DEX - lanjut)');
     }
 
     // RugCheck — filter identik dengan Swing 1D
@@ -1385,24 +1959,22 @@ async function processTokens() {
 
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     let msgId = null;
-    let notifyThread = CFG.tgThreadMig;
-    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-    msgId = await sendTelegram(fullMsg, null, notifyThread);
-    await sendRadarBridge(t, 'MIGRATION', {
-      grade,
-      rugScore: rug.score,
-      insiderPct: rug.insiderPct,
-      socialScore: dexInfo ? socialScore : undefined
-    });
-    totalNotified++;
+    if (!NOTIF_ONLY_AUTO) {
+      const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
+      msgId = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    }
+    if (!NOTIF_ONLY_AUTO) totalNotified++;
 
     if (t.price && Number(t.price) > 0) {
       TRACKED.set(t.address, {
         symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
         entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-        threadId: notifyThread,
+        threadId: CFG.tgThreadMig,
       });
       log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
+      // AUTO BUY
+      var buyResult = await tryAutoBuy(t.address, t, 'MIGRATION', grade);
+      mergeAutoBuyResult(TRACKED.get(t.address), buyResult);
     }
   }
 
@@ -1422,6 +1994,14 @@ async function processTokens() {
     log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
 
     try {
+      var gmgnRugGateSwing = checkGmgnRug(t, CFG.gmgnRugMaxRatio);
+      log('[SWING] GMGN Rug ' + t.symbol + ': ' + gmgnRugGateSwing.pct + '%');
+      if (gmgnRugGateSwing.skip) {
+        log('SKIP [SWING] ' + t.symbol + ' (' + gmgnRugGateSwing.reason + ')');
+        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'swing', lockedReason: 'gmgn_rug_ratio' });
+        continue;
+      }
+
       const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
       if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
@@ -1435,23 +2015,26 @@ async function processTokens() {
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
       let msgId = null;
-      let notifyThread = CFG.tgThreadId;
-      const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
-      msgId = await sendTelegram(fullMsg, null, notifyThread);
-      await sendRadarBridge(t, 'SWING', {
-        grade,
-        rugScore: rug.score,
-        insiderPct: rug.insiderPct
-      });
-      totalNotified++;
+      if (!NOTIF_ONLY_AUTO) {
+        const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
+        msgId = await sendTelegram(fullMsg, null, CFG.tgThreadId);
+      }
+      if (!NOTIF_ONLY_AUTO) totalNotified++;
 
       if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
         TRACKED.set(t.address, {
           symbol: t.symbol, name: t.name, grade, mode: 'SWING',
           entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-          threadId: notifyThread,
+          threadId: CFG.tgThreadId,
         });
         log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
+        // AUTO BUY
+        if (swingResult.allowAutoBuy) {
+          var buyResult = await tryAutoBuy(t.address, t, 'SWING', grade);
+          mergeAutoBuyResult(TRACKED.get(t.address), buyResult);
+        } else {
+          log('[AUTOBUY] Skip SWING ' + t.symbol + ' (kline 1D tidak valid, notif only)');
+        }
       }
     } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
   }
@@ -1487,13 +2070,15 @@ async function processTokens() {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
       continue;
     }
-    // Gate 7: rug ratio
-    var rugScore = Math.round((t.rug_ratio || 0) * 100);
-    if (rugScore > CFG.maxRugScore) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
+    // Gate 7: GMGN rug_ratio (dedicated threshold, bukan nebeng maxRugScore RugCheck)
+    var gmgnRugGateSignal = checkGmgnRug(t, CFG.gmgnRugMaxRatio);
+    log('[SIGNAL] GMGN Rug ' + t.symbol + ': ' + gmgnRugGateSignal.pct + '%');
+    if (gmgnRugGateSignal.skip) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (' + gmgnRugGateSignal.reason + ')');
+      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'gmgn_rug_ratio' });
       continue;
     }
+    var rugScore = gmgnRugGateSignal.pct;
     // Gate 8: bot degen rate
     var botPct = (t.bot_degen_rate || 0) * 100;
     if (botPct > 50) {
@@ -1514,11 +2099,6 @@ async function processTokens() {
       var fullMsg = buildSignalMsg(t);
       msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
     }
-    await sendRadarBridge(t, 'SMART_MONEY', {
-      grade: 'SIGNAL',
-      rugScore,
-      insiderPct: (t.suspected_insider_hold_rate || 0) * 100
-    });
     if (!NOTIF_ONLY_AUTO) totalNotified++;
     // Delay 1.5s antar notif signal biar gak kena TG rate limit
     await new Promise(r => setTimeout(r, 1500));
@@ -1547,6 +2127,70 @@ async function processTokens() {
 // ─────────────────────────────────────────────
 //  POSITION TRACKING
 // ─────────────────────────────────────────────
+function isManualSellDetected(e) {
+  return e && e.code === 'MANUAL_SELL_DETECTED';
+}
+
+async function notifyManualSellDetected(ca, pos, currentPrice, gain, triggerLabel, err) {
+  var walletTokenBalance = Number(err.walletTokenBalance || 0);
+  log('[AUTOSELL] Manual sell detected ' + pos.symbol + ' via ' + triggerLabel + ' - stop tracking');
+  logTrackingEvent({
+    type: 'MANUAL_SELL_DETECTED',
+    trigger: triggerLabel,
+    ca, ...pos,
+    currentPrice,
+    gain: Number(gain.toFixed(1)),
+    walletTokenBalance,
+  });
+
+  await sendTelegram(
+    'INFO: POSISI SUDAH SELL MANUAL\n' +
+    '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
+    'Trigger bot: ' + triggerLabel + '\n' +
+    'Entry: $' + pos.entryPrice.toFixed(10) + '\n' +
+    'Sekarang: $' + currentPrice.toFixed(10) + '\n' +
+    (gain >= 0 ? 'Gain: +' : 'Loss: ') + gain.toFixed(1) + '%\n' +
+    'Token di wallet: ' + walletTokenBalance + '\n' +
+    'Bot stop tracking posisi ini supaya tidak spam error sell.\n' +
+    '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+    pos.autoBuyMsgId || null, CFG.tgThreadAuto
+  );
+}
+
+function isFixedTpSellPosition(pos) {
+  return String(pos.mode || '').toUpperCase() === 'MIGRATION'
+    && isLooseMigEntryMode(pos.entryMode || AUTO_BUY.MIG_ENTRY_MODE);
+}
+
+async function sellFixedTpPosition(ca, pos, currentPrice, gain, target) {
+  log('[AUTOSELL] Fixed TP ' + pos.symbol + ' +' + target + '% (' + gain.toFixed(1) + '%)');
+  var sellResult = await sellToken(ca, pos.tokenAmount, pos.tokenDecimals, AUTO_SELL.SLIPPAGE_BPS, pos.tokenAmount * currentPrice);
+  var solIn = pos.amountSol || AUTO_BUY.AMOUNT_SOL;
+  var solOut = AUTO_BUY.DRY_RUN ? solIn * (1 + gain / 100) : (sellResult.solReceived || 0);
+  var solPnl = solOut - solIn;
+
+  await sendTelegram(
+    '✅ AUTO SELL — FIXED TP\n' +
+    '<b>' + esc(pos.name) + '</b> (<code>' + esc(pos.symbol) + '</code>)\n' +
+    'Target: +' + target + '%\n' +
+    'Entry: $' + fmtPrice(pos.entryPrice) + '\n' +
+    'Exit: $' + fmtPrice(currentPrice) + '\n' +
+    'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
+    'SOL Keluar: ' + solIn.toFixed(4) + ' → Dapat: ' + solOut.toFixed(4) + ' SOL\n' +
+    'PNL: <b>' + (solPnl >= 0 ? '+' : '') + solPnl.toFixed(4) + ' SOL</b>\n' +
+    'Status: sell semua, stop tracking\n' +
+    (AUTO_BUY.DRY_RUN ? '' : 'TX: <code>' + sellResult.txSignature + '</code>\n') +
+    '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+    pos.autoBuyMsgId || null, CFG.tgThreadAuto
+  );
+
+  logTrackingEvent({
+    type: AUTO_BUY.DRY_RUN ? 'AUTOSELL_FIXED_TP_DRY_RUN' : 'AUTOSELL_FIXED_TP',
+    ca, ...pos, currentPrice, target, gain: Number(gain.toFixed(1)), solPnl,
+    txSell: sellResult.txSignature,
+  });
+}
+
 async function checkTrackedPositions(trendingTokens) {
   var priceMap = {};
   trendingTokens.forEach(tt => { if (tt.address && tt.price) priceMap[tt.address] = Number(tt.price); });
@@ -1566,8 +2210,13 @@ async function checkTrackedPositions(trendingTokens) {
 
     if (!currentPrice || currentPrice <= 0) continue;
 
+    if (!pos.bought) {
+      var autoBuyChanged = await retryPendingAutoBuy(ca, pos, currentPrice);
+      if (autoBuyChanged) savePositions();
+      continue;
+    }
+
     var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
-    var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
 
     // ── AUTO SELL: Cutloss ──
     if (pos.bought && AUTO_SELL.ENABLED && gain <= -(AUTO_SELL.CUTLOSS_PCT)) {
@@ -1589,20 +2238,66 @@ async function checkTrackedPositions(trendingTokens) {
           '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
           pos.autoBuyMsgId || null, CFG.tgThreadAuto
         );
+        logTrackingEvent({
+          type: AUTO_BUY.DRY_RUN ? 'AUTOSELL_CL_DRY_RUN' : 'CUT_LOSS',
+          ca, ...pos, currentPrice, gain: Number(gain.toFixed(1)), solPnl,
+        });
         toRemove.push(ca);
       } catch (e) {
+        if (isManualSellDetected(e)) {
+          await notifyManualSellDetected(ca, pos, currentPrice, gain, 'CUTLOSS', e);
+          toRemove.push(ca);
+          savePositions();
+          continue;
+        }
         log('[AUTOSELL] Error cutloss ' + pos.symbol + ': ' + e.message + ' — posisi TETAP di-track, akan dicoba jual lagi cycle berikutnya');
         pos.sellFailCount = (pos.sellFailCount || 0) + 1;
         if (pos.sellFailCount >= 5) {
           log('[AUTOSELL] ' + pos.symbol + ' gagal jual 5x berturut-turut — cek manual! Tetap di-track tapi butuh perhatian.');
         }
+        await sendTelegram(
+          '⚠️ GAGAL JUAL — CUTLOSS\n' +
+          '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
+          'Loss: ' + gain.toFixed(1) + '% | Percobaan gagal: ' + pos.sellFailCount + 'x\n' +
+          'Error: <code>' + esc(e.message) + '</code>\n' +
+          (pos.sellFailCount >= 5 ? '🔴 Sudah gagal 5x berturut-turut, cek manual!\n' : '') +
+          '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+          pos.autoBuyMsgId || null, CFG.tgThreadAuto
+        );
+        savePositions();
+      }
+      continue;
+    }
+
+    // ── AUTO SELL: Fixed TP sekali (non-trailing) ──
+    if (pos.bought && AUTO_SELL.ENABLED && AUTO_SELL.FIXED_TP_ENABLED && isFixedTpSellPosition(pos) && gain >= AUTO_SELL.FIXED_TP_PCT) {
+      try {
+        await sellFixedTpPosition(ca, pos, currentPrice, gain, AUTO_SELL.FIXED_TP_PCT);
+        toRemove.push(ca);
+      } catch (e) {
+        if (isManualSellDetected(e)) {
+          await notifyManualSellDetected(ca, pos, currentPrice, gain, 'FIXED TP', e);
+          toRemove.push(ca);
+          savePositions();
+          continue;
+        }
+        log('[AUTOSELL] Error fixed TP ' + pos.symbol + ': ' + e.message + ' — posisi TETAP di-track, akan dicoba jual lagi cycle berikutnya');
+        pos.sellFailCount = (pos.sellFailCount || 0) + 1;
+        await sendTelegram(
+          '⚠️ GAGAL JUAL — FIXED TP\n' +
+          '<b>' + esc(pos.name) + '</b> (<code>' + esc(pos.symbol) + '</code>)\n' +
+          'Target: +' + AUTO_SELL.FIXED_TP_PCT + '% | Gain: +' + gain.toFixed(1) + '% | Percobaan gagal: ' + pos.sellFailCount + 'x\n' +
+          'Error: <code>' + esc(e.message) + '</code>\n' +
+          '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+          pos.autoBuyMsgId || null, CFG.tgThreadAuto
+        );
         savePositions();
       }
       continue;
     }
 
     // ── AUTO SELL: Trailing TP ──
-    if (pos.bought && AUTO_SELL.ENABLED && gain >= AUTO_SELL.TRAILING_START_PCT) {
+    if (pos.bought && AUTO_SELL.ENABLED && AUTO_SELL.TRAILING_ENABLED && (pos.trailingActive || gain >= AUTO_SELL.TRAILING_START_PCT)) {
       if (!pos.trailingActive) {
         pos.trailingActive = true;
         pos.peak = currentPrice;
@@ -1633,13 +2328,32 @@ async function checkTrackedPositions(trendingTokens) {
             '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
             pos.autoBuyMsgId || null, CFG.tgThreadAuto
           );
+          logTrackingEvent({
+            type: AUTO_BUY.DRY_RUN ? 'AUTOSELL_TP_DRY_RUN' : 'AUTOSELL_TP',
+            ca, ...pos, currentPrice, gain: Number(gain.toFixed(1)), peakGain: Number(peakGain.toFixed(1)), solPnl,
+          });
           toRemove.push(ca);
         } catch (e) {
+          if (isManualSellDetected(e)) {
+            await notifyManualSellDetected(ca, pos, currentPrice, gain, 'TRAILING TP', e);
+            toRemove.push(ca);
+            savePositions();
+            continue;
+          }
           log('[AUTOSELL] Error trailing ' + pos.symbol + ': ' + e.message + ' — posisi TETAP di-track, akan dicoba jual lagi cycle berikutnya');
           pos.sellFailCount = (pos.sellFailCount || 0) + 1;
           if (pos.sellFailCount >= 5) {
             log('[AUTOSELL] ' + pos.symbol + ' gagal jual 5x berturut-turut — cek manual! Tetap di-track tapi butuh perhatian.');
           }
+          await sendTelegram(
+            '⚠️ GAGAL JUAL — TRAILING TP\n' +
+            '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n' +
+            'Gain saat ini: +' + gain.toFixed(1) + '% | Percobaan gagal: ' + pos.sellFailCount + 'x\n' +
+            'Error: <code>' + esc(e.message) + '</code>\n' +
+            (pos.sellFailCount >= 5 ? '🔴 Sudah gagal 5x berturut-turut, cek manual!\n' : '') +
+            '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>',
+            pos.autoBuyMsgId || null, CFG.tgThreadAuto
+          );
           savePositions();
         }
         continue;
@@ -1648,49 +2362,57 @@ async function checkTrackedPositions(trendingTokens) {
 
     if (gain <= -80) {
       var wasProfit   = (pos.nextTargetIdx || 0) > 0;
-      var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
       var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
       log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
       logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
-      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
-      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
-        + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
-        + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId,
-        safeThread
-      );
       continue;
     }
 
-    var highestIdx = -1;
-    for (var ti = 0; ti < TARGETS.length; ti++) {
-      if (gain >= TARGETS[ti]) highestIdx = ti;
-    }
-    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
-      var target = TARGETS[highestIdx];
-      var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
-      log(pos.symbol + ' hit target +' + target + '%');
-      logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
-      var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
-      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
-        + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
-        + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
-        + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
-        + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
-        + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
-        + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId,
-        safeThread
-      );
-      pos.nextTargetIdx = highestIdx + 1;
-      savePositions();
+    if (pos.bought) {
+      var highestIdx = -1;
+      for (var ti = 0; ti < TARGETS.length; ti++) {
+        if (gain >= TARGETS[ti]) highestIdx = ti;
+      }
+      if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
+        var target = TARGETS[highestIdx];
+        log(pos.symbol + ' hit target +' + target + '%');
+        logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
+        var targetEmoji = target >= 100 ? '🚀' : target >= 50 ? '📈' : '🎯';
+        var modeLabel = pos.mode === 'SWING' ? 'Swing' : 'New Migration';
+        var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
+        var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+        var targetThread = pos.autoBuyMsgId
+          ? CFG.tgThreadAuto
+          : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
+
+        // Estimasi profit SOL — hanya tersedia kalau posisi ini hasil autobuy (punya amountSol & tokenAmount)
+        // Format disamakan dengan notif Trailing TP / Cutloss: baris "SOL Keluar → Dapat" + baris "PNL" terpisah
+        var profitLine = '';
+        if (pos.amountSol && pos.tokenAmount) {
+          var solIn  = pos.amountSol;
+          var solOut = solIn * (1 + gain / 100); // estimasi searah dgn gain%, sama seperti dry-run di trailing TP
+          var solPnl = solOut - solIn;
+          profitLine = 'SOL Keluar: ' + solIn.toFixed(4) + ' → Dapat: ' + solOut.toFixed(4) + ' SOL\n' +
+                       'PNL: <b>+' + solPnl.toFixed(4) + ' SOL</b>\n';
+        }
+
+        await sendTelegram(
+          gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + targetEmoji + ' <b>TP' + (highestIdx + 1) + ' +' + target + '% Tercapai</b>\n' +
+          '<b>' + esc(pos.name) + '</b> (<code>' + esc(pos.symbol) + '</code>)\n' +
+          'Entry: $' + fmtPrice(pos.entryPrice) + '\n' +
+          'Sekarang: $' + fmtPrice(currentPrice) + '\n' +
+          'Gain: <b>+' + gain.toFixed(1) + '%</b>\n' +
+          profitLine +
+          'Status: tracking target, bukan auto sell\n' +
+          '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>' +
+          ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+          pos.autoBuyMsgId || pos.msgId || null,
+          targetThread
+        );
+        pos.nextTargetIdx = highestIdx + 1;
+        savePositions();
+      }
     }
   }
 
@@ -1724,17 +2446,31 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP >= $' + CFG.minLp.toLocaleString() + ' | Rug <= ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Age: no limit');
+log('  GMGN Rug <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '% [gmgn-cli rug_ratio, cek sebelum RugCheck]');
+log('  Age: max ' + CFG.migMaxAgeH + 'j (jeda settle data ' + CFG.migMinAgeMin + 'm)');
 log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API]');
 log('  GMGN holder hard skip: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '%');
 log('  GMGN risk warning: CreatorHold > ' + CFG.maxDevHold + '% | Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum hard skip: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
+log('  (GMGN Rug gate <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '% berlaku juga di Swing & Signal)');
+log('[ Auto-Buy MIGRATION Entry ]');
+log('  Entry mode: ' + AUTO_BUY.MIG_ENTRY_MODE);
+if (AUTO_BUY.MIG_ENTRY_MODE === 'TIGHT') {
+  var _u = CFG.migTightFibUpper.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  var _l = CFG.migTightFibLower.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  var _m = ((CFG.migTightFibUpper + CFG.migTightFibLower) / 2).toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+  log('  Fib zone: ' + _u + ' (aggressive ' + _u + '-' + _m + ' | normal ' + _m + '-' + _l + ')');
+  log('  Momentum check: ' + (CFG.migTightRequireMomentum ? 'ON (min buy ratio ' + CFG.migTightMinBuyRatio + '%)' : 'OFF (buy hanya berdasarkan zona Fib)'));
+}
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP >= $' + CFG.swingMinLp.toLocaleString() + ' | Vol24h >= $' + CFG.swingMinVol24h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
 log('  Vol spike signal: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
 log('  Age: >= ' + CFG.swingMinAge + 'j');
+log('[ Auto Sell ]');
+log('  Master: ' + (AUTO_SELL.ENABLED ? 'ON' : 'OFF') + ' | TP Mode: ' + AUTO_SELL.TP_MODE + ' | Cutloss: -' + AUTO_SELL.CUTLOSS_PCT + '%');
+log('  Fixed TP: +' + AUTO_SELL.FIXED_TP_PCT + '% | Trailing: start +' + AUTO_SELL.TRAILING_START_PCT + '% drop ' + AUTO_SELL.TRAILING_DROP_PCT + '%');
 if (CFG.signalEnabled) {
   log('[ Mode 3: Smart Money Signal ]');
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
