@@ -3,8 +3,20 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { buyToken, sellToken, setDryRun } = require('./buyer');
-const { calculateFibFromBirdeye } = require('./birdeye');
+// screen_github.js TIDAK melakukan transaksi on-chain beneran (tidak butuh wallet/RPC/private key).
+// buyToken/sellToken di sini SELALU simulasi — dipakai cuma buat kalkulasi
+// notifikasi (Area Entri / Target Tercapai / Stop Track) berdasarkan filter & harga,
+// sama seperti screen_sync.js versi DRY_RUN. Eksekusi transaksi beneran cuma ada di screen_sync.js (lokal).
+function setDryRun() { /* no-op — versi GitHub selalu simulasi */ }
+async function buyToken() {
+  return { success: true, txSignature: null, simulated: true };
+}
+async function sellToken(ca, tokenAmount, tokenDecimals, slippageBps, estValueUsd) {
+  return { success: true, txSignature: null, solReceived: null, simulated: true };
+}
+// screen_github.js tidak punya birdeye.js (BIRDEYE_API_KEY tidak dipakai di versi ini).
+// Selalu return null → kode otomatis fallback ke GMGN kline (sudah ada try/catch + fallback bawaan).
+async function calculateFibFromBirdeye() { return null; }
 const {
   collectMigrationHardRiskReasons,
   checkBaseLiquidity,
