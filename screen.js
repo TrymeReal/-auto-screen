@@ -2512,4 +2512,4 @@ if (process.env.CI === 'true') {
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
-}
+} 
