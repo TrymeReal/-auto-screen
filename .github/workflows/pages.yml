@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'dashboard.html'
+      - 'positions.json'
+      - 'seen.json'
+      - 'tracking_log.json'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -29,8 +32,13 @@ jobs:
         run: |
           mkdir -p site
           cp dashboard.html site/index.html
+          # Ikut copy file data JSON yang di-fetch oleh dashboard.html,
+          # supaya path relatif (positions.json, dst) tetap kebaca di sub-path Pages.
+          [ -f positions.json ]     && cp positions.json     site/ || true
+          [ -f seen.json ]          && cp seen.json          site/ || true
+          [ -f tracking_log.json ]  && cp tracking_log.json  site/ || true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
       - id: deployment
-        uses: actions/deploy-pages@v4 
+        uses: actions/deploy-pages@v4
