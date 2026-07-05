@@ -1612,9 +1612,10 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var fair    = Number(f.fair) || price;
   var support = Number(f.support) || price;
 
-  var areaGold  = price;
-  var areaBlue  = fair;
-  var areaGreen = support;
+  var zoneSorted = [price, fair, support].sort(function(a, b) { return b - a; });
+  var areaGold  = zoneSorted[0];
+  var areaBlue  = zoneSorted[1];
+  var areaGreen = zoneSorted[2];
 
   var tp1 = price * (1 + TARGETS[0] / 100);
   var tp2 = price * (1 + TARGETS[1] / 100);
