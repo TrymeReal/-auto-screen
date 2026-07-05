@@ -50,6 +50,7 @@ jobs:
           MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
           MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
           MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
+          NOTIF_ONLY_AUTO: 'false'
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
