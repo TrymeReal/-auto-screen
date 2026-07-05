@@ -1563,91 +1563,163 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
 // ─────────────────────────────────────────────
 //  BUILD MESSAGE
 // ─────────────────────────────────────────────
-function buildRuleBasedAiReport(t, rug, grade, f, top10Pct, bundlerPct) {
-  var top10 = Number(top10Pct) || 0;
-  var bundler = Number(bundlerPct) || 0;
-  var rugScore = Number(rug.score) || 0;
-  var dangerCount = (rug.topDangers || []).length;
-
-  var verdict, verdictEmoji;
-  if (rugScore >= 100 || dangerCount >= 3) {
-    verdict = 'SKIP'; verdictEmoji = '🔴';
-  } else if (rugScore >= 50 || top10 > 40 || bundler > 20) {
-    verdict = 'HATI-HATI'; verdictEmoji = '🟡';
-  } else {
-    verdict = 'OK BUY'; verdictEmoji = '🟢';
-  }
-
-  var style;
-  var price = Number(t.price) || 0;
-  var fair = Number(f.fair) || 0;
-  var distFromFair = fair > 0 ? ((price - fair) / fair) * 100 : 0;
-  if (Math.abs(distFromFair) > 100) style = 'SCALPING';
-  else if (Math.abs(distFromFair) > 30) style = 'SWING';
-  else style = 'HOLD';
-
-  var note;
-  var resist = Number(f.resist) || 0;
-  if (top10 <= 25 && resist > price) {
-    note = 'Dengan Top10 yang hanya ' + top10.toFixed(2) + '%, ini menunjukkan potensi bagi harga untuk melompat ke area Major High di ' + fmtPrice(resist) + '.';
-  } else if (top10 > 40) {
-    note = 'Top10 holder cukup tinggi (' + top10.toFixed(1) + '%), risiko dump dari wallet besar perlu diwaspadai.';
-  } else if (rugScore >= 50) {
-    note = 'RugCheck score ' + rugScore + ' menunjukkan risiko sedang-tinggi, cek danger flag sebelum entry besar.';
-  } else if (bundler > 15) {
-    note = 'Bundler rate ' + bundler.toFixed(1) + '% cukup tinggi, waspada distribusi serentak.';
-  } else {
-    note = 'Struktur holder & liquidity relatif sehat untuk grade ' + grade + '.';
-  }
-
-  return { verdict: verdict, verdictEmoji: verdictEmoji, style: style, note: note };
-}
-
 async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
-  var top10      = ((t.top_10_holder_rate || 0) * 100).toFixed(2);
-  var bundlerPct = ((t.bundler_rate || 0) * 100).toFixed(1);
+  var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
+  var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
+  var le = t.liquidity > 100000 ? '🟢' : t.liquidity > 50000 ? '🟡' : '🔵';
 
-  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var price   = Number(t.price) || 0;
-  var fair    = Number(f.fair) || price;
-  var support = Number(f.support) || price;
+  var ratio    = '?';
+  var totalTxn = (t.buys || 0) + (t.sells || 0);
+  if (totalTxn > 0) ratio = (t.buys / totalTxn * 100).toFixed(0) + '%';
 
-  var zoneSorted = [price, fair, support].sort(function(a, b) { return b - a; });
-  var areaGold  = zoneSorted[0];
-  var areaBlue  = zoneSorted[1];
-  var areaGreen = zoneSorted[2];
+  var age   = timeAgo(t.creation_timestamp);
+  var chg1h = '';
+  if (t.price_change_percent1h != null) {
+    chg1h = t.price_change_percent1h > 0
+      ? ' 📈 +' + Number(t.price_change_percent1h).toFixed(1) + '%'
+      : ' 📉 '  + Number(t.price_change_percent1h).toFixed(1) + '%';
+  }
+  var chg24h = '';
+  if (t.price_change_percent24h != null) {
+    chg24h = t.price_change_percent24h > 0
+      ? ' (+' + Number(t.price_change_percent24h).toFixed(1) + '% 24h)'
+      : ' ('   + Number(t.price_change_percent24h).toFixed(1) + '% 24h)';
+  }
 
-  var tp1 = areaGreen * (1 + TARGETS[0] / 100);
-  var tp2 = areaGreen * (1 + TARGETS[1] / 100);
-  var tp3 = areaGreen * (1 + TARGETS[2] / 100);
-  var sl  = areaGreen * 0.2;
+  var linkParts = [];
+  if (t.twitter_username) linkParts.push('<a href="' + t.twitter_username + '">Twitter</a>');
+  if (t.website)          linkParts.push('<a href="' + t.website + '">Web</a>');
+  if (t.telegram)         linkParts.push('<a href="' + t.telegram + '">TG</a>');
 
-  var ai = buildRuleBasedAiReport(t, rug, grade, f, top10, bundlerPct);
-  var SEP = '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+  var mi          = t.renounced_mint === 1 ? '✅' : '❌';
+  var fr          = t.renounced_freeze_account === 1 ? '✅' : '❌';
+  var hp          = t.is_honeypot === 1 ? '🚨' : '✅';
+  var burnPct     = ((t.burn_ratio || 0) * 100).toFixed(1);
+  var top10       = ((t.top_10_holder_rate || 0) * 100).toFixed(1);
+  var bundlerPct  = ((t.bundler_rate || 0) * 100).toFixed(1);
+  var snipers     = ((t.top70_sniper_hold_rate || 0) * 100).toFixed(1);
+  var creatorHold = ((t.dev_team_hold_rate || 0) * 100).toFixed(1);
+  var SEP         = '━━━━━━━━━━━━━━━━━━━━';
+  var modeLabel  = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
+  var gradeEmoji = grade === 'GOLD' ? '🟢' : grade === 'POTENSIAL' ? '🟡' : '🔴';
+  var riskLabel  = grade === 'GOLD' ? 'Grade A' : grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
 
   var msg = '';
-  msg += '⚔️ GAMESME2HUB WAR ROOM  ⚔️\n';
+  msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + modeLabel + '\n';
+  msg += '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n';
   msg += SEP + '\n';
-  msg += '🪙 TOKEN : $' + t.symbol + '\n';
-  msg += '🌐 CHAIN : SOLANA\n';
-  msg += '📌 CA    : <code>' + t.address + '</code>\n';
+  msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
+  msg += ve + (mode === 'SWING' ? ' Vol 24h : $' : ' Vol 1h  : $') + fmt(t.volume) + '\n';
+
+  // Untuk swing: tampilkan Vol 24h juga jika tersedia
+  if (mode === 'SWING' && dex24h && dex24h.vol24h > 0)
+    msg += '📊 Vol 24h : $' + fmt(dex24h.vol24h) + '\n';
+
+  var rugLabel   = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
+  var riskLevel  = rug.scoreNormalised >= 0
+    ? (rug.scoreNormalised <= 30 ? 'Good' : rug.scoreNormalised <= 60 ? 'Warning' : 'Danger') : '';
+  msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
+  if (riskLevel) msg += ' | ' + riskLevel;
+  if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
+  if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
+  msg += '\n';
+  if (rug.topDangers.length > 0) msg += '🚨 Danger  : ' + rug.topDangers.join(' | ') + '\n';
+  if (rug.topWarns.length  > 0) msg += '⚠️ Warning : ' + rug.topWarns.join(' | ')  + '\n';
+  msg += '💰 Harga   : $' + fmtPrice(t.price) + chg1h + chg24h + '\n';
+  msg += '🔄 Buy/Sell: ' + (t.buys || 0) + '/' + (t.sells || 0) + ' (' + ratio + ' Buy)\n';
+  msg += '📊 MC      : $' + fmt(t.market_cap) + '\n';
+  if (dex24h && dex24h.dexName) msg += '🛡️ DEX     : ' + dex24h.dexName + '\n';
+  msg += '⏱️ Age     : ' + age + '\n';
+  msg += '👤 Creator : <code>' + rug.creator + '</code>\n';
+  if (linkParts.length) msg += '🔗 Links   : ' + linkParts.join(' | ') + '\n';
   msg += SEP + '\n';
-  msg += '🤖 AI REPORT\n';
-  msg += ai.verdictEmoji + ' ' + ai.verdict + ' | ⚡ ' + ai.style + '\n';
-  msg += ai.note + '\n';
+
+  // Swing signals khusus
+  if (mode === 'SWING' && swingSignals && swingSignals.length > 0) {
+    msg += '📡 <b>Sinyal Pre-Pump:</b>\n';
+    swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
+    msg += SEP + '\n';
+  }
+
+  var gmgnRugPctVal = gmgnRugPct(t);
+  var gmgnRugEmoji  = gmgnRugPctVal > Math.round(CFG.gmgnRugMaxRatio * 100) ? '🚨' : gmgnRugPctVal > 15 ? '⚠️' : '✅';
+  msg += '🛡️ GMGN:\n';
+  msg += gmgnRugEmoji + ' GMGN Rug : ' + gmgnRugPctVal + '%\n';
+  msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
+  msg += '🔍 Top10   : ' + top10 + '%\n';
+  msg += '🔗 Bundler : ' + bundlerPct + '%\n';
+  msg += '🤖 Bots    : ' + (t.bot_degen_count || 0) + '\n';
+  msg += '🎯 Snipers : ' + snipers + '%\n';
+  msg += '👤 Creator : ' + creatorHold + '%\n';
+  msg += '♻️ Burn    : ' + burnPct + '%\n';
+  // Mint/Freeze/Honeypot tidak ditampilkan: di sumber trenches field renounce
+  // selalu kosong (tampil ❌) → misleading. Patokan keamanan pakai RugCheck.
+  msg += '💎 Smart   : ' + (t.smart_degen_count || 0) + '\n';
+  msg += '🌟 KOL     : ' + (t.renowned_count || 0) + '\n';
+  msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
   msg += SEP + '\n';
-  msg += '🎯 AREA ENTRY ZONE\n';
-  msg += '🟡 Area Gold   : ' + fmtPrice(areaGold) + ' Entry Cepat\n';
-  msg += '🔵 Area Blue   : ' + fmtPrice(areaBlue) + ' Entry Ideal\n';
-  msg += '🟢 Area Green  : ' + fmtPrice(areaGreen) + ' Last Defense\n';
+
+  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
+  var fibDirection = f.source.includes('_bullish') ? ' bullish' : f.source.includes('_bearish') ? ' bearish' : '';
+  var fibLabel = f.source.startsWith('birdeye') ? 'major swing Birdeye' + fibDirection
+    : f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') + fibDirection
+    : 'estimasi, cek chart';
+  msg += '📊 Entry & Targets:\n';
+  msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
+  msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
+  msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
+  msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
+  msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
+  if (mode === 'MIGRATION') {
+    var migFibUpper = CFG.migTightFibUpper;
+    var migFibLower = CFG.migTightFibLower;
+    var migMidPoint = (migFibUpper + migFibLower) / 2;
+    var migFibUpperLabel = migFibUpper.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var migFibLowerLabel = migFibLower.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var migMidLabel = migMidPoint.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    var migAggressiveZone = getFibZone(f, migFibUpper, migMidPoint);
+    var migNormalZone = getFibZone(f, migMidPoint, migFibLower);
+    if (migAggressiveZone && !migAggressiveZone.unsupported) {
+      msg += '⚡ Agresif : $' + fmtPrice(migAggressiveZone.lower) + ' - $' + fmtPrice(migAggressiveZone.upper) + ' (' + migFibUpperLabel + '-' + migMidLabel + ')\n';
+    }
+    if (migNormalZone && !migNormalZone.unsupported) {
+      msg += '🛒 Normal  : $' + fmtPrice(migNormalZone.lower) + ' - $' + fmtPrice(migNormalZone.upper) + ' (' + migMidLabel + '-' + migFibLowerLabel + ')\n';
+    }
+  } else if (mode === 'SWING') {
+    var discountZone = getFibDiscountZone(f);
+    if (discountZone && !discountZone.unsupported) {
+      msg += '🛒 Diskon  : $' + fmtPrice(discountZone.lower) + ' - $' + fmtPrice(discountZone.upper) + ' (0.618-0.786)\n';
+    }
+  }
+  msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
+  msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
+
+  var dynScore = calculateScore(t, rug);
+  msg += 'Score: ' + dynScore + '/100\n';
+
+  // Auto-warnings
+  var warnings = [];
+  var currentPrice = Number(t.price);
+  var supportPrice = Number(f.support);
+  if (currentPrice > 0 && supportPrice > 0) {
+    var pctAbove = ((currentPrice - supportPrice) / supportPrice) * 100;
+    if (pctAbove > 100) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — sangat rawan FOMO, tunggu pullback');
+    else if (pctAbove > 50) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — rawan FOMO');
+  }
+  if (Number(creatorHold) > 5)  warnings.push('👤 Creator hold ' + creatorHold + '% — rawan dump');
+  if (Number(bundlerPct) > 20 && Number(top10) > 30) warnings.push('🔄 Bundler ' + bundlerPct + '% + Top10 ' + top10 + '% — rawan distribusi');
+  if (Number(snipers) > 10)     warnings.push('🎯 Snipers ' + snipers + '% — rawan sniper activity');
+  var holdCount = t.holder_count || 0;
+  if (holdCount > 0 && (t.bot_degen_count / holdCount) > 0.05)
+    warnings.push('🤖 Bots ' + (t.bot_degen_count / holdCount * 100).toFixed(1) + '% dari holders');
+  if (t.volume && t.volume < CFG.minVol * 2)
+    warnings.push('📊 Volume tipis ($' + fmt(t.volume) + ') — rawan manipulasi');
+  warnings.forEach(w => { msg += '⚠️ ' + w + '\n'; });
+
   msg += SEP + '\n';
-  msg += 'TARGET PROFIT & STOP LOSS\n';
-  msg += '📈 TP1 (' + TARGETS[0] + '%)   : ' + fmtPrice(tp1) + '\n';
-  msg += '🚀 TP2 (' + TARGETS[1] + '%)   : ' + fmtPrice(tp2) + '\n';
-  msg += '🌕 TP3 (' + TARGETS[2] + '%)  : ' + fmtPrice(tp3) + '\n';
-  msg += '🛑 Stop Loss   : ' + fmtPrice(sl) + '\n';
-  msg += SEP + '\n';
-  msg += 'GAMESME2HUB SYSTEM © VIP PROTOCOL 2026';
+  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Buka Chart</a>';
+  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '<code>' + t.address + '</code>';
 
   return msg;
 }
