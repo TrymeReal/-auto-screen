@@ -2231,7 +2231,10 @@ async function checkTrackedPositions(trendingTokens) {
     if (!pos.bought) {
       var autoBuyChanged = await retryPendingAutoBuy(ca, pos, currentPrice);
       if (autoBuyChanged) savePositions();
-      continue;
+      // Catatan: dulu ada `continue` di sini yang bikin posisi tanpa auto-buy
+      // (pos.bought selalu false kalau AUTO_BUY_ENABLED != true) TIDAK PERNAH
+      // sampai ke pengecekan Stop Track (gain <= -80) & Target Tercapai di bawah.
+      // Sekarang dibiarkan lanjut supaya notif tracking (bukan auto-sell) tetap jalan.
     }
 
     var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
