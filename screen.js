@@ -1605,26 +1605,26 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var msg = '';
   msg += '\u2694\ufe0f <b>GAMESME2HUB AUTOMASI</b> \u2694\ufe0f\n';
   msg += SEP + '\n';
-  msg += 'TOKEN : $' + esc(t.symbol) + '\n';
-  msg += 'CHAIN : SOLANA\n';
-  msg += 'CA    : <code>' + t.address + '</code>\n';
+  msg += '\ud83e\ude99 TOKEN : $' + esc(t.symbol) + '\n';
+  msg += '\u26d3 CHAIN : SOLANA\n';
+  msg += '\ud83d\udccb CA    : <code>' + t.address + '</code>\n';
   msg += SEP + '\n';
-  msg += 'AI REPORT\n';
+  msg += '\ud83e\udd16 AI REPORT\n';
   msg += aiVerdict + ' | ' + styleLabel + '\n';
   msg += aiText + '\n';
   msg += SEP + '\n';
-  msg += 'AREA ENTRY ZONE\n';
+  msg += '\ud83d\udccd AREA ENTRY ZONE\n';
   msg += '\ud83d\udfe1 Area Gold   : ' + fmtPrice(zoneGold) + ' Entry Cepat\n';
   msg += '\ud83d\udd35 Area Blue   : ' + fmtPrice(zoneBlue) + ' Entry Ideal\n';
   msg += '\ud83d\udfe2 Area Green  : ' + fmtPrice(zoneGreen) + ' Last Defense\n';
   msg += SEP + '\n';
-  msg += 'TARGET PROFIT & STOP LOSS\n';
-  msg += 'TP1 (30%)   : ' + fmtPrice((Number(t.price) || 0) * 1.3) + '\n';
-  msg += 'TP2 (50%)   : ' + fmtPrice((Number(t.price) || 0) * 1.5) + '\n';
-  msg += 'TP3 (75%)   : ' + fmtPrice((Number(t.price) || 0) * 1.75) + '\n';
-  msg += 'Stop Loss   : ' + fmtPrice(f.sl) + '\n';
+  msg += '\ud83c\udfaf TARGET PROFIT & STOP LOSS\n';
+  msg += '\ud83c\udfaf TP1 (30%)   : ' + fmtPrice((Number(t.price) || 0) * 1.3) + '\n';
+  msg += '\ud83d\udcc8 TP2 (50%)   : ' + fmtPrice((Number(t.price) || 0) * 1.5) + '\n';
+  msg += '\ud83d\ude80 TP3 (75%)   : ' + fmtPrice((Number(t.price) || 0) * 1.75) + '\n';
+  msg += '\ud83d\uded1 Stop Loss   : ' + fmtPrice(f.sl) + '\n';
   msg += SEP + '\n';
-  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
+  msg += '\ud83d\udd17 <a href="https://dexscreener.com/solana/' + t.address + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
   msg += SEP + '\n';
   msg += 'GAMESME2HUB SYSTEM © VIP PROTOCOL 2026';
 
@@ -2300,19 +2300,19 @@ async function checkTrackedPositions(trendingTokens) {
         await sendTelegram(
           '\u2694\ufe0f <b>GAMESME2HUB AUTOMASI</b> \u2694\ufe0f\n' +
           '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-          'TOKEN : $' + esc(pos.symbol) + '\n' +
-          'CHAIN : SOLANA\n' +
-          'CA    : <code>' + ca + '</code>\n' +
+          '\ud83e\ude99 TOKEN : $' + esc(pos.symbol) + '\n' +
+          '\u26d3 CHAIN : SOLANA\n' +
+          '\ud83d\udccb CA    : <code>' + ca + '</code>\n' +
           '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-          'STOP TRACK\n' +
-          (wasProfit ? 'SEMPAT PROFIT | POSISI DITUTUP DARI TRACKING\n' : 'DROP DALAM | POSISI DITUTUP DARI TRACKING\n') +
+          '\ud83d\uded1 STOP TRACK\n' +
+          (wasProfit ? '\ud83d\udcc8 SEMPAT PROFIT | POSISI DITUTUP DARI TRACKING\n' : '\ud83d\udd3b DROP DALAM | POSISI DITUTUP DARI TRACKING\n') +
           '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-          'ENTRY\n' +
-          'Entry Price  : ' + fmtPrice(pos.entryPrice) + '\n' +
-          'Current Price: ' + fmtPrice(currentPrice) + '\n' +
-          'Gain         : ' + gain.toFixed(1) + '%\n' +
+          '\ud83d\udccc ENTRY\n' +
+          '\ud83d\udcb5 Entry Price  : ' + fmtPrice(pos.entryPrice) + '\n' +
+          '\ud83d\udcca Current Price: ' + fmtPrice(currentPrice) + '\n' +
+          '\ud83d\udcc9 Gain         : ' + gain.toFixed(1) + '%\n' +
           '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-          '<a href="https://dexscreener.com/solana/' + ca + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>\n' +
+          '\ud83d\udd17 <a href="https://dexscreener.com/solana/' + ca + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>\n' +
           '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
           'GAMESME2HUB SYSTEM \u00a9 VIP PROTOCOL 2026',
           pos.autoBuyMsgId || pos.msgId || null,
@@ -2346,20 +2346,20 @@ async function checkTrackedPositions(trendingTokens) {
       await sendTelegram(
         '\u2694\ufe0f <b>GAMESME2HUB AUTOMASI</b> \u2694\ufe0f\n' +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-        'TOKEN : $' + esc(pos.symbol) + '\n' +
-        'CHAIN : SOLANA\n' +
-        'CA    : <code>' + ca + '</code>\n' +
+        '\ud83e\ude99 TOKEN : $' + esc(pos.symbol) + '\n' +
+        '\u26d3 CHAIN : SOLANA\n' +
+        '\ud83d\udccb CA    : <code>' + ca + '</code>\n' +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-        'TARGET TERCAPAI\n' +
-        'TP' + (highestIdx + 1) + ' (+' + target + '%) | ' + styleLabel + '\n' +
+        '\ud83c\udfaf TARGET TERCAPAI\n' +
+        '\ud83d\ude80 TP' + (highestIdx + 1) + ' (+' + target + '%) | ' + styleLabel + '\n' +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-        'ENTRY\n' +
-        'Entry Price  : ' + fmtPrice(pos.entryPrice) + '\n' +
-        'Current Price: ' + fmtPrice(currentPrice) + '\n' +
-        'Gain         : +' + gain.toFixed(1) + '%\n' +
+        '\ud83d\udccc ENTRY\n' +
+        '\ud83d\udcb5 Entry Price  : ' + fmtPrice(pos.entryPrice) + '\n' +
+        '\ud83d\udcca Current Price: ' + fmtPrice(currentPrice) + '\n' +
+        '\ud83d\udcc8 Gain         : +' + gain.toFixed(1) + '%\n' +
         profitLine +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
-        '<a href="https://dexscreener.com/solana/' + ca + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>\n' +
+        '\ud83d\udd17 <a href="https://dexscreener.com/solana/' + ca + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>\n' +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
         'GAMESME2HUB SYSTEM \u00a9 VIP PROTOCOL 2026',
         pos.autoBuyMsgId || pos.msgId || null,
