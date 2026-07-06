@@ -1614,9 +1614,9 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += aiText + '\n';
   msg += SEP + '\n';
   msg += 'AREA ENTRY ZONE\n';
-  msg += 'Area Gold   : ' + fmtPrice(zoneGold) + ' Entry Cepat\n';
-  msg += 'Area Blue   : ' + fmtPrice(zoneBlue) + ' Entry Ideal\n';
-  msg += 'Area Green  : ' + fmtPrice(zoneGreen) + ' Last Defense\n';
+  msg += '\ud83d\udfe1 Area Gold   : ' + fmtPrice(zoneGold) + ' Entry Cepat\n';
+  msg += '\ud83d\udd35 Area Blue   : ' + fmtPrice(zoneBlue) + ' Entry Ideal\n';
+  msg += '\ud83d\udfe2 Area Green  : ' + fmtPrice(zoneGreen) + ' Last Defense\n';
   msg += SEP + '\n';
   msg += 'TARGET PROFIT & STOP LOSS\n';
   msg += 'TP1 (30%)   : ' + fmtPrice((Number(t.price) || 0) * 1.3) + '\n';
