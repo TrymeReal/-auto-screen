@@ -4,36 +4,24 @@
 // GMGN percentages come as decimals (0.10 = 10%),
 // but config thresholds are in whole percentages (10 = 10%).
 
+function asPct(rate) {
+  var n = Number(rate);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n : n * 100;
+}
+
 function checkDevHoldRate(rate, maxDevHold) {
   if (rate == null) return { skip: false, reason: '' };
-  var pct = Number(rate) * 100;
+  var pct = asPct(rate);
   if (pct > maxDevHold) {
     return { skip: true, reason: 'Creator hold ' + pct.toFixed(0) + '% > ' + maxDevHold + '%' };
   }
   return { skip: false, reason: '' };
 }
 
-function checkPriceChange1h(change, maxChange) {
-  if (change == null) return { skip: false, reason: '' };
-  var pct = Number(change);
-  if (pct > maxChange) {
-    return { skip: true, reason: 'Harga sudah naik ' + pct.toFixed(0) + '% dalam 1 jam (max ' + maxChange + '%)' };
-  }
-  return { skip: false, reason: '' };
-}
-
-function checkMinHolders(holderCount, minHolders) {
-  if (holderCount == null) return { skip: false, reason: '' };
-  var count = Number(holderCount);
-  if (count < minHolders) {
-    return { skip: true, reason: 'Holder terlalu sedikit (' + count + ' < ' + minHolders + ')' };
-  }
-  return { skip: false, reason: '' };
-}
-
 function checkSniperRate(sniperRate, maxSniperPct) {
   if (sniperRate == null) return { skip: false, reason: '' };
-  var pct = Number(sniperRate) * 100;
+  var pct = asPct(sniperRate);
   if (pct > maxSniperPct) {
     return { skip: true, reason: 'Sniper hold ' + pct.toFixed(0) + '% > ' + maxSniperPct + '%' };
   }
@@ -54,7 +42,7 @@ function checkVolLpRatio(vol, lp, maxRatio) {
 
 function checkRugRatio(rugRatio, maxScore) {
   if (rugRatio == null) return { skip: false, reason: '' };
-  var score = Number(rugRatio) * 100;
+  var score = asPct(rugRatio);
   if (score > maxScore) {
     return { skip: true, reason: 'Rug score ' + score.toFixed(0) + ' > ' + maxScore };
   }
@@ -64,62 +52,19 @@ function checkRugRatio(rugRatio, maxScore) {
 function checkInsiderRate(rate, maxInsiderPct) {
   if (!maxInsiderPct || Number(maxInsiderPct) <= 0) return { skip: false, reason: '' };
   if (rate == null) return { skip: false, reason: '' };
-  var pct = Number(rate) * 100;
+  var pct = asPct(rate);
   if (pct > maxInsiderPct) {
     return { skip: true, reason: 'Insider ' + pct.toFixed(0) + '% > ' + maxInsiderPct + '%' };
   }
   return { skip: false, reason: '' };
 }
 
-function shouldSkipMigration(token, cfg) {
-  var t = token;
-
-  var buyPct = 0;
-  var totalTxn = (t.buys || 0) + (t.sells || 0);
-  if (totalTxn > 0) buyPct = (t.buys / totalTxn) * 100;
-  if (totalTxn > 0 && buyPct < cfg.minBuyRatio) {
-    return { skip: true, reason: 'Buy ratio ' + buyPct.toFixed(0) + '% < ' + cfg.minBuyRatio + '%' };
+function checkPhishingRate(rate, maxPhishingPct) {
+  if (rate == null) return { skip: false, reason: '' };
+  var pct = asPct(rate);
+  if (pct > maxPhishingPct) {
+    return { skip: true, reason: 'Phishing ' + pct.toFixed(0) + '% > ' + maxPhishingPct + '%' };
   }
-
-  if ((t.volume || 0) < cfg.minVol) {
-    return { skip: true, reason: 'Volume $' + (t.volume || 0) + ' < $' + cfg.minVol };
-  }
-
-  if ((t.liquidity || 0) < cfg.minLp) {
-    return { skip: true, reason: 'LP $' + (t.liquidity || 0) + ' < $' + cfg.minLp };
-  }
-
-  var bundlerPct = (t.bundler_rate || 0) * 100;
-  if (bundlerPct > cfg.maxBundlerPct) {
-    return { skip: true, reason: 'Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%' };
-  }
-
-  var top10 = (t.top_10_holder_rate || 0) * 100;
-  if (top10 > cfg.maxTop10Holders) {
-    return { skip: true, reason: 'Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%' };
-  }
-
-  var devHold = checkDevHoldRate(t.dev_team_hold_rate, cfg.maxDevHold);
-  if (devHold.skip) return devHold;
-
-  var priceChg = checkPriceChange1h(t.price_change_percent1h, cfg.maxPriceChange1h);
-  if (priceChg.skip) return priceChg;
-
-  var holders = checkMinHolders(t.holder_count, cfg.minHolders);
-  if (holders.skip) return holders;
-
-  var sniper = checkSniperRate(t.top70_sniper_hold_rate, cfg.maxSniperPct);
-  if (sniper.skip) return sniper;
-
-  var volLp = checkVolLpRatio(t.volume, t.liquidity, cfg.maxVolLpRatio);
-  if (volLp.skip) return volLp;
-
-  var rug = checkRugRatio(t.rug_ratio, cfg.maxRugScore);
-  if (rug.skip) return rug;
-
-  var insider = checkInsiderRate(t.suspected_insider_hold_rate, cfg.maxInsiderPct);
-  if (insider.skip) return insider;
-
   return { skip: false, reason: '' };
 }
 
@@ -127,12 +72,12 @@ function collectMigrationHardRiskReasons(token, cfg) {
   var t = token;
   var reasons = [];
 
-  var bundlerPct = (t.bundler_rate || 0) * 100;
+  var bundlerPct = asPct(t.bundler_rate || 0);
   if (bundlerPct > cfg.maxBundlerPct) {
     reasons.push('Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%');
   }
 
-  var top10 = (t.top_10_holder_rate || 0) * 100;
+  var top10 = asPct(t.top_10_holder_rate || 0);
   if (top10 > cfg.maxTop10Holders) {
     reasons.push('Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%');
   }
@@ -143,14 +88,6 @@ function collectMigrationHardRiskReasons(token, cfg) {
   var sniper = checkSniperRate(t.top70_sniper_hold_rate, cfg.maxSniperPct);
   if (sniper.skip) reasons.push(sniper.reason);
 
-  var phishingRate = t.phishing_rate ?? t.phishing_wallet_rate ?? t.phishing_hold_rate ?? t.phishing_holders_rate ?? t.rat_trader_amount_rate ?? t.entrapment_ratio;
-  if (cfg.maxPhishingPct && Number(cfg.maxPhishingPct) > 0 && phishingRate != null) {
-    var phishingPct = Number(phishingRate) * 100;
-    if (phishingPct > cfg.maxPhishingPct) {
-      reasons.push('Phishing/Rat trader ' + phishingPct.toFixed(0) + '% > ' + cfg.maxPhishingPct + '%');
-    }
-  }
-
   var volLp = checkVolLpRatio(t.volume, t.liquidity, cfg.maxVolLpRatio);
   if (volLp.skip) reasons.push(volLp.reason);
 
@@ -160,14 +97,17 @@ function collectMigrationHardRiskReasons(token, cfg) {
   var insider = checkInsiderRate(t.suspected_insider_hold_rate, cfg.maxInsiderPct);
   if (insider.skip) reasons.push(insider.reason);
 
+  var phishingRate =
+    t.phishing_rate ??
+    t.phishing_wallet_rate ??
+    t.phishing_hold_rate ??
+    t.phishing_holders_rate ??
+    t.rat_trader_amount_rate ??
+    t.entrapment_ratio;
+  var phishing = checkPhishingRate(phishingRate, cfg.maxPhishingPct);
+  if (phishing.skip) reasons.push(phishing.reason);
+
   return reasons;
-}
-
-function shouldSkipMigrationHardRisk(token, cfg) {
-  var reasons = collectMigrationHardRiskReasons(token, cfg);
-  if (reasons.length > 0) return { skip: true, reason: reasons[0] };
-
-  return { skip: false, reason: '' };
 }
 
 // ─────────────────────────────────────────────
@@ -178,17 +118,6 @@ function checkBaseLiquidity(lp, minLp) {
   var val = Number(lp) || 0;
   if (val < minLp) {
     return { skip: true, reason: 'LP $' + fmtNum(val) + ' < $' + minLp };
-  }
-  return { skip: false, reason: '' };
-}
-
-function checkBaseAgeHours(creationTimestamp, maxHours) {
-  if (!creationTimestamp) {
-    return { skip: true, reason: 'Tidak ada data creation time' };
-  }
-  var ageHours = (Date.now() - creationTimestamp * 1000) / 3600000;
-  if (ageHours >= maxHours) {
-    return { skip: true, reason: 'Token sudah ' + ageHours.toFixed(0) + 'j (max ' + maxHours + 'j)' };
   }
   return { skip: false, reason: '' };
 }
@@ -224,44 +153,16 @@ function fmtNum(n) {
   return Number(n).toFixed(0);
 }
 
-function shouldSkipNewMigration(token, tokenInfo, cfg) {
-  var t = token;
-  var info = tokenInfo || {};
-  var price = info.price || {};
-
-  var lp = checkBaseLiquidity(t.liquidity, cfg.minLp);
-  if (lp.skip) return lp;
-
-  var age = checkBaseAgeHours(t.creation_timestamp, cfg.maxAgeHours);
-  if (age.skip) return age;
-
-  var vol1h = checkVol1h(price.volume_1h, cfg.minVol1h);
-  if (vol1h.skip) return vol1h;
-
-  var swaps5m = checkSwaps5m(price.swaps_5m, cfg.minSwaps5m);
-  if (swaps5m.skip) return swaps5m;
-
-  var vol5m = checkVol5m(price.volume_5m, cfg.minVol5m);
-  if (vol5m.skip) return vol5m;
-
-  return { skip: false, reason: '' };
-}
-
 module.exports = {
   checkDevHoldRate,
-  checkPriceChange1h,
-  checkMinHolders,
   checkSniperRate,
   checkVolLpRatio,
   checkRugRatio,
   checkInsiderRate,
-  shouldSkipMigration,
+  checkPhishingRate,
   collectMigrationHardRiskReasons,
-  shouldSkipMigrationHardRisk,
   checkBaseLiquidity,
-  checkBaseAgeHours,
   checkVol1h,
   checkSwaps5m,
   checkVol5m,
-  shouldSkipNewMigration,
-}; 
+};
