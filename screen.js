@@ -30,8 +30,8 @@ const {
 // ─────────────────────────────────────────────
 const CFG = {
   // New Migration V2 — base gates
-  minVol1h:        process.env.MIN_VOL_1H !== undefined ? Number(process.env.MIN_VOL_1H) : 60000,
-  minSwaps5m:      process.env.MIN_SWAPS_5M !== undefined ? Number(process.env.MIN_SWAPS_5M) : 40,
+  minVol1h:        process.env.MIN_VOL_1H !== undefined ? Number(process.env.MIN_VOL_1H) : 30000,
+  minSwaps5m:      process.env.MIN_SWAPS_5M !== undefined ? Number(process.env.MIN_SWAPS_5M) : 20,
   minVol5m:        process.env.MIN_VOL_5M !== undefined ? Number(process.env.MIN_VOL_5M) : 5000,
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
@@ -58,9 +58,9 @@ const CFG = {
   migRequireNoSuspectedInsider: process.env.MIG_REQUIRE_NO_SUSPECTED_INSIDER !== 'false',
   // TIGHT mode MIGRATION — env-configurable fib zone & momentum
   migTightFibUpper:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_UPPER)    || 0.5,
-  migTightFibLower:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_LOWER)    || 0.786,
-  migTightMinBuyRatio:     Number(process.env.AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO)|| 51,
-  migTightRequireMomentum: process.env.AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM !== 'false',
+  migTightFibLower:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_LOWER)    || 0.618,
+  migTightMinBuyRatio:     Number(process.env.AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO)|| 55,
+  migTightRequireMomentum: process.env.AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM === 'true',
   // Fibonacci — Birdeye zigzag major swing (% reversal minimal biar dianggap "major")
   fibZigzagThresholdMig:   Number(process.env.FIB_ZIGZAG_THRESHOLD_MIG)   || 35,
   fibZigzagThresholdSwing: Number(process.env.FIB_ZIGZAG_THRESHOLD_SWING) || 12,
@@ -87,17 +87,17 @@ const CFG = {
   swingRequireNotImageDup: process.env.SWING_REQUIRE_NOT_IMAGE_DUP !== 'false',
   swingRequireNotWashTrading: process.env.SWING_REQUIRE_NOT_WASH_TRADING !== 'false',
   // New Migration PREPUMP mode — token fresh, mulai ada tenaga, tapi belum kepanasan.
-  migPrepumpEnabled: process.env.MIG_PREPUMP_ENABLED !== 'false',
-  migPrepumpMaxChange1h: Number(process.env.MIG_PREPUMP_MAX_CHG1H) || 12,
-  migPrepumpMaxChange24h: Number(process.env.MIG_PREPUMP_MAX_CHG24H) || 35,
+  migPrepumpEnabled: process.env.MIG_PREPUMP_ENABLED === 'true',
+  migPrepumpMaxChange1h: Number(process.env.MIG_PREPUMP_MAX_CHG1H) || 10,
+  migPrepumpMaxChange24h: Number(process.env.MIG_PREPUMP_MAX_CHG24H) || 30,
   migPrepumpMinBuyRatio5m: Number(process.env.MIG_PREPUMP_MIN_BUY_RATIO_5M) || 55,
-  migPrepumpMaxBuyRatio5m: Number(process.env.MIG_PREPUMP_MAX_BUY_RATIO_5M) || 92,
-  migPrepumpVol5mTo1hMin: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MIN) || 0.06,
-  migPrepumpVol5mTo1hMax: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MAX) || 0.45,
+  migPrepumpMaxBuyRatio5m: Number(process.env.MIG_PREPUMP_MAX_BUY_RATIO_5M) || 84,
+  migPrepumpVol5mTo1hMin: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MIN) || 0.08,
+  migPrepumpVol5mTo1hMax: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MAX) || 0.28,
   migPrepumpMinBuys5m: Number(process.env.MIG_PREPUMP_MIN_BUYS_5M) || 18,
   migPrepumpMinNetBuys5m: Number(process.env.MIG_PREPUMP_MIN_NET_BUYS_5M) || 6,
   migPrepumpMinSwapToLiqPct: Number(process.env.MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT) || 8,
-  migEarlyEnabled: process.env.MIG_EARLY_ENABLED !== 'false',
+  migEarlyEnabled: process.env.MIG_EARLY_ENABLED === 'true',
   migEarlyMinBuyRatio5m: Number(process.env.MIG_EARLY_MIN_BUY_RATIO_5M) || 58,
   migEarlyMaxBuyRatio5m: Number(process.env.MIG_EARLY_MAX_BUY_RATIO_5M) || 78,
   migEarlyMaxChange1m: Number(process.env.MIG_EARLY_MAX_CHG1M) || 4,
@@ -109,10 +109,10 @@ const CFG = {
   migEarlyMinSwaps5m: Number(process.env.MIG_EARLY_MIN_SWAPS_5M) || 28,
   // New Migration — jeda kecil setelah migrasi ke DEX, biar data LP/vol sempet settle
   // (BUKAN filter kualitas seperti swingMinAge, cuma buffer data — jadi satuannya menit)
-  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 10,   // menit
+  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 2,   // menit
   // New Migration — batas umur MAKSIMAL, biar token yang udah gak "fresh"
   // (momentum awal migrasi udah lewat) gak ikut masuk kandidat.
-  migMaxAgeH:      Number(process.env.MIG_MAX_AGE_H)      || 24,   // jam
+  migMaxAgeH:      Number(process.env.MIG_MAX_AGE_H)      || 168,   // jam
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -429,6 +429,36 @@ function optionalFlagFails(value, expectedTruthy) {
   return expectedTruthy ? !isKnownTrue(value) : !isKnownFalse(value);
 }
 
+function firstDefined() {
+  for (var i = 0; i < arguments.length; i++) {
+    if (arguments[i] !== undefined && arguments[i] !== null && arguments[i] !== '') return arguments[i];
+  }
+  return undefined;
+}
+
+function asRate(v) {
+  var n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n / 100 : n;
+}
+
+function gmgnStats(d) {
+  d = d || {};
+  var stat = d.stat || {};
+  var dev = d.dev || {};
+  return {
+    top_10_holder_rate: asRate(firstDefined(d.top_10_holder_rate, stat.top_10_holder_rate, dev.top_10_holder_rate)),
+    bundler_rate: asRate(firstDefined(d.bundler_trader_amount_rate, d.bundler_rate, stat.top_bundler_trader_percentage, stat.bundler_trader_amount_rate)),
+    bot_degen_rate: asRate(firstDefined(d.bot_degen_rate, stat.bot_degen_rate, stat.top_bot_degen_percentage)),
+    fresh_wallet_rate: asRate(firstDefined(d.fresh_wallet_rate, stat.fresh_wallet_rate)),
+    dev_team_hold_rate: asRate(firstDefined(d.creator_balance_rate, d.dev_team_hold_rate, d.creator_hold_rate, stat.dev_team_hold_rate, stat.creator_hold_rate, dev.dev_team_hold_rate, dev.creator_hold_rate)),
+    top70_sniper_hold_rate: asRate(firstDefined(d.top70_sniper_hold_rate, stat.top70_sniper_hold_rate)),
+    rat_trader_amount_rate: asRate(firstDefined(d.rat_trader_amount_rate, d.entrapment_ratio, stat.top_rat_trader_percentage, stat.top_entrapment_trader_percentage)),
+    suspected_insider_hold_rate: asRate(firstDefined(d.suspected_insider_hold_rate, stat.suspected_insider_hold_rate)),
+    rug_ratio: asRate(firstDefined(d.rug_ratio, stat.rug_ratio)),
+  };
+}
+
 function checkOptionalTokenSecurity(t, mode) {
   var reasons = [];
   var mintOff = t.renounced_mint ?? t.no_mint ?? t.mint_renounced;
@@ -449,6 +479,7 @@ function checkOptionalTokenSecurity(t, mode) {
 function normalizeTrench(t) {
   const supply = Number(t.total_supply) || 0;
   const mc     = Number(t.usd_market_cap) || 0;
+  const stats  = gmgnStats(t);
   return Object.assign({}, t, {
     price:              supply > 0 ? mc / supply : 0,
     market_cap:         mc,
@@ -459,11 +490,15 @@ function normalizeTrench(t) {
     volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
     buys:               t.buys_24h,
     sells:              t.sells_24h,
-    bundler_rate:       t.bundler_trader_amount_rate,
-    dev_team_hold_rate: Number(t.creator_balance_rate ?? t.dev_team_hold_rate ?? 0) || 0,
-    rat_trader_amount_rate: Number(t.rat_trader_amount_rate ?? t.entrapment_ratio ?? 0) || 0,
-    rug_ratio:          Number(t.rug_ratio) || 0,
-    suspected_insider_hold_rate: Number(t.suspected_insider_hold_rate) || 0,
+    top_10_holder_rate: stats.top_10_holder_rate,
+    bundler_rate:       stats.bundler_rate,
+    bot_degen_rate:     stats.bot_degen_rate,
+    fresh_wallet_rate:  stats.fresh_wallet_rate,
+    dev_team_hold_rate: stats.dev_team_hold_rate,
+    top70_sniper_hold_rate: stats.top70_sniper_hold_rate,
+    rat_trader_amount_rate: stats.rat_trader_amount_rate,
+    rug_ratio:          stats.rug_ratio,
+    suspected_insider_hold_rate: stats.suspected_insider_hold_rate,
     not_wash_trading:   t.not_wash_trading ?? t.not_wash_trade ?? t.not_wash,
     no_suspected_insider: t.no_suspected_insider ?? t.no_suspected_insider_wallet ?? t.not_suspected_insider,
     renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
@@ -596,6 +631,7 @@ function normalizeSignal(signals) {
   var result = [];
   for (var s of grouped.values()) {
     var d = s.data;
+    var stats = gmgnStats(d);
     var supply = Number(d.total_supply) || 0;
     var mc = Number(s.market_cap) || Number(d.usd_market_cap) || 0;
     result.push({
@@ -608,20 +644,22 @@ function normalizeSignal(signals) {
       liquidity:     Number(d.liquidity) || 0,
       volume:        Number(d.volume_1h) || 0,
       holder_count:  Number(d.holder_count) || 0,
-      top_10_holder_rate: Number(d.top_10_holder_rate) || 0,
-      rug_ratio:     Number(d.rug_ratio) || 0,
+      top_10_holder_rate: stats.top_10_holder_rate,
+      rug_ratio:     stats.rug_ratio,
       creator:       d.creator || '',
       trigger_mc:    Number(s.trigger_mc) || 0,
       trigger_at:    Number(s.trigger_at) || 0,
       signal_times:  Number(s.signal_times) || 0,
       smart_degen_wallets: d.smart_degen_wallets || [],
       smart_degen_count: Number(d.smart_degen_count) || 0,
-      bot_degen_rate: Number(d.bot_degen_rate) || 0,
+      bot_degen_rate: stats.bot_degen_rate,
       bot_degen_count: Number(d.bot_degen_count) || 0,
-      suspected_insider_hold_rate: Number(d.suspected_insider_hold_rate) || 0,
-      bundler_rate:  Number(d.bundler_trader_amount_rate) || 0,
+      suspected_insider_hold_rate: stats.suspected_insider_hold_rate,
+      bundler_rate:  stats.bundler_rate,
       sniper_count:  Number(d.sniper_count) || 0,
-      dev_team_hold_rate: Number(d.dev_team_hold_rate) || 0,
+      dev_team_hold_rate: stats.dev_team_hold_rate,
+      top70_sniper_hold_rate: stats.top70_sniper_hold_rate,
+      rat_trader_amount_rate: stats.rat_trader_amount_rate,
       creator_created_count: Number(d.creator_created_count) || 0,
     });
   }
