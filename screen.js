@@ -699,6 +699,20 @@ async function sendTelegram(msg, replyTo, threadId) {
     return res.data.result?.message_id || null;
   } catch (e) {
     const desc = e.response?.data?.description || e.message;
+    if (replyTo && String(desc).includes('message to be replied not found')) {
+      try {
+        var fallbackPayload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
+        if (threadId !== undefined && threadId !== null && !Number.isNaN(threadId)) {
+          fallbackPayload.message_thread_id = threadId;
+        }
+        var fallbackRes = await axios.post(TG_API, fallbackPayload, { timeout: 10000 });
+        log('TG reply missing, sent as new message');
+        return fallbackRes.data.result?.message_id || null;
+      } catch (fallbackErr) {
+        log('TG fallback error: ' + (fallbackErr.response?.data?.description || fallbackErr.message));
+        return null;
+      }
+    }
     log('TG error: ' + desc);
     return null;
   }
@@ -2497,6 +2511,7 @@ async function checkTrackedPositions(trendingTokens) {
       var modeLabel = pos.mode === 'SWING' ? 'Swing' : 'New Migration';
       var gradeEmoji = pos.grade === 'GOLD' ? '🟢' : pos.grade === 'POTENSIAL' ? '🟡' : '🔴';
       var riskLabel = pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'POTENSIAL' ? 'Grade B' : 'Grade C';
+      var styleLabel = targetEmoji + ' ' + modeLabel + ' | ' + gradeEmoji + ' ' + riskLabel;
       var targetThread = pos.autoBuyMsgId
         ? CFG.tgThreadAuto
         : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
