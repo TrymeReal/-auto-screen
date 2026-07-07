@@ -41,6 +41,7 @@ function checkSniperRate(sniperRate, maxSniperPct) {
 }
 
 function checkVolLpRatio(vol, lp, maxRatio) {
+  if (!maxRatio || Number(maxRatio) <= 0) return { skip: false, reason: '' };
   var volume = Number(vol) || 0;
   var liquidity = Number(lp) || 0;
   if (liquidity <= 0) return { skip: false, reason: '' };
@@ -61,6 +62,7 @@ function checkRugRatio(rugRatio, maxScore) {
 }
 
 function checkInsiderRate(rate, maxInsiderPct) {
+  if (!maxInsiderPct || Number(maxInsiderPct) <= 0) return { skip: false, reason: '' };
   if (rate == null) return { skip: false, reason: '' };
   var pct = Number(rate) * 100;
   if (pct > maxInsiderPct) {
@@ -140,6 +142,14 @@ function collectMigrationHardRiskReasons(token, cfg) {
 
   var sniper = checkSniperRate(t.top70_sniper_hold_rate, cfg.maxSniperPct);
   if (sniper.skip) reasons.push(sniper.reason);
+
+  var phishingRate = t.phishing_rate ?? t.phishing_wallet_rate ?? t.phishing_hold_rate ?? t.phishing_holders_rate ?? t.rat_trader_amount_rate ?? t.entrapment_ratio;
+  if (cfg.maxPhishingPct && Number(cfg.maxPhishingPct) > 0 && phishingRate != null) {
+    var phishingPct = Number(phishingRate) * 100;
+    if (phishingPct > cfg.maxPhishingPct) {
+      reasons.push('Phishing/Rat trader ' + phishingPct.toFixed(0) + '% > ' + cfg.maxPhishingPct + '%');
+    }
+  }
 
   var volLp = checkVolLpRatio(t.volume, t.liquidity, cfg.maxVolLpRatio);
   if (volLp.skip) reasons.push(volLp.reason);
