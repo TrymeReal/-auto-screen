@@ -30,9 +30,9 @@ const {
 // ─────────────────────────────────────────────
 const CFG = {
   // New Migration V2 — base gates
-  minVol1h:        process.env.MIN_VOL_1H !== undefined ? Number(process.env.MIN_VOL_1H) : 0,
-  minSwaps5m:      process.env.MIN_SWAPS_5M !== undefined ? Number(process.env.MIN_SWAPS_5M) : 0,
-  minVol5m:        process.env.MIN_VOL_5M !== undefined ? Number(process.env.MIN_VOL_5M) : 0,
+  minVol1h:        process.env.MIN_VOL_1H !== undefined ? Number(process.env.MIN_VOL_1H) : 60000,
+  minSwaps5m:      process.env.MIN_SWAPS_5M !== undefined ? Number(process.env.MIN_SWAPS_5M) : 40,
+  minVol5m:        process.env.MIN_VOL_5M !== undefined ? Number(process.env.MIN_VOL_5M) : 5000,
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
   minMarketCap:    Number(process.env.MIN_MARKET_CAP)   || 20000,
@@ -54,6 +54,8 @@ const CFG = {
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 15,
   maxVolLpRatio:     process.env.MAX_VOL_LP_RATIO !== undefined ? Number(process.env.MAX_VOL_LP_RATIO) : 0,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
+  migRequireNotWashTrading: process.env.MIG_REQUIRE_NOT_WASH_TRADING !== 'false',
+  migRequireNoSuspectedInsider: process.env.MIG_REQUIRE_NO_SUSPECTED_INSIDER !== 'false',
   // TIGHT mode MIGRATION — env-configurable fib zone & momentum
   migTightFibUpper:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_UPPER)    || 0.5,
   migTightFibLower:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_LOWER)    || 0.786,
@@ -84,9 +86,30 @@ const CFG = {
   swingRequireOutMarket: process.env.SWING_REQUIRE_OUT_MARKET !== 'false',
   swingRequireNotImageDup: process.env.SWING_REQUIRE_NOT_IMAGE_DUP !== 'false',
   swingRequireNotWashTrading: process.env.SWING_REQUIRE_NOT_WASH_TRADING !== 'false',
+  // New Migration PREPUMP mode — token fresh, mulai ada tenaga, tapi belum kepanasan.
+  migPrepumpEnabled: process.env.MIG_PREPUMP_ENABLED !== 'false',
+  migPrepumpMaxChange1h: Number(process.env.MIG_PREPUMP_MAX_CHG1H) || 12,
+  migPrepumpMaxChange24h: Number(process.env.MIG_PREPUMP_MAX_CHG24H) || 35,
+  migPrepumpMinBuyRatio5m: Number(process.env.MIG_PREPUMP_MIN_BUY_RATIO_5M) || 55,
+  migPrepumpMaxBuyRatio5m: Number(process.env.MIG_PREPUMP_MAX_BUY_RATIO_5M) || 92,
+  migPrepumpVol5mTo1hMin: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MIN) || 0.06,
+  migPrepumpVol5mTo1hMax: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MAX) || 0.45,
+  migPrepumpMinBuys5m: Number(process.env.MIG_PREPUMP_MIN_BUYS_5M) || 18,
+  migPrepumpMinNetBuys5m: Number(process.env.MIG_PREPUMP_MIN_NET_BUYS_5M) || 6,
+  migPrepumpMinSwapToLiqPct: Number(process.env.MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT) || 8,
+  migEarlyEnabled: process.env.MIG_EARLY_ENABLED !== 'false',
+  migEarlyMinBuyRatio5m: Number(process.env.MIG_EARLY_MIN_BUY_RATIO_5M) || 58,
+  migEarlyMaxBuyRatio5m: Number(process.env.MIG_EARLY_MAX_BUY_RATIO_5M) || 78,
+  migEarlyMaxChange1m: Number(process.env.MIG_EARLY_MAX_CHG1M) || 4,
+  migEarlyMaxChange5m: Number(process.env.MIG_EARLY_MAX_CHG5M) || 8,
+  migEarlyMaxChange1h: Number(process.env.MIG_EARLY_MAX_CHG1H) || 10,
+  migEarlyMinVol5mTo1h: Number(process.env.MIG_EARLY_MIN_VOL5M_TO_1H) || 0.08,
+  migEarlyMaxVol5mTo1h: Number(process.env.MIG_EARLY_MAX_VOL5M_TO_1H) || 0.22,
+  migEarlyMinNetBuys5m: Number(process.env.MIG_EARLY_MIN_NET_BUYS_5M) || 8,
+  migEarlyMinSwaps5m: Number(process.env.MIG_EARLY_MIN_SWAPS_5M) || 28,
   // New Migration — jeda kecil setelah migrasi ke DEX, biar data LP/vol sempet settle
   // (BUKAN filter kualitas seperti swingMinAge, cuma buffer data — jadi satuannya menit)
-  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 2,    // menit
+  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 10,   // menit
   // New Migration — batas umur MAKSIMAL, biar token yang udah gak "fresh"
   // (momentum awal migrasi udah lewat) gak ikut masuk kandidat.
   migMaxAgeH:      Number(process.env.MIG_MAX_AGE_H)      || 24,   // jam
@@ -437,8 +460,12 @@ function normalizeTrench(t) {
     buys:               t.buys_24h,
     sells:              t.sells_24h,
     bundler_rate:       t.bundler_trader_amount_rate,
+    dev_team_hold_rate: Number(t.creator_balance_rate ?? t.dev_team_hold_rate ?? 0) || 0,
+    rat_trader_amount_rate: Number(t.rat_trader_amount_rate ?? t.entrapment_ratio ?? 0) || 0,
     rug_ratio:          Number(t.rug_ratio) || 0,
     suspected_insider_hold_rate: Number(t.suspected_insider_hold_rate) || 0,
+    not_wash_trading:   t.not_wash_trading ?? t.not_wash_trade ?? t.not_wash,
+    no_suspected_insider: t.no_suspected_insider ?? t.no_suspected_insider_wallet ?? t.not_suspected_insider,
     renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
     renounced_freeze_account: isTruthyFlag(t.renounced_freeze_account) ? 1 : 0,
   });
@@ -453,8 +480,6 @@ function fetchGmgnTrenches() {
       '--chain sol',
       '--type completed',
       '--limit 50',
-      '--min-smart-degen-count 1',
-      '--sort-by smart_degen_count',
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
@@ -1732,31 +1757,7 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   var aiText      = 'Rug ' + rug.score + ', top10 ' + top10 + '%, creator ' + creatorHold + '%. Fokus entry bertahap di zona fib.';
 
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var zoneGold = Number(t.price) || 0;
-  var zoneBlue = Number(f.fair) || zoneGold;
-  var zoneGreen = Number(f.support) || zoneBlue;
-
-  if (mode === 'MIGRATION') {
-    var migFibUpper = CFG.migTightFibUpper;
-    var migFibLower = CFG.migTightFibLower;
-    var migMidPoint = (migFibUpper + migFibLower) / 2;
-    var migAggressiveZone = getFibZone(f, migFibUpper, migMidPoint);
-    var migNormalZone = getFibZone(f, migMidPoint, migFibLower);
-    if (migAggressiveZone && !migAggressiveZone.unsupported) {
-      zoneGold = Number(migAggressiveZone.upper) || zoneGold;
-      zoneBlue = Number(migAggressiveZone.lower) || zoneBlue;
-    }
-    if (migNormalZone && !migNormalZone.unsupported) {
-      zoneGreen = Number(migNormalZone.lower) || zoneGreen;
-    }
-  } else if (mode === 'SWING') {
-    var discountZone = getFibDiscountZone(f);
-    if (discountZone && !discountZone.unsupported) {
-      zoneGold = Number(discountZone.upper) || zoneGold;
-      zoneBlue = Number(f.fair) || zoneBlue;
-      zoneGreen = Number(discountZone.lower) || zoneGreen;
-    }
-  }
+  var entryPrice = Number(t.price) || 0;
 
   var msg = '';
   msg += '\u2694\ufe0f <b>GAMESME2HUB AUTOMASI</b> \u2694\ufe0f\n';
@@ -1769,10 +1770,8 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += aiVerdict + ' | ' + styleLabel + '\n';
   msg += aiText + '\n';
   msg += SEP + '\n';
-  msg += '\ud83d\udccd AREA ENTRY ZONE\n';
-  msg += '\ud83d\udfe1 Area Gold   : ' + fmtPrice(zoneGold) + ' Entry Cepat\n';
-  msg += '\ud83d\udd35 Area Blue   : ' + fmtPrice(zoneBlue) + ' Entry Ideal\n';
-  msg += '\ud83d\udfe2 Area Green  : ' + fmtPrice(zoneGreen) + ' Last Defense\n';
+  msg += '\ud83d\udccd AREA ENTRY\n';
+  msg += '\ud83d\udfe2 Entry Saat Notif : ' + fmtPrice(entryPrice) + '\n';
   msg += SEP + '\n';
   msg += '\ud83c\udfaf TARGET PROFIT & STOP LOSS\n';
   msg += '\ud83c\udfaf TP1 (30%)   : ' + fmtPrice((Number(t.price) || 0) * 1.3) + '\n';
@@ -1832,25 +1831,6 @@ async function processTokens() {
     if (!t.address) continue;
     if (SEEN.has(t.address)) continue;          // belum pernah dilihat
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-
-    // Jeda kecil setelah migrasi — bukan filter kualitas, cuma kasih waktu
-    // data LP/vol dari API settle dulu biar gak baca angka yang belum akurat.
-    // PAKAI migration_timestamp (waktu migrasi ke DEX), BUKAN creation_timestamp
-    // (waktu token dibuat di bonding curve) — token bisa nongkrong lama di pump.fun
-    // sebelum migrasi, jadi umur sejak migrasi harus dihitung terpisah dari umur sejak mint.
-    const ageMigMin = tokenAgeHours(t.migration_timestamp) * 60;
-    if (ageMigMin < CFG.migMinAgeMin) {
-      log('SKIP [MIGRATION] ' + (t.symbol || '?') + ' — baru migrasi ' + ageMigMin.toFixed(1) + 'm (< ' + CFG.migMinAgeMin + 'm, tunggu data settle)');
-      continue;
-    }
-
-    // Batas umur maksimal — token yang migrasinya udah lewat dari X jam
-    // dianggap sudah tidak "fresh" lagi, momentum awal migrasi sudah lewat.
-    const ageMigH = ageMigMin / 60;
-    if (ageMigH > CFG.migMaxAgeH) {
-      log('SKIP [MIGRATION] ' + (t.symbol || '?') + ' — migrasi sudah ' + ageMigH.toFixed(1) + 'j (> ' + CFG.migMaxAgeH + 'j, tidak fresh lagi)');
-      continue;
-    }
 
     newMigration.push(t);
   }
@@ -1965,6 +1945,10 @@ async function processTokens() {
       continue;
     }
 
+    t.migEarlyScore = 0;
+    t.migTimingLabel = 'FINAL_FILTER';
+    log('[MIG][FINAL_FILTER] ' + t.symbol + ' (GMGN New Pair JSON)');
+
     var holderHardSkipReasons = [];
     var bundlerPct = Number(t.bundler_rate || 0) * 100;
     if (bundlerPct > CFG.maxBundlerPct) {
@@ -2001,6 +1985,12 @@ async function processTokens() {
     };
 
     var gmgnRiskReasons = collectMigrationHardRiskReasons(t, migCfgStrict);
+    if (CFG.migRequireNotWashTrading && optionalFlagFails(t.not_wash_trading, true)) {
+      gmgnRiskReasons.push('GMGN not_wash_trading OFF');
+    }
+    if (CFG.migRequireNoSuspectedInsider && optionalFlagFails(t.no_suspected_insider, true)) {
+      gmgnRiskReasons.push('GMGN no_suspected_insider OFF');
+    }
     if (gmgnRiskReasons.length > 0) {
       log('SKIP [MIG] ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ')');
       continue;
@@ -2040,21 +2030,19 @@ async function processTokens() {
     log('[MIG] Cek RugCheck ' + t.symbol + '...');
     const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
     if (rug.score > CFG.maxRugScore) {
-      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck ' + rug.score + ' > ' + CFG.maxRugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
       continue;
     }
     if (rug.insiderPct > CFG.maxInsiderPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
-      continue;
+      log('[MIG] WARN ' + t.symbol + ' (RugCheck insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '% — info only)');
     }
 
     var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
     // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
     t.volume = vol1h;
-    const grade = gradeToken(t.liquidity, t.volume, rug.score);
+    const grade = gradeToken(t.liquidity, t.volume, rug.score) === 'GOLD' ? 'GOLD' : 'POTENSIAL';
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
-    if (grade === 'SKIP') { log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol kecil)'); continue; }
 
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     let msgId = null;
@@ -2101,9 +2089,13 @@ async function processTokens() {
         continue;
       }
 
-      const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-      if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
-      if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
+      const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
+      if (rug.score > CFG.maxRugScore) {
+        log('SKIP [SWING] ' + t.symbol + ' (RugCheck ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'swing', lockedReason: 'rug_score' });
+        continue;
+      }
+      if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
@@ -2575,15 +2567,10 @@ log('╚════════════════════════
 log('');
 log('[ Mode 1: New Migration ]');
 log('  LP >= $' + CFG.minLp.toLocaleString() + ' | MC >= $' + CFG.minMarketCap.toLocaleString() + (CFG.maxMarketCap > 0 ? ' - $' + CFG.maxMarketCap.toLocaleString() : ' (no max)'));
-log('  Buys24h >= ' + CFG.minBuys + ' | Sells24h >= ' + CFG.minSells + ' | Rug <= ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  GMGN Rug <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '% [gmgn-cli rug_ratio, cek sebelum RugCheck]');
-log('  Age: max ' + CFG.migMaxAgeH + 'j (jeda settle data ' + CFG.migMinAgeMin + 'm)');
+log('  Buys24h >= ' + CFG.minBuys + ' | Sells24h >= ' + CFG.minSells + ' | GMGN Rug <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '%');
 log('  Top10 <= ' + CFG.maxTop10Holders + '% | Dev <= ' + CFG.maxDevHold + '% | Bundler <= ' + CFG.maxBundlerPct + '% | Sniper <= ' + CFG.maxSniperPct + '%');
-log('  Phishing/Rat <= ' + CFG.maxPhishingPct + '% | Insider ' + (CFG.maxInsiderPct > 0 ? '<= ' + CFG.maxInsiderPct + '%' : 'OFF'));
-log('  GMGN holder hard skip: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '%');
-log('  GMGN risk warning: CreatorHold > ' + CFG.maxDevHold + '% | Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
-log('  Momentum hard skip: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
-log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
+log('  NotWash=' + (CFG.migRequireNotWashTrading ? 'ON' : 'OFF') + ' | NoSuspectedInsider=' + (CFG.migRequireNoSuspectedInsider ? 'ON' : 'OFF'));
+log('  Phishing/Rat <= ' + CFG.maxPhishingPct + '% | Age OFF | Creator serial OFF | RugCheck score skip > ' + CFG.maxRugScore);
 log('  (GMGN Rug gate <= ' + Math.round(CFG.gmgnRugMaxRatio * 100) + '% berlaku juga di Swing & Signal)');
 log('[ Auto-Buy MIGRATION Entry ]');
 log('  Entry mode: ' + AUTO_BUY.MIG_ENTRY_MODE);
