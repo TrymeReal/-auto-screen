@@ -30,8 +30,8 @@ const {
 // ─────────────────────────────────────────────
 const CFG = {
   // New Migration V2 — base gates
-  minVol1h:        process.env.MIN_VOL_1H !== undefined ? Number(process.env.MIN_VOL_1H) : 30000,
-  minSwaps5m:      process.env.MIN_SWAPS_5M !== undefined ? Number(process.env.MIN_SWAPS_5M) : 20,
+  minVol1h:        process.env.MIN_VOL_1H !== undefined ? Number(process.env.MIN_VOL_1H) : 60000,
+  minSwaps5m:      process.env.MIN_SWAPS_5M !== undefined ? Number(process.env.MIN_SWAPS_5M) : 40,
   minVol5m:        process.env.MIN_VOL_5M !== undefined ? Number(process.env.MIN_VOL_5M) : 5000,
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
@@ -58,9 +58,9 @@ const CFG = {
   migRequireNoSuspectedInsider: process.env.MIG_REQUIRE_NO_SUSPECTED_INSIDER !== 'false',
   // TIGHT mode MIGRATION — env-configurable fib zone & momentum
   migTightFibUpper:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_UPPER)    || 0.5,
-  migTightFibLower:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_LOWER)    || 0.618,
-  migTightMinBuyRatio:     Number(process.env.AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO)|| 55,
-  migTightRequireMomentum: process.env.AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM === 'true',
+  migTightFibLower:        Number(process.env.AUTO_BUY_MIG_TIGHT_FIB_LOWER)    || 0.786,
+  migTightMinBuyRatio:     Number(process.env.AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO)|| 51,
+  migTightRequireMomentum: process.env.AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM !== 'false',
   // Fibonacci — Birdeye zigzag major swing (% reversal minimal biar dianggap "major")
   fibZigzagThresholdMig:   Number(process.env.FIB_ZIGZAG_THRESHOLD_MIG)   || 35,
   fibZigzagThresholdSwing: Number(process.env.FIB_ZIGZAG_THRESHOLD_SWING) || 12,
@@ -87,17 +87,17 @@ const CFG = {
   swingRequireNotImageDup: process.env.SWING_REQUIRE_NOT_IMAGE_DUP !== 'false',
   swingRequireNotWashTrading: process.env.SWING_REQUIRE_NOT_WASH_TRADING !== 'false',
   // New Migration PREPUMP mode — token fresh, mulai ada tenaga, tapi belum kepanasan.
-  migPrepumpEnabled: process.env.MIG_PREPUMP_ENABLED === 'true',
-  migPrepumpMaxChange1h: Number(process.env.MIG_PREPUMP_MAX_CHG1H) || 10,
-  migPrepumpMaxChange24h: Number(process.env.MIG_PREPUMP_MAX_CHG24H) || 30,
+  migPrepumpEnabled: process.env.MIG_PREPUMP_ENABLED !== 'false',
+  migPrepumpMaxChange1h: Number(process.env.MIG_PREPUMP_MAX_CHG1H) || 12,
+  migPrepumpMaxChange24h: Number(process.env.MIG_PREPUMP_MAX_CHG24H) || 35,
   migPrepumpMinBuyRatio5m: Number(process.env.MIG_PREPUMP_MIN_BUY_RATIO_5M) || 55,
-  migPrepumpMaxBuyRatio5m: Number(process.env.MIG_PREPUMP_MAX_BUY_RATIO_5M) || 84,
-  migPrepumpVol5mTo1hMin: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MIN) || 0.08,
-  migPrepumpVol5mTo1hMax: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MAX) || 0.28,
+  migPrepumpMaxBuyRatio5m: Number(process.env.MIG_PREPUMP_MAX_BUY_RATIO_5M) || 92,
+  migPrepumpVol5mTo1hMin: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MIN) || 0.06,
+  migPrepumpVol5mTo1hMax: Number(process.env.MIG_PREPUMP_VOL5M_TO_1H_MAX) || 0.45,
   migPrepumpMinBuys5m: Number(process.env.MIG_PREPUMP_MIN_BUYS_5M) || 18,
   migPrepumpMinNetBuys5m: Number(process.env.MIG_PREPUMP_MIN_NET_BUYS_5M) || 6,
   migPrepumpMinSwapToLiqPct: Number(process.env.MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT) || 8,
-  migEarlyEnabled: process.env.MIG_EARLY_ENABLED === 'true',
+  migEarlyEnabled: process.env.MIG_EARLY_ENABLED !== 'false',
   migEarlyMinBuyRatio5m: Number(process.env.MIG_EARLY_MIN_BUY_RATIO_5M) || 58,
   migEarlyMaxBuyRatio5m: Number(process.env.MIG_EARLY_MAX_BUY_RATIO_5M) || 78,
   migEarlyMaxChange1m: Number(process.env.MIG_EARLY_MAX_CHG1M) || 4,
@@ -109,10 +109,10 @@ const CFG = {
   migEarlyMinSwaps5m: Number(process.env.MIG_EARLY_MIN_SWAPS_5M) || 28,
   // New Migration — jeda kecil setelah migrasi ke DEX, biar data LP/vol sempet settle
   // (BUKAN filter kualitas seperti swingMinAge, cuma buffer data — jadi satuannya menit)
-  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 2,   // menit
+  migMinAgeMin:    Number(process.env.MIG_MIN_AGE_MIN)    || 10,   // menit
   // New Migration — batas umur MAKSIMAL, biar token yang udah gak "fresh"
   // (momentum awal migrasi udah lewat) gak ikut masuk kandidat.
-  migMaxAgeH:      Number(process.env.MIG_MAX_AGE_H)      || 168,   // jam
+  migMaxAgeH:      Number(process.env.MIG_MAX_AGE_H)      || 24,   // jam
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -126,7 +126,15 @@ const CFG = {
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
   healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
   seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
+  // Default umum (dipakai sbg fallback kalau versi per-mode di bawah gak diset)
   autoBuyWaitEntryMaxMin: Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN) || 30,
+  // MIGRATION basisnya kline 1h -> pergerakan cepat, timer pendek wajar
+  autoBuyWaitEntryMaxMinMig: Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN_MIG)
+    || Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN) || 30,
+  // SWING basisnya kline 1D -> retrace ke zona fib bisa butuh jauh lebih lama dari 30 menit,
+  // jadi kasih default lebih panjang (4 jam) biar gak keburu EXPIRED sebelum sempat retrace.
+  autoBuyWaitEntryMaxMinSwing: Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN_SWING)
+    || Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN) || 240,
   tgToken:         process.env.TG_TOKEN,
   tgChatId:        process.env.TG_CHAT_ID,
   telegramNotificationsEnabled: process.env.TELEGRAM_NOTIFICATIONS_ENABLED !== 'false',
@@ -145,6 +153,7 @@ const AUTO_BUY = {
   ONLY_GRADE:   process.env.AUTO_BUY_GRADE             || 'ALL',
   MODES:        process.env.AUTO_BUY_MODES             || 'SWING',
   MIG_ENTRY_MODE: normalizeMigEntryMode(process.env.AUTO_BUY_MIG_ENTRY_MODE),
+  SWING_ENTRY_MODE: normalizeSwingEntryMode(process.env.AUTO_BUY_SWING_ENTRY_MODE),
 };
 setDryRun(AUTO_BUY.DRY_RUN);
 
@@ -252,6 +261,20 @@ function isLooseMigEntryMode(value) {
   return normalized === 'LOOSE' || normalized === 'SIGNAL';
 }
 
+// Swing entry mode — perilakunya sama seperti Migration (LOOSE/TIGHT),
+// tapi env terpisah karena Swing sebelumnya hardcode TIGHT tanpa opsi.
+function normalizeSwingEntryMode(value) {
+  var normalized = String(value || 'TIGHT').trim().toUpperCase();
+  if (normalized === 'SIGNAL') return 'LOOSE';
+  if (normalized === 'FIB') return 'TIGHT';
+  return ['LOOSE', 'TIGHT'].includes(normalized) ? normalized : 'TIGHT';
+}
+
+function isLooseSwingEntryMode(value) {
+  var normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'LOOSE' || normalized === 'SIGNAL';
+}
+
 function firstNumber() {
   for (var i = 0; i < arguments.length; i++) {
     var n = Number(arguments[i]);
@@ -312,6 +335,87 @@ function cleanupSeen() {
     if (entry.firstSeen < cutoff) { SEEN.delete(ca); deleted++; }
   }
   if (deleted > 0) { log('Cleaned up ' + deleted + ' old entries'); saveSeen(); }
+}
+
+function retryCfg(mode, reason) {
+  var r = String(reason || '');
+  if (r === 'gmgn_rug_ratio') {
+    return {
+      minutes: Number(process.env.RISK_RETRY_MINUTES) || 60,
+      max: Number(process.env.RISK_RETRY_MAX) || 6,
+    };
+  }
+  if (String(mode || '').toLowerCase() === 'swing') {
+    return {
+      minutes: Number(process.env.SWING_RETRY_MINUTES) || 60,
+      max: Number(process.env.SWING_RETRY_MAX) || 24,
+    };
+  }
+  return {
+    minutes: Number(process.env.MIG_RETRY_MINUTES) || 10,
+    max: Number(process.env.MIG_RETRY_MAX) || 12,
+  };
+}
+
+function shouldProcessSeen(address, mode) {
+  var entry = SEEN.get(address);
+  if (!entry) return true;
+
+  if (entry.hardLock || ['rug_score', 'security_hard', 'rugcheck_insider'].includes(entry.lockedReason)) return false;
+  if (mode === 'swing' && entry.swingNotified) return false;
+
+  // SEEN dipakai lintas mode, tapi mode berbeda tidak boleh saling mengunci.
+  // New Migration dan Swing punya timing/filter beda; biarkan mode target cek sendiri.
+  if (entry.mode && entry.mode !== mode && !entry.retryReason && !entry.retryAfter && entry.lockedReason !== 'gmgn_rug_ratio') return true;
+
+  if (!entry.retryReason && !entry.retryAfter && entry.lockedReason !== 'gmgn_rug_ratio') return false;
+
+  var policy = retryCfg(mode, entry.retryReason || entry.lockedReason);
+  if ((entry.retryCount || 0) >= policy.max) return false;
+  if (entry.retryAfter && Date.now() < entry.retryAfter) return false;
+  if (!entry.retryAfter && entry.lockedReason === 'gmgn_rug_ratio' && entry.seenAt && Date.now() < entry.seenAt + policy.minutes * 60000) return false;
+  return true;
+}
+
+function markRetry(address, mode, reason, detail) {
+  var now = Date.now();
+  var existing = SEEN.get(address) || {};
+  var policy = retryCfg(mode, reason);
+  var retryCount = (existing.retryCount || 0) + 1;
+  var entry = {
+    ...existing,
+    firstSeen: existing.firstSeen || now,
+    seenAt: now,
+    mode,
+    retryReason: reason,
+    retryDetail: detail || '',
+    retryCount,
+  };
+
+  if (retryCount >= policy.max) {
+    entry.lockedReason = reason;
+    entry.retryExhausted = true;
+    delete entry.retryAfter;
+  } else {
+    entry.retryAfter = now + policy.minutes * 60000;
+    delete entry.lockedReason;
+    delete entry.retryExhausted;
+  }
+  SEEN.set(address, entry);
+}
+
+function markHardLock(address, mode, reason, detail) {
+  var now = Date.now();
+  var existing = SEEN.get(address) || {};
+  SEEN.set(address, {
+    ...existing,
+    firstSeen: existing.firstSeen || now,
+    seenAt: now,
+    mode,
+    lockedReason: reason,
+    lockDetail: detail || '',
+    hardLock: true,
+  });
 }
 
 function logTrackingEvent(event) {
@@ -457,6 +561,24 @@ function gmgnStats(d) {
     suspected_insider_hold_rate: asRate(firstDefined(d.suspected_insider_hold_rate, stat.suspected_insider_hold_rate)),
     rug_ratio: asRate(firstDefined(d.rug_ratio, stat.rug_ratio)),
   };
+}
+
+function mergeGmgnStatsKeepExistingRisk(t, d) {
+  if (!t || !d) return;
+  var stat = d.stat || {};
+  var stats = gmgnStats(d);
+
+  // `token info` sometimes omits rug_ratio. Do not turn a previous GMGN rug
+  // value into 0, or high-risk migrated tokens can pass the rug gate.
+  if (firstDefined(d.rug_ratio, stat.rug_ratio) == null) {
+    delete stats.rug_ratio;
+  }
+
+  Object.assign(t, stats);
+}
+
+function mergeFreshGmgnRiskStats(t, tokenInfo) {
+  mergeGmgnStatsKeepExistingRisk(t, tokenInfo);
 }
 
 function checkOptionalTokenSecurity(t, mode) {
@@ -913,6 +1035,13 @@ function buildAutoBuyDecision(entryGate, status, reason) {
   return decision;
 }
 
+function getWaitEntryMaxMin(mode) {
+  var modeKey = String(mode || '').toUpperCase();
+  if (modeKey === 'SWING') return CFG.autoBuyWaitEntryMaxMinSwing;
+  if (modeKey === 'MIGRATION') return CFG.autoBuyWaitEntryMaxMinMig;
+  return CFG.autoBuyWaitEntryMaxMin;
+}
+
 function classifyAutoBuyEntryStatus(entryGate) {
   var reason = String(entryGate?.reason || '').toLowerCase();
   if (reason.includes('sudah di bawah') || reason.includes('breakdown')) return 'INVALID_ENTRY';
@@ -924,9 +1053,10 @@ function mergeAutoBuyResult(pos, result) {
   if (!pos || !result) return;
 
   if (['WAIT_ENTRY', 'WAIT_CYCLE'].includes(result.autoBuyStatus)) {
+    var waitEntryMaxMin = getWaitEntryMaxMin(pos.mode);
     var startedAt = Number(pos.waitEntryStartedAt || pos.entryAt || Date.now());
     result.waitEntryStartedAt = startedAt;
-    result.waitEntryUntil = Number(pos.waitEntryUntil || (startedAt + CFG.autoBuyWaitEntryMaxMin * 60000));
+    result.waitEntryUntil = Number(pos.waitEntryUntil || (startedAt + waitEntryMaxMin * 60000));
   }
 
   Object.assign(pos, result);
@@ -983,16 +1113,17 @@ async function retryPendingAutoBuy(ca, pos, currentPrice) {
   if (!isRetryableAutoBuyStatus(pos.autoBuyStatus)) return false;
 
   var now = Date.now();
+  var waitEntryMaxMin = getWaitEntryMaxMin(mode);
   var startedAt = Number(pos.waitEntryStartedAt || pos.entryAt || now);
-  var waitUntil = Number(pos.waitEntryUntil || (startedAt + CFG.autoBuyWaitEntryMaxMin * 60000));
+  var waitUntil = Number(pos.waitEntryUntil || (startedAt + waitEntryMaxMin * 60000));
   if (now > waitUntil) {
     mergeAutoBuyResult(pos, {
       bought: false,
       autoBuyStatus: 'EXPIRED',
-      autoBuyReason: 'wait entry expired > ' + CFG.autoBuyWaitEntryMaxMin + ' menit',
+      autoBuyReason: 'wait entry expired > ' + waitEntryMaxMin + ' menit',
       autoBuyCheckedAt: now,
     });
-    log('[AUTOBUY] WAIT_ENTRY expired ' + pos.symbol + ' (> ' + CFG.autoBuyWaitEntryMaxMin + ' menit)');
+    log('[AUTOBUY] WAIT_ENTRY expired ' + pos.symbol + ' (> ' + waitEntryMaxMin + ' menit, mode ' + mode + ')');
     return true;
   }
 
@@ -1166,6 +1297,24 @@ async function checkAutoBuyEntryZone(t, mode) {
 
   if (modeKey === 'SWING') {
     var zone = getFibDiscountZone(fib);
+
+    if (AUTO_BUY.SWING_ENTRY_MODE === 'LOOSE') {
+      var hasValidSwingZone = zone && !zone.unsupported;
+      return {
+        pass: true,
+        entryMode: 'LOOSE',
+        reason: 'AUTO_BUY_SWING_ENTRY_MODE=LOOSE; longgar, buy langsung di harga signal $' + fmtPrice(price) + ', fib hanya info',
+        fib,
+        fair: hasValidSwingZone ? zone.level618 : price,
+        maxEntry: price,
+        entryLow: hasValidSwingZone ? zone.lower : null,
+        entryHigh: hasValidSwingZone ? zone.upper : null,
+        entryZoneLabel: hasValidSwingZone ? 'info 0.618-0.786' : 'signal price',
+        fib618: hasValidSwingZone ? zone.level618 : null,
+        fib786: hasValidSwingZone ? zone.level786 : null,
+      };
+    }
+
     if (zone && zone.unsupported) {
       return {
         pass: false,
@@ -1311,7 +1460,7 @@ async function tryAutoBuy(ca, t, mode, grade) {
       entryZoneLow: entryGate.entryLow || null,
       entryZoneHigh: entryGate.entryHigh || null,
       entryZoneLabel,
-      entryMode: entryGate.entryMode || (String(mode || '').toUpperCase() === 'MIGRATION' ? AUTO_BUY.MIG_ENTRY_MODE : 'TIGHT'),
+      entryMode: entryGate.entryMode || (String(mode || '').toUpperCase() === 'MIGRATION' ? AUTO_BUY.MIG_ENTRY_MODE : (String(mode || '').toUpperCase() === 'SWING' ? AUTO_BUY.SWING_ENTRY_MODE : 'TIGHT')),
       fibSource,
       momentum: entryGate.momentum || null,
       amountSol: AUTO_BUY.AMOUNT_SOL,
@@ -1330,7 +1479,7 @@ async function tryAutoBuy(ca, t, mode, grade) {
       entryZoneLow: entryGate.entryLow || null,
       entryZoneHigh: entryGate.entryHigh || null,
       entryZoneLabel,
-      entryMode: entryGate.entryMode || (String(mode || '').toUpperCase() === 'MIGRATION' ? AUTO_BUY.MIG_ENTRY_MODE : 'TIGHT'),
+      entryMode: entryGate.entryMode || (String(mode || '').toUpperCase() === 'MIGRATION' ? AUTO_BUY.MIG_ENTRY_MODE : (String(mode || '').toUpperCase() === 'SWING' ? AUTO_BUY.SWING_ENTRY_MODE : 'TIGHT')),
       fibSource,
       momentum: entryGate.momentum || null,
       amountSol: AUTO_BUY.AMOUNT_SOL,
@@ -1563,9 +1712,17 @@ async function checkSwingSignal(t) {
     return { pass: false, reason: 'No Social - butuh minimal 1 social' };
 
   // — Analisa kline 1D untuk konfirmasi sinyal —
-  const signals = ['Vol 24h kuat $' + fmt(vol24h)];
+  const infoSignals = ['Vol 24h kuat $' + fmt(vol24h)];
+  const positiveSignals = [];
+  const warningSignals = [];
   const klines  = await fetchSwingKlines(t.address);
   let allowAutoBuy = true;
+  let setupScore = 0;
+
+  if (buyRatio >= 55) {
+    positiveSignals.push('Buy ratio sehat (' + buyRatio.toFixed(0) + '% buy)');
+    setupScore += buyRatio >= 62 ? 2 : 1;
+  }
 
   if (klines && klines.length >= 3) {
     // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
@@ -1593,9 +1750,10 @@ async function checkSwingSignal(t) {
       allowAutoBuy = false;
       log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
       if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
-        signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
+        positiveSignals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
       if (change24h < 0)
-        signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+        positiveSignals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+      setupScore += positiveSignals.length >= 2 ? 2 : positiveSignals.length;
     } else {
       const lastCandle = candles[candles.length - 1];
       const prevCandle = candles[candles.length - 2];
@@ -1630,30 +1788,43 @@ async function checkSwingSignal(t) {
       // pakai Vol 24h di atas.
       const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
       if (volSpike >= CFG.swingVolSpikeMin) {
-        signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+        positiveSignals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+        setupScore += volSpike >= (CFG.swingVolSpikeMin + 1) ? 2 : 1;
       } else {
-        signals.push('[WARN] Vol spike 1D rendah (' + volSpike.toFixed(1) + 'x, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+        warningSignals.push('[WARN] Vol spike 1D rendah (' + volSpike.toFixed(1) + 'x, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
       }
 
       // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
       if (priceRange > 0) {
         const posInRange = (lastCandle.close - swingLow) / priceRange; // 0=bawah, 1=atas
         if (posInRange <= 0.45) {
-          signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
+          positiveSignals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
+          setupScore += posInRange <= 0.33 ? 2 : 1;
         } else if (posInRange >= 0.80) {
           // Sudah terlalu tinggi di range
-          signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
+          warningSignals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
         }
       }
 
       // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
       if (lastCandle.close > prevCandle.close) {
-        signals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
+        positiveSignals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
+        setupScore += 1;
       }
 
       // Sinyal 4: Konsolidasi — range harga gak lebih dari 80% dari low
       if (swingLow > 0 && priceRange / swingLow < 0.80) {
-        signals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+        positiveSignals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+        setupScore += 1;
+      } else if (swingLow > 0 && priceRange / swingLow > 1.8) {
+        warningSignals.push('[WARN] Range terlalu liar (' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+      }
+
+      if (change24h <= -8 && change24h >= -35) {
+        positiveSignals.push('Pullback sehat 24h ' + change24h.toFixed(1) + '%');
+        setupScore += 1;
+      } else if (change24h > 25) {
+        warningSignals.push('[WARN] Struktur sudah panas 24h +' + change24h.toFixed(1) + '%');
       }
     }
 
@@ -1662,17 +1833,29 @@ async function checkSwingSignal(t) {
     allowAutoBuy = false;
     log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
     if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
-      signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
+      positiveSignals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
     if (change24h < 0)
-      signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+      positiveSignals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
+    setupScore += positiveSignals.length >= 2 ? 2 : positiveSignals.length;
   }
 
-  // Minimal 1 sinyal positif harus ada
-  const positiveSignals = signals.filter(s => !s.startsWith('[WARN]'));
-  if (positiveSignals.length === 0)
+  const signals = infoSignals.concat(positiveSignals, warningSignals);
+
+  // Setup swing sekarang wajib punya konfirmasi nyata, bukan cuma vol24h besar.
+  if (positiveSignals.length < 2)
     return { pass: false, reason: 'Tidak ada sinyal pre-pump' };
 
-  return { pass: true, signals, allowAutoBuy };
+  if (setupScore < 4)
+    return { pass: false, reason: 'Setup swing lemah (score ' + setupScore + ', perlu >= 4)' };
+
+  if (warningSignals.some(s => s.includes('Harga sudah tinggi di range')) && setupScore < 6) {
+    return { pass: false, reason: 'Harga sudah terlalu tinggi di range untuk entry swing awal' };
+  }
+
+  const conviction = setupScore >= 7 ? 'strong' : setupScore >= 5 ? 'decent' : 'weak';
+  signals.unshift('Setup swing ' + conviction + ' (score ' + setupScore + ')');
+
+  return { pass: true, signals, allowAutoBuy, setupScore, conviction };
 }
 
 // ─────────────────────────────────────────────
@@ -1867,7 +2050,7 @@ async function processTokens() {
   for (let i = 0; i < migrationTokens.length; i++) {
     const t = migrationTokens[i];
     if (!t.address) continue;
-    if (SEEN.has(t.address)) continue;          // belum pernah dilihat
+    if (!shouldProcessSeen(t.address, 'migration')) continue;
     if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
 
     newMigration.push(t);
@@ -1892,15 +2075,7 @@ async function processTokens() {
 
       // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
       if (seenEntry && seenEntry.swingNotified) continue;
-
-      // Jika token pernah masuk SEEN sebelumnya, verifikasi usia SEEN juga sudah cukup.
-      if (seenEntry && seenEntry.seenAt) {
-        const seenAgeH = (Date.now() - seenEntry.seenAt) / 3600000;
-        if (seenAgeH < CFG.swingMinAge) {
-          log('SKIP [SWING] ' + (t.symbol || '?') + ' — sudah di SEEN tapi baru ' + seenAgeH.toFixed(1) + 'j (< ' + CFG.swingMinAge + 'j)');
-          continue;
-        }
-      }
+      if (!shouldProcessSeen(t.address, 'swing')) continue;
 
       swingCandidates.push(t);
     }
@@ -1912,7 +2087,7 @@ async function processTokens() {
   // Skip token yg udah pernah dilihat (dari mode manapun)
   var uniqueSignal = [];
   for (var i = 0; i < signalCandidates.length; i++) {
-    if (!SEEN.has(signalCandidates[i].address)) uniqueSignal.push(signalCandidates[i]);
+    if (shouldProcessSeen(signalCandidates[i].address, 'signal')) uniqueSignal.push(signalCandidates[i]);
   }
 
   log('New Migration candidates: ' + newMigration.length);
@@ -1928,8 +2103,10 @@ async function processTokens() {
     const tokenInfo = fetchTokenInfo(t.address);
     if (!tokenInfo) {
       log('SKIP [MIG] ' + t.symbol + ' (Gagal fetch token info)');
+      markRetry(t.address, 'migration', 'token_info_failed', 'Gagal fetch token info');
       continue;
     }
+    mergeGmgnStatsKeepExistingRisk(t, tokenInfo);
     var migCfg = {
       minLp:        CFG.minLp,
       minVol1h:     CFG.minVol1h,
@@ -1940,6 +2117,7 @@ async function processTokens() {
     var lpGate = checkBaseLiquidity(t.liquidity, CFG.minLp);
     if (lpGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + lpGate.reason + ')');
+      markRetry(t.address, 'migration', 'lp_gate', lpGate.reason);
       continue;
     }
 
@@ -1947,18 +2125,21 @@ async function processTokens() {
     var vol1hGate = checkVol1h(priceInfo.volume_1h, migCfg.minVol1h);
     if (vol1hGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + vol1hGate.reason + ')');
+      markRetry(t.address, 'migration', 'volume_gate', vol1hGate.reason);
       continue;
     }
 
     var swaps5mGate = checkSwaps5m(priceInfo.swaps_5m, migCfg.minSwaps5m);
     if (swaps5mGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + swaps5mGate.reason + ')');
+      markRetry(t.address, 'migration', 'swaps_gate', swaps5mGate.reason);
       continue;
     }
 
     var vol5mGate = checkVol5m(priceInfo.volume_5m, migCfg.minVol5m);
     if (vol5mGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + vol5mGate.reason + ')');
+      markRetry(t.address, 'migration', 'volume_gate', vol5mGate.reason);
       continue;
     }
 
@@ -1973,13 +2154,15 @@ async function processTokens() {
 
     var mcGate = checkMigrationMarketCap(t);
     if (!mcGate.pass) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + mcGate.reason + ')');
+      log('SKIP [MIG] ' + t.symbol + ' ' + t.address + ' (' + mcGate.reason + ')');
+      markRetry(t.address, 'migration', 'market_cap_gate', mcGate.reason);
       continue;
     }
 
     var buySellGate = checkMigrationBuySell(t);
     if (!buySellGate.pass) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + buySellGate.reason + ')');
+      log('SKIP [MIG] ' + t.symbol + ' ' + t.address + ' (' + buySellGate.reason + ')');
+      markRetry(t.address, 'migration', 'buy_sell_gate', buySellGate.reason);
       continue;
     }
 
@@ -1998,6 +2181,7 @@ async function processTokens() {
     }
     if (holderHardSkipReasons.length > 0) {
       log('SKIP [MIG] ' + t.symbol + ' (GMGN holder hard skip: ' + holderHardSkipReasons.join(' | ') + ')');
+      markHardLock(t.address, 'migration', 'holder_hard', holderHardSkipReasons.join(' | '));
       continue;
     }
 
@@ -2007,7 +2191,7 @@ async function processTokens() {
     log('[MIG] GMGN Rug ' + t.symbol + ': ' + gmgnRugGate.pct + '%');
     if (gmgnRugGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + gmgnRugGate.reason + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'gmgn_rug_ratio' });
+      markRetry(t.address, 'migration', 'gmgn_rug_ratio', gmgnRugGate.reason);
       continue;
     }
 
@@ -2030,7 +2214,8 @@ async function processTokens() {
       gmgnRiskReasons.push('GMGN no_suspected_insider OFF');
     }
     if (gmgnRiskReasons.length > 0) {
-      log('SKIP [MIG] ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ')');
+      log('SKIP [MIG] ' + t.symbol + ' (GMGN risk hard skip: ' + gmgnRiskReasons.join(' | ') + ')');
+      markHardLock(t.address, 'migration', 'gmgn_risk_hard', gmgnRiskReasons.join(' | '));
       continue;
     }
 
@@ -2042,6 +2227,12 @@ async function processTokens() {
     log('[MIG] Cek Social Score ' + t.symbol + '...');
     const dexInfo = await fetchDexInfo(t.address);
 
+    if (!dexInfo) {
+      log('SKIP [MIG] ' + t.symbol + ' ' + t.address + ' (DexScreener data belum ada untuk cek social)');
+      markHardLock(t.address, 'migration', 'social_hard', 'DexScreener data belum ada untuk cek social');
+      continue;
+    }
+
     let socialScore = 0;
     if (dexInfo) {
       if (dexInfo.hasImage)    socialScore++;
@@ -2050,11 +2241,10 @@ async function processTokens() {
       if (dexInfo.hasTelegram) socialScore++;
 
       if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-        log('SKIP [MIG] ' + t.symbol + ' (No Social - butuh minimal 1 social: Twitter/Website/Telegram) [Score:' + socialScore + '/4]');
+        log('SKIP [MIG] ' + t.symbol + ' ' + t.address + ' (No Social - butuh minimal 1 social: Twitter/Website/Telegram) [Score:' + socialScore + '/4]');
+        markHardLock(t.address, 'migration', 'social_hard', 'No Social - butuh minimal 1 social: Twitter/Website/Telegram');
         continue;
       }
-    } else {
-      log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
     }
 
     // Cek paid DEX via DEX Screener API
@@ -2068,21 +2258,22 @@ async function processTokens() {
     log('[MIG] Cek RugCheck ' + t.symbol + '...');
     const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
     if (rug.score > CFG.maxRugScore) {
-      log('SKIP [MIG] ' + t.symbol + ' (RugCheck ' + rug.score + ' > ' + CFG.maxRugScore + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
+      log('SKIP [MIG] ' + t.symbol + ' ' + t.address + ' (RugCheck ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+      markHardLock(t.address, 'migration', 'rug_score', 'RugCheck ' + rug.score + ' > ' + CFG.maxRugScore);
       continue;
     }
-    if (rug.insiderPct > CFG.maxInsiderPct) {
+    if (CFG.maxInsiderPct > 0 && rug.insiderPct > CFG.maxInsiderPct) {
       log('[MIG] WARN ' + t.symbol + ' (RugCheck insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '% — info only)');
     }
 
     var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
     // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
     t.volume = vol1h;
-    const grade = gradeToken(t.liquidity, t.volume, rug.score) === 'GOLD' ? 'GOLD' : 'POTENSIAL';
+    const migrationScore = Math.min(100, calculateScore(t, rug) + Math.min(10, Number(t.migEarlyScore || 0)));
+    const grade = migrationScore >= 75 ? 'GOLD' : 'POTENSIAL';
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
 
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
+    log('[MIG][' + (t.migTimingLabel || 'EARLY') + '] ' + grade + ' ' + t.symbol + ' (Score:' + migrationScore + ' | LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     let msgId = null;
     if (!NOTIF_ONLY_AUTO) {
       const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
@@ -2113,6 +2304,13 @@ async function processTokens() {
 
     if (!swingResult.pass) {
       log('SKIP [SWING] ' + t.symbol + ': ' + swingResult.reason);
+      if (/security|Top10|Dev hold|Sniper hold|Phishing|Bundler/i.test(swingResult.reason)) {
+        markHardLock(t.address, 'swing', 'swing_hard', swingResult.reason);
+      } else if (/Terlalu tua/i.test(swingResult.reason)) {
+        markHardLock(t.address, 'swing', 'age_too_old', swingResult.reason);
+      } else {
+        markRetry(t.address, 'swing', 'swing_retry', swingResult.reason);
+      }
       continue;
     }
 
@@ -2123,24 +2321,20 @@ async function processTokens() {
       log('[SWING] GMGN Rug ' + t.symbol + ': ' + gmgnRugGateSwing.pct + '%');
       if (gmgnRugGateSwing.skip) {
         log('SKIP [SWING] ' + t.symbol + ' (' + gmgnRugGateSwing.reason + ')');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'swing', lockedReason: 'gmgn_rug_ratio' });
+        markRetry(t.address, 'swing', 'gmgn_rug_ratio', gmgnRugGateSwing.reason);
         continue;
       }
 
       const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
-      if (rug.score > CFG.maxRugScore) {
-        log('SKIP [SWING] ' + t.symbol + ' (RugCheck ' + rug.score + ' > ' + CFG.maxRugScore + ')');
-        SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'swing', lockedReason: 'rug_score' });
-        continue;
-      }
-      if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
+      if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); markHardLock(t.address, 'swing', 'rug_score', 'Rug ' + rug.score + ' > ' + CFG.maxRugScore); continue; }
+      if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); markHardLock(t.address, 'swing', 'rugcheck_insider', 'Insider ' + rug.insiderPct.toFixed(0) + '%'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
+      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); markRetry(t.address, 'swing', 'grade_skip', 'Grade SKIP'); continue; }
 
       // Mark sudah dinotif sebagai swing (update SEEN entry)
       const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now(), seenAt: Date.now() };
-      SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
+      SEEN.set(t.address, { firstSeen: existingEntry.firstSeen || Date.now(), seenAt: Date.now(), swingNotified: Date.now(), mode: 'swing' });
 
       log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
       let msgId = null;
@@ -2204,7 +2398,7 @@ async function processTokens() {
     log('[SIGNAL] GMGN Rug ' + t.symbol + ': ' + gmgnRugGateSignal.pct + '%');
     if (gmgnRugGateSignal.skip) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (' + gmgnRugGateSignal.reason + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'gmgn_rug_ratio' });
+      markRetry(t.address, 'signal', 'gmgn_rug_ratio', gmgnRugGateSignal.reason);
       continue;
     }
     var rugScore = gmgnRugGateSignal.pct;
