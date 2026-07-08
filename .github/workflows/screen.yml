@@ -51,6 +51,26 @@ jobs:
           MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
           MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
           AUTO_BUY_MIG_ENTRY_MODE: 'LOOSE'
+          MIG_PREPUMP_ENABLED: 'false'
+          MIG_EARLY_ENABLED: 'false'
+          MIG_PREPUMP_MAX_CHG1H: ${{ secrets.MIG_PREPUMP_MAX_CHG1H }}
+          MIG_PREPUMP_MAX_CHG24H: ${{ secrets.MIG_PREPUMP_MAX_CHG24H }}
+          MIG_PREPUMP_MIN_BUY_RATIO_5M: ${{ secrets.MIG_PREPUMP_MIN_BUY_RATIO_5M }}
+          MIG_PREPUMP_MAX_BUY_RATIO_5M: ${{ secrets.MIG_PREPUMP_MAX_BUY_RATIO_5M }}
+          MIG_PREPUMP_VOL5M_TO_1H_MIN: ${{ secrets.MIG_PREPUMP_VOL5M_TO_1H_MIN }}
+          MIG_PREPUMP_VOL5M_TO_1H_MAX: ${{ secrets.MIG_PREPUMP_VOL5M_TO_1H_MAX }}
+          MIG_PREPUMP_MIN_BUYS_5M: ${{ secrets.MIG_PREPUMP_MIN_BUYS_5M }}
+          MIG_PREPUMP_MIN_NET_BUYS_5M: ${{ secrets.MIG_PREPUMP_MIN_NET_BUYS_5M }}
+          MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT: ${{ secrets.MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT }}
+          MIG_EARLY_MIN_BUY_RATIO_5M: ${{ secrets.MIG_EARLY_MIN_BUY_RATIO_5M }}
+          MIG_EARLY_MAX_BUY_RATIO_5M: ${{ secrets.MIG_EARLY_MAX_BUY_RATIO_5M }}
+          MIG_EARLY_MAX_CHG1M: ${{ secrets.MIG_EARLY_MAX_CHG1M }}
+          MIG_EARLY_MAX_CHG5M: ${{ secrets.MIG_EARLY_MAX_CHG5M }}
+          MIG_EARLY_MAX_CHG1H: ${{ secrets.MIG_EARLY_MAX_CHG1H }}
+          MIG_EARLY_MIN_VOL5M_TO_1H: ${{ secrets.MIG_EARLY_MIN_VOL5M_TO_1H }}
+          MIG_EARLY_MAX_VOL5M_TO_1H: ${{ secrets.MIG_EARLY_MAX_VOL5M_TO_1H }}
+          MIG_EARLY_MIN_NET_BUYS_5M: ${{ secrets.MIG_EARLY_MIN_NET_BUYS_5M }}
+          MIG_EARLY_MIN_SWAPS_5M: ${{ secrets.MIG_EARLY_MIN_SWAPS_5M }}
           NOTIF_ONLY_AUTO: 'false'
       - name: Push JSON data to repo
         run: |
