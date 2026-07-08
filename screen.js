@@ -125,6 +125,7 @@ const CFG = {
   // Umum
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
   healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
+  autoSellCheckInterval: Number(process.env.AUTO_SELL_CHECK_INTERVAL) || Number(process.env.POLL_INTERVAL) || 60,
   seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
   // Default umum (dipakai sbg fallback kalau versi per-mode di bawah gak diset)
   autoBuyWaitEntryMaxMin: Number(process.env.AUTO_BUY_WAIT_ENTRY_MAX_MIN) || 30,
@@ -199,6 +200,8 @@ const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
 const SEEN    = new Map();
 const TRACKED = new Map();
 const TARGETS = [30, 50, 100, 200, 500];
+let latestTrackedTokens = [];
+let trackedLoopBusy = false;
 let boughtThisCycle = 0;
 let startTime = Date.now();
 let totalNotified = 0;
@@ -2440,10 +2443,8 @@ async function processTokens() {
   savePositions();
   cleanupSeen();
 
-  if (TRACKED.size > 0) {
-    await checkTrackedPositions(migrationTokens.concat(swingTokens));
-    savePositions();
-  }
+  latestTrackedTokens = migrationTokens.concat(swingTokens);
+  await runTrackedLoop();
   log('Cycle done. Total notified: ' + totalNotified);
 }
 
@@ -2756,7 +2757,14 @@ async function checkTrackedPositions(trendingTokens) {
         '\ud83d\udcb5 Entry Price  : ' + fmtPrice(pos.entryPrice) + '\n' +
         '\ud83d\udcca Current Price: ' + fmtPrice(currentPrice) + '\n' +
         '\ud83d\udcc8 Gain         : +' + gain.toFixed(1) + '%\n' +
-        profitLine +
+        (function() {
+          if (!pos.amountSol || !pos.tokenAmount) return '';
+          var solIn = pos.amountSol;
+          var solOut = solIn * (1 + gain / 100);
+          var solPnl = solOut - solIn;
+          return 'SOL Keluar: ' + solIn.toFixed(4) + ' -> Dapat: ' + solOut.toFixed(4) + ' SOL\n' +
+                 'PNL: <b>+' + solPnl.toFixed(4) + ' SOL</b>\n';
+        })() +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
         '\ud83d\udd17 <a href="https://dexscreener.com/solana/' + ca + '">Dex</a> | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>\n' +
         '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n' +
@@ -2787,6 +2795,19 @@ function doHealthCheck() {
 async function runLoop() {
   try { await processTokens(); } catch (e) { log('FATAL: ' + e.message); }
   setTimeout(runLoop, CFG.interval * 1000);
+}
+
+async function runTrackedLoop() {
+  if (trackedLoopBusy || TRACKED.size === 0) return;
+  trackedLoopBusy = true;
+  try {
+    await checkTrackedPositions(latestTrackedTokens);
+    savePositions();
+  } catch (e) {
+    log('[AUTOSELL] TRACK LOOP ERROR: ' + e.message);
+  } finally {
+    trackedLoopBusy = false;
+  }
 }
 
 process.on('SIGINT',  () => { log('Saving...'); saveSeen(); process.exit(0); });
@@ -2823,6 +2844,7 @@ log('  OutMarket=' + CFG.swingRequireOutMarket + ' | NotImageDup=' + CFG.swingRe
 log('[ Auto Sell ]');
 log('  Master: ' + (AUTO_SELL.ENABLED ? 'ON' : 'OFF') + ' | TP Mode: ' + AUTO_SELL.TP_MODE + ' | Cutloss: -' + AUTO_SELL.CUTLOSS_PCT + '%');
 log('  Fixed TP: +' + AUTO_SELL.FIXED_TP_PCT + '% | Trailing: start +' + AUTO_SELL.TRAILING_START_PCT + '% drop ' + AUTO_SELL.TRAILING_DROP_PCT + '%');
+log('  Check interval: ' + CFG.autoSellCheckInterval + 's (independent from screening loop)');
 if (CFG.signalEnabled) {
   log('[ Mode 3: Smart Money Signal ]');
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
@@ -2840,6 +2862,7 @@ if (process.env.CI === 'true') {
   processTokens().then(() => process.exit(0));
 } else {
   runLoop();
+  setInterval(() => { runTrackedLoop(); }, CFG.autoSellCheckInterval * 1000);
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
