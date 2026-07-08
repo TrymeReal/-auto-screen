@@ -37,8 +37,8 @@ const CFG = {
   minLp:           Number(process.env.MIN_LP)           || 15000,
   minMarketCap:    Number(process.env.MIN_MARKET_CAP)   || 20000,
   maxMarketCap:    process.env.MAX_MARKET_CAP !== undefined ? Number(process.env.MAX_MARKET_CAP) : 0,
-  minBuys:         Number(process.env.MIN_BUYS)         || 50,
-  minSells:        Number(process.env.MIN_SELLS)        || 25,
+  minBuys:         Number(process.env.MIN_BUYS)         || 40,
+  minSells:        Number(process.env.MIN_SELLS)        || 15,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 20,
   // GMGN dedicated rug_ratio (dari `gmgn-cli token security` / field rug_ratio yang udah kebawa
@@ -253,7 +253,7 @@ function normalizeEnvChoice(value, allowed, fallback) {
 }
 
 function normalizeMigEntryMode(value) {
-  var normalized = String(value || 'TIGHT').trim().toUpperCase();
+  var normalized = String(value || 'LOOSE').trim().toUpperCase();
   if (normalized === 'SIGNAL') return 'LOOSE';
   if (normalized === 'FIB') return 'TIGHT';
   return ['LOOSE', 'TIGHT'].includes(normalized) ? normalized : 'TIGHT';
