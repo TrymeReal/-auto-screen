@@ -2693,9 +2693,9 @@ async function checkTrackedPositions(trendingTokens) {
       var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
       log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
       logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
-      var stopThread = pos.autoBuyMsgId
-        ? CFG.tgThreadAuto
-        : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
+      var stopThread = pos.mode === 'SWING'
+        ? (pos.threadId || CFG.tgThreadId)
+        : (pos.autoBuyMsgId ? CFG.tgThreadAuto : (pos.threadId || CFG.tgThreadMig));
       try {
         await sendTelegram(
           '\u2694\ufe0f <b>GAMESME2HUB AUTOMASI</b> \u2694\ufe0f\n' +
@@ -2738,9 +2738,9 @@ async function checkTrackedPositions(trendingTokens) {
       var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🟢' : pos.grade === 'SILVER' ? '🟡' : '🔴';
       var riskLabel = pos.grade === 'PLATINUM' ? 'Grade A+' : pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'SILVER' ? 'Grade B' : 'Grade C';
       var styleLabel = targetEmoji + ' ' + modeLabel + ' | ' + gradeEmoji + ' ' + riskLabel;
-      var targetThread = pos.autoBuyMsgId
-        ? CFG.tgThreadAuto
-        : (pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig));
+      var targetThread = pos.mode === 'SWING'
+        ? (pos.threadId || CFG.tgThreadId)
+        : (pos.autoBuyMsgId ? CFG.tgThreadAuto : (pos.threadId || CFG.tgThreadMig));
 
       // Estimasi profit SOL — hanya tersedia kalau posisi ini hasil autobuy (punya amountSol & tokenAmount)
       // Format disamakan dengan notif Trailing TP / Cutloss: baris "SOL Keluar → Dapat" + baris "PNL" terpisah
