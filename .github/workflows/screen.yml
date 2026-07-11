@@ -30,40 +30,54 @@ jobs:
       - run: node screen.js
         env:
           CI: 'false'
+          POLL_INTERVAL: ${{ secrets.POLL_INTERVAL }}
+          HEALTH_INTERVAL: ${{ secrets.HEALTH_INTERVAL }}
+          AUTO_SELL_CHECK_INTERVAL: ${{ secrets.AUTO_SELL_CHECK_INTERVAL }}
+          SEEN_CLEANUP_DAYS: ${{ secrets.SEEN_CLEANUP_DAYS }}
+          MIG_RETRY_MINUTES: ${{ secrets.MIG_RETRY_MINUTES }}
+          MIG_RETRY_MAX: ${{ secrets.MIG_RETRY_MAX }}
+          SWING_RETRY_MINUTES: ${{ secrets.SWING_RETRY_MINUTES }}
+          SWING_RETRY_MAX: ${{ secrets.SWING_RETRY_MAX }}
+          RISK_RETRY_MINUTES: ${{ secrets.RISK_RETRY_MINUTES }}
+          RISK_RETRY_MAX: ${{ secrets.RISK_RETRY_MAX }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
           TG_THREAD_MIG: ${{ secrets.TG_THREAD_MIG }}
           TG_THREAD_ENTRY: ${{ secrets.TG_THREAD_ENTRY }}
           TG_THREAD_SIGNAL: ${{ secrets.TG_THREAD_SIGNAL }}
+          TG_THREAD_AUTO: ${{ secrets.TG_THREAD_AUTO }}
+          TELEGRAM_NOTIFICATIONS_ENABLED: ${{ secrets.TELEGRAM_NOTIFICATIONS_ENABLED }}
           SIGNAL_ENABLED: ${{ secrets.SIGNAL_ENABLED }}
+          SIGNAL_MIN_LIQ: ${{ secrets.SIGNAL_MIN_LIQ }}
+          SIGNAL_MIN_HOLDERS: ${{ secrets.SIGNAL_MIN_HOLDERS }}
+          SIGNAL_MAX_MC: ${{ secrets.SIGNAL_MAX_MC }}
+          SIGNAL_MAX_TOP10: ${{ secrets.SIGNAL_MAX_TOP10 }}
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
-          RADAR_BRIDGE_URL: ${{ secrets.RADAR_BRIDGE_URL }}
-          RADAR_BRIDGE_SECRET: ${{ secrets.RADAR_BRIDGE_SECRET }}
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_MARKET_CAP: ${{ secrets.MIN_MARKET_CAP }}
           MAX_MARKET_CAP: ${{ secrets.MAX_MARKET_CAP }}
           MIN_BUYS: ${{ secrets.MIN_BUYS }}
           MIN_SELLS: ${{ secrets.MIN_SELLS }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
+          MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
+          MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
           MAX_RUG_SCORE: ${{ secrets.MAX_RUG_SCORE }}
           GMGN_RUG_MAX_RATIO: ${{ secrets.GMGN_RUG_MAX_RATIO }}
           MIN_BUY_RATIO: ${{ secrets.MIN_BUY_RATIO }}
-          MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
           MAX_BUNDLER_PCT: ${{ secrets.MAX_BUNDLER_PCT }}
           MAX_TOP10_HOLDERS: ${{ secrets.MAX_TOP10_HOLDERS }}
+          MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
           MAX_DEV_HOLD: ${{ secrets.MAX_DEV_HOLD }}
           MAX_PHISHING_PCT: ${{ secrets.MAX_PHISHING_PCT }}
           MAX_SNIPER_PCT: ${{ secrets.MAX_SNIPER_PCT }}
           MAX_VOL_LP_RATIO: ${{ secrets.MAX_VOL_LP_RATIO }}
-          MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
-          MIN_SWAPS_5M: ${{ secrets.MIN_SWAPS_5M }}
-          MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
-          AUTO_BUY_MIG_ENTRY_MODE: ${{ secrets.AUTO_BUY_MIG_ENTRY_MODE }}
+          MAX_CREATOR_TOKENS: ${{ secrets.MAX_CREATOR_TOKENS }}
+          MIG_REQUIRE_NOT_WASH_TRADING: ${{ secrets.MIG_REQUIRE_NOT_WASH_TRADING }}
+          MIG_REQUIRE_NO_SUSPECTED_INSIDER: ${{ secrets.MIG_REQUIRE_NO_SUSPECTED_INSIDER }}
           MIG_PREPUMP_ENABLED: ${{ secrets.MIG_PREPUMP_ENABLED }}
-          MIG_EARLY_ENABLED: ${{ secrets.MIG_EARLY_ENABLED }}
           MIG_PREPUMP_MAX_CHG1H: ${{ secrets.MIG_PREPUMP_MAX_CHG1H }}
           MIG_PREPUMP_MAX_CHG24H: ${{ secrets.MIG_PREPUMP_MAX_CHG24H }}
           MIG_PREPUMP_MIN_BUY_RATIO_5M: ${{ secrets.MIG_PREPUMP_MIN_BUY_RATIO_5M }}
@@ -73,6 +87,7 @@ jobs:
           MIG_PREPUMP_MIN_BUYS_5M: ${{ secrets.MIG_PREPUMP_MIN_BUYS_5M }}
           MIG_PREPUMP_MIN_NET_BUYS_5M: ${{ secrets.MIG_PREPUMP_MIN_NET_BUYS_5M }}
           MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT: ${{ secrets.MIG_PREPUMP_MIN_SWAP_TO_LIQ_PCT }}
+          MIG_EARLY_ENABLED: ${{ secrets.MIG_EARLY_ENABLED }}
           MIG_EARLY_MIN_BUY_RATIO_5M: ${{ secrets.MIG_EARLY_MIN_BUY_RATIO_5M }}
           MIG_EARLY_MAX_BUY_RATIO_5M: ${{ secrets.MIG_EARLY_MAX_BUY_RATIO_5M }}
           MIG_EARLY_MAX_CHG1M: ${{ secrets.MIG_EARLY_MAX_CHG1M }}
@@ -82,36 +97,49 @@ jobs:
           MIG_EARLY_MAX_VOL5M_TO_1H: ${{ secrets.MIG_EARLY_MAX_VOL5M_TO_1H }}
           MIG_EARLY_MIN_NET_BUYS_5M: ${{ secrets.MIG_EARLY_MIN_NET_BUYS_5M }}
           MIG_EARLY_MIN_SWAPS_5M: ${{ secrets.MIG_EARLY_MIN_SWAPS_5M }}
-          AUTO_BUY_MIG_TIGHT_FIB_UPPER: ${{ secrets.AUTO_BUY_MIG_TIGHT_FIB_UPPER }}
-          AUTO_BUY_MIG_TIGHT_FIB_LOWER: ${{ secrets.AUTO_BUY_MIG_TIGHT_FIB_LOWER }}
-          AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO: ${{ secrets.AUTO_BUY_MIG_TIGHT_MIN_BUY_RATIO }}
-          AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM: ${{ secrets.AUTO_BUY_MIG_TIGHT_REQUIRE_MOMENTUM }}
-          AUTO_BUY_SWING_ENTRY_MODE: ${{ secrets.AUTO_BUY_SWING_ENTRY_MODE }}
-          SWING_MIN_AGE_H: ${{ secrets.SWING_MIN_AGE_H }}
-          SWING_MAX_AGE_H: ${{ secrets.SWING_MAX_AGE_H }}
+          MIG_MIN_AGE_MIN: ${{ secrets.MIG_MIN_AGE_MIN }}
+          MIG_MAX_AGE_H: ${{ secrets.MIG_MAX_AGE_H }}
           SWING_MIN_LP: ${{ secrets.SWING_MIN_LP }}
           SWING_MIN_MARKET_CAP: ${{ secrets.SWING_MIN_MARKET_CAP }}
           SWING_MAX_MARKET_CAP: ${{ secrets.SWING_MAX_MARKET_CAP }}
-          SWING_MIN_HOLDERS: ${{ secrets.SWING_MIN_HOLDERS }}
-          SWING_MAX_TOP10_HOLDERS: ${{ secrets.SWING_MAX_TOP10_HOLDERS }}
-          SWING_MAX_DEV_HOLD: ${{ secrets.SWING_MAX_DEV_HOLD }}
-          SWING_MAX_INSIDER_PCT: ${{ secrets.SWING_MAX_INSIDER_PCT }}
-          SWING_MAX_BUNDLER_PCT: ${{ secrets.SWING_MAX_BUNDLER_PCT }}
-          SWING_MAX_PHISHING_PCT: ${{ secrets.SWING_MAX_PHISHING_PCT }}
-          SWING_MAX_SNIPER_PCT: ${{ secrets.SWING_MAX_SNIPER_PCT }}
           SWING_MIN_VOL24H: ${{ secrets.SWING_MIN_VOL24H }}
           SWING_MAX_CHG1H: ${{ secrets.SWING_MAX_CHG1H }}
           SWING_MAX_CHG24H: ${{ secrets.SWING_MAX_CHG24H }}
+          SWING_VOL_SPIKE: ${{ secrets.SWING_VOL_SPIKE }}
+          SWING_MIN_HOLDERS: ${{ secrets.SWING_MIN_HOLDERS }}
+          SWING_MIN_AGE_H: ${{ secrets.SWING_MIN_AGE_H }}
+          SWING_MAX_AGE_H: ${{ secrets.SWING_MAX_AGE_H }}
+          SWING_MAX_TOP10_HOLDERS: ${{ secrets.SWING_MAX_TOP10_HOLDERS }}
+          SWING_MAX_INSIDER_PCT: ${{ secrets.SWING_MAX_INSIDER_PCT }}
+          SWING_MAX_DEV_HOLD: ${{ secrets.SWING_MAX_DEV_HOLD }}
+          SWING_MAX_BUNDLER_PCT: ${{ secrets.SWING_MAX_BUNDLER_PCT }}
+          SWING_MAX_PHISHING_PCT: ${{ secrets.SWING_MAX_PHISHING_PCT }}
+          SWING_MAX_SNIPER_PCT: ${{ secrets.SWING_MAX_SNIPER_PCT }}
           SWING_MIN_VISITING_COUNT: ${{ secrets.SWING_MIN_VISITING_COUNT }}
           SWING_REQUIRE_OUT_MARKET: ${{ secrets.SWING_REQUIRE_OUT_MARKET }}
           SWING_REQUIRE_NOT_IMAGE_DUP: ${{ secrets.SWING_REQUIRE_NOT_IMAGE_DUP }}
           SWING_REQUIRE_NOT_WASH_TRADING: ${{ secrets.SWING_REQUIRE_NOT_WASH_TRADING }}
-          MIG_RETRY_MINUTES: ${{ secrets.MIG_RETRY_MINUTES }}
-          MIG_RETRY_MAX: ${{ secrets.MIG_RETRY_MAX }}
-          SWING_RETRY_MINUTES: ${{ secrets.SWING_RETRY_MINUTES }}
-          SWING_RETRY_MAX: ${{ secrets.SWING_RETRY_MAX }}
-          RISK_RETRY_MINUTES: ${{ secrets.RISK_RETRY_MINUTES }}
-          RISK_RETRY_MAX: ${{ secrets.RISK_RETRY_MAX }}
+          AUTO_BUY_ENABLED: ${{ secrets.AUTO_BUY_ENABLED }}
+          AUTO_BUY_DRY_RUN: ${{ secrets.AUTO_BUY_DRY_RUN }}
+          AUTO_BUY_AMOUNT: ${{ secrets.AUTO_BUY_AMOUNT }}
+          AUTO_BUY_MAX_PER: ${{ secrets.AUTO_BUY_MAX_PER }}
+          AUTO_BUY_SLIPPAGE: ${{ secrets.AUTO_BUY_SLIPPAGE }}
+          AUTO_BUY_GRADE: ${{ secrets.AUTO_BUY_GRADE }}
+          AUTO_BUY_MODES: ${{ secrets.AUTO_BUY_MODES }}
+          AUTO_BUY_WAIT_ENTRY_MAX_MIN: ${{ secrets.AUTO_BUY_WAIT_ENTRY_MAX_MIN }}
+          AUTO_BUY_WAIT_ENTRY_MAX_MIN_MIG: ${{ secrets.AUTO_BUY_WAIT_ENTRY_MAX_MIN_MIG }}
+          AUTO_BUY_WAIT_ENTRY_MAX_MIN_SWING: ${{ secrets.AUTO_BUY_WAIT_ENTRY_MAX_MIN_SWING }}
+          AUTO_BUY_MIG_ENTRY_MODE: 'LOOSE'
+          AUTO_BUY_SWING_ENTRY_MODE: ${{ secrets.AUTO_BUY_SWING_ENTRY_MODE }}
+          AUTO_SELL_ENABLED: ${{ secrets.AUTO_SELL_ENABLED }}
+          AUTO_SELL_TP_MODE: ${{ secrets.AUTO_SELL_TP_MODE }}
+          AUTO_SELL_FIXED_TP_PCT: ${{ secrets.AUTO_SELL_FIXED_TP_PCT }}
+          AUTO_SELL_SIGNAL_TP_PCT: ${{ secrets.AUTO_SELL_SIGNAL_TP_PCT }}
+          AUTO_SELL_CUTLOSS_PCT: ${{ secrets.AUTO_SELL_CUTLOSS_PCT }}
+          AUTO_SELL_TRAILING_START_PCT: ${{ secrets.AUTO_SELL_TRAILING_START_PCT }}
+          AUTO_SELL_TP_PCT: ${{ secrets.AUTO_SELL_TP_PCT }}
+          AUTO_SELL_TRAILING_DROP_PCT: ${{ secrets.AUTO_SELL_TRAILING_DROP_PCT }}
+          AUTO_SELL_SLIPPAGE: ${{ secrets.AUTO_SELL_SLIPPAGE }}
           NOTIF_ONLY_AUTO: 'false'
       - name: Push JSON data to repo
         run: |
