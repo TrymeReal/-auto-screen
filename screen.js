@@ -1335,7 +1335,7 @@ async function checkTrackedPositions(trendingTokens) {
         + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
         + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
         + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        null,
+        pos.msgId,
         safeThread
       );
       continue;
@@ -1355,7 +1355,7 @@ async function checkTrackedPositions(trendingTokens) {
         + 'Loss: <b>' + gain.toFixed(1) + '%</b>\n'
         + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
         + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        null,
+        pos.msgId,
         safeThread
       );
       continue;
@@ -1374,7 +1374,7 @@ async function checkTrackedPositions(trendingTokens) {
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
         + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        null,
+        pos.msgId,
         safeThread
       );
       continue;
@@ -1400,7 +1400,7 @@ async function checkTrackedPositions(trendingTokens) {
         + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
         + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
         + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        null,
+        pos.msgId,
         safeThread
       );
       pos.nextTargetIdx = highestIdx + 1;
