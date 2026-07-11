@@ -900,8 +900,8 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
 
   var nar        = detectNarrative(t.name, t.symbol);
   var modeLabel  = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
-  var gradeEmoji = grade === 'PLATINUM' ? '💎' : grade === 'GOLD' ? '🟢' : grade === 'SILVER' ? '🟡' : '🔴';
-  var riskLabel  = grade === 'PLATINUM' ? 'Grade A+' : grade === 'GOLD' ? 'Grade A' : grade === 'SILVER' ? 'Grade B' : 'Grade C';
+  var gradeEmoji = grade === 'PLATINUM' ? '💎' : grade === 'GOLD' ? '🥇' : grade === 'SILVER' ? '🥈' : '🔴';
+  var riskLabel  = grade === 'PLATINUM' ? 'PLATINUM' : grade === 'GOLD' ? 'GOLD' : grade === 'SILVER' ? 'SILVER' : 'SKIP';
 
   var msg = '';
   msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + modeLabel + ' | ' + nar.category + '\n';
@@ -1316,8 +1316,8 @@ async function checkTrackedPositions(trendingTokens) {
       log(pos.symbol + ' auto sell TP +' + CFG.autoSellTpPct + '%');
       logTrackingEvent({ type: 'AUTOSELL_TP', ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
-      var tpGradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🟢' : pos.grade === 'SILVER' ? '🟡' : '🔴';
-      var tpRiskLabel  = pos.grade === 'PLATINUM' ? 'Grade A+' : pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'SILVER' ? 'Grade B' : 'Grade C';
+      var tpGradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
+      var tpRiskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
       await sendTelegram(
         tpGradeEmoji + ' ' + tpRiskLabel + ' | ' + modeLabel + ' | <b>✅ AUTOSELL TP +' + CFG.autoSellTpPct + '%</b>\n'
         + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
@@ -1336,8 +1336,8 @@ async function checkTrackedPositions(trendingTokens) {
       log(pos.symbol + ' auto sell cutloss -' + CFG.autoSellCutlossPct + '%');
       logTrackingEvent({ type: 'AUTOSELL_CUTLOSS', ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
-      var clGradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🟢' : pos.grade === 'SILVER' ? '🟡' : '🔴';
-      var clRiskLabel  = pos.grade === 'PLATINUM' ? 'Grade A+' : pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'SILVER' ? 'Grade B' : 'Grade C';
+      var clGradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
+      var clRiskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
       await sendTelegram(
         clGradeEmoji + ' ' + clRiskLabel + ' | ' + modeLabel + ' | <b>🔻 AUTOSELL CUTLOSS -' + CFG.autoSellCutlossPct + '%</b>\n'
         + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
@@ -1359,8 +1359,8 @@ async function checkTrackedPositions(trendingTokens) {
       log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
       logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
       toRemove.push(ca);
-      var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🟢' : pos.grade === 'SILVER' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'PLATINUM' ? 'Grade A+' : pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'SILVER' ? 'Grade B' : 'Grade C';
+      var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
+      var riskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
@@ -1380,8 +1380,8 @@ async function checkTrackedPositions(trendingTokens) {
       var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
       log(pos.symbol + ' hit target +' + target + '%');
       logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
-      var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🟢' : pos.grade === 'SILVER' ? '🟡' : '🔴';
-      var riskLabel  = pos.grade === 'PLATINUM' ? 'Grade A+' : pos.grade === 'GOLD' ? 'Grade A' : pos.grade === 'SILVER' ? 'Grade B' : 'Grade C';
+      var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
+      var riskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
       var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
