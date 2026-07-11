@@ -19,6 +19,26 @@ function checkDevHoldRate(rate, maxDevHold) {
   return { skip: false, reason: '' };
 }
 
+function checkPriceChange1h(change, maxChange) {
+  if (change == null || maxChange == null) return { skip: false, reason: '' };
+  var pct = Number(change);
+  if (!Number.isFinite(pct)) return { skip: false, reason: '' };
+  if (pct > maxChange) {
+    return { skip: true, reason: 'Harga sudah naik ' + pct.toFixed(0) + '% dalam 1 jam (max ' + maxChange + '%)' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkMinHolders(holderCount, minHolders) {
+  if (holderCount == null || minHolders == null) return { skip: false, reason: '' };
+  var count = Number(holderCount);
+  if (!Number.isFinite(count)) return { skip: false, reason: '' };
+  if (count < minHolders) {
+    return { skip: true, reason: 'Holder terlalu sedikit (' + count + ' < ' + minHolders + ')' };
+  }
+  return { skip: false, reason: '' };
+}
+
 function checkSniperRate(sniperRate, maxSniperPct) {
   if (sniperRate == null) return { skip: false, reason: '' };
   var pct = asPct(sniperRate);
@@ -110,6 +130,41 @@ function collectMigrationHardRiskReasons(token, cfg) {
   return reasons;
 }
 
+function shouldSkipMigration(token, cfg) {
+  var t = token || {};
+
+  var totalTxn = Number(t.buys || 0) + Number(t.sells || 0);
+  var buyPct = totalTxn > 0 ? (Number(t.buys || 0) / totalTxn) * 100 : 0;
+  if (totalTxn > 0 && cfg && cfg.minBuyRatio != null && buyPct < cfg.minBuyRatio) {
+    return { skip: true, reason: 'Buy ratio ' + buyPct.toFixed(0) + '% < ' + cfg.minBuyRatio + '%' };
+  }
+
+  if (cfg && cfg.minVol != null && (Number(t.volume) || 0) < cfg.minVol) {
+    return { skip: true, reason: 'Volume $' + (Number(t.volume) || 0) + ' < $' + cfg.minVol };
+  }
+
+  if (cfg && cfg.minLp != null && (Number(t.liquidity) || 0) < cfg.minLp) {
+    return { skip: true, reason: 'LP $' + (Number(t.liquidity) || 0) + ' < $' + cfg.minLp };
+  }
+
+  var reasons = collectMigrationHardRiskReasons(t, cfg || {});
+  if (reasons.length > 0) return { skip: true, reason: reasons[0] };
+
+  var priceChg = checkPriceChange1h(t.price_change_percent1h, cfg && cfg.maxPriceChange1h);
+  if (priceChg.skip) return priceChg;
+
+  var holders = checkMinHolders(t.holder_count, cfg && cfg.minHolders);
+  if (holders.skip) return holders;
+
+  return { skip: false, reason: '' };
+}
+
+function shouldSkipMigrationHardRisk(token, cfg) {
+  var reasons = collectMigrationHardRiskReasons(token || {}, cfg || {});
+  if (reasons.length > 0) return { skip: true, reason: reasons[0] };
+  return { skip: false, reason: '' };
+}
+
 // ─────────────────────────────────────────────
 //  NEW MIGRATION V2 — base gates
 // ─────────────────────────────────────────────
@@ -118,6 +173,23 @@ function checkBaseLiquidity(lp, minLp) {
   var val = Number(lp) || 0;
   if (val < minLp) {
     return { skip: true, reason: 'LP $' + fmtNum(val) + ' < $' + minLp };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkBaseAgeHours(creationTimestamp, maxHours) {
+  if (!creationTimestamp) {
+    return { skip: true, reason: 'Tidak ada data creation time' };
+  }
+  if (maxHours == null || Number(maxHours) <= 0) {
+    return { skip: false, reason: '' };
+  }
+  var ageHours = (Date.now() - Number(creationTimestamp) * 1000) / 3600000;
+  if (!Number.isFinite(ageHours)) {
+    return { skip: true, reason: 'Tidak ada data creation time' };
+  }
+  if (ageHours >= maxHours) {
+    return { skip: true, reason: 'Token sudah ' + ageHours.toFixed(0) + 'j (max ' + maxHours + 'j)' };
   }
   return { skip: false, reason: '' };
 }
@@ -153,16 +225,45 @@ function fmtNum(n) {
   return Number(n).toFixed(0);
 }
 
+function shouldSkipNewMigration(token, tokenInfo, cfg) {
+  var t = token || {};
+  var info = tokenInfo || {};
+  var price = info.price || {};
+
+  var lp = checkBaseLiquidity(t.liquidity, cfg && cfg.minLp);
+  if (lp.skip) return lp;
+
+  var age = checkBaseAgeHours(t.creation_timestamp, cfg && cfg.maxAgeHours);
+  if (age.skip) return age;
+
+  var vol1h = checkVol1h(price.volume_1h, cfg && cfg.minVol1h);
+  if (vol1h.skip) return vol1h;
+
+  var swaps5m = checkSwaps5m(price.swaps_5m, cfg && cfg.minSwaps5m);
+  if (swaps5m.skip) return swaps5m;
+
+  var vol5m = checkVol5m(price.volume_5m, cfg && cfg.minVol5m);
+  if (vol5m.skip) return vol5m;
+
+  return { skip: false, reason: '' };
+}
+
 module.exports = {
   checkDevHoldRate,
+  checkPriceChange1h,
+  checkMinHolders,
   checkSniperRate,
   checkVolLpRatio,
   checkRugRatio,
   checkInsiderRate,
   checkPhishingRate,
+  shouldSkipMigration,
   collectMigrationHardRiskReasons,
+  shouldSkipMigrationHardRisk,
   checkBaseLiquidity,
+  checkBaseAgeHours,
   checkVol1h,
   checkSwaps5m,
   checkVol5m,
+  shouldSkipNewMigration,
 };
