@@ -25,7 +25,11 @@ const CFG = {
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 5000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
-  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
+  // Sekarang pakai skala score_normalised RugCheck (0-100, makin RENDAH makin
+  // aman). Default 30 = ambang batas kategori "Good" versi RugCheck.
+  // Catatan: dulu field ini dibandingkan ke rug.score (raw score, skalanya bisa
+  // ribuan/puluhan-ribu bahkan utk token legit) — jadi longgar tanpa disadari.
+  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 30,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
   // New Migration extra gates
@@ -1127,8 +1131,10 @@ async function processTokens() {
     // RugCheck — filter identik dengan Swing 1D
     log('[MIG] Cek RugCheck ' + t.symbol + '...');
     const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-    if (rug.score > CFG.maxRugScore) {
-      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+    // scoreNormalised: -1 berarti data invalid/fetch gagal → treat sebagai gagal,
+    // bukan otomatis lolos (karena -1 > CFG.maxRugScore selalu false).
+    if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.maxRugScore) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.maxRugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
       continue;
     }
@@ -1180,7 +1186,10 @@ async function processTokens() {
 
     try {
       const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-      if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
+      if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.maxRugScore) {
+        log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ')');
+        continue;
+      }
       if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
