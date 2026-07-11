@@ -75,8 +75,9 @@
   /* TOKEN ROWS (flat, no card) */
   .tc{padding:5px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;border-left:2px solid transparent;position:relative}
   .tc:hover{background:rgba(255,255,255,0.025)}
-  .tc.gold{border-left-color:var(--green-b)}
-  .tc.pot{border-left-color:var(--yellow-b)}
+  .tc.platinum{border-left-color:var(--blue)}
+  .tc.gold{border-left-color:#facc15}
+  .tc.silver{border-left-color:#cbd5e1}
   .tc.sig{border-left-color:var(--purple)}
   .tc.oth{border-left-color:var(--muted)}
 
@@ -85,8 +86,9 @@
   .ts{font-size:9px;color:var(--muted);margin-top:1px}
 
   .gb{padding:0px 4px;border-radius:3px;font-size:8px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
-  .gGOLD{background:var(--green-d);color:var(--green-b);border:1px solid rgba(34,197,94,.2)}
-  .gPOT{background:var(--yellow-d);color:var(--yellow-b);border:1px solid rgba(234,179,8,.2)}
+  .gPLATINUM{background:var(--blue-d);color:var(--blue);border:1px solid rgba(14,165,233,.2)}
+  .gGOLD{background:rgba(250,204,21,.12);color:#facc15;border:1px solid rgba(250,204,21,.22)}
+  .gSILVER{background:rgba(203,213,225,.12);color:#cbd5e1;border:1px solid rgba(203,213,225,.22)}
   .gSKIP{background:var(--red-d);color:var(--red-b);border:1px solid rgba(239,68,68,.2)}
   .gSIG{background:var(--purple-d);color:var(--purple);border:1px solid rgba(139,92,246,.2)}
   .gSEEN{background:var(--blue-d);color:var(--blue);border:1px solid rgba(14,165,233,.2)}
@@ -277,15 +279,15 @@ function modeLabel(mode) {
 }
 
 function gradeClass(g) {
-  if (g === 'PLATINUM') return 'gold';
+  if (g === 'PLATINUM') return 'platinum';
   if (g === 'GOLD') return 'gold';
-  if (g === 'SILVER') return 'pot';
+  if (g === 'SILVER') return 'silver';
   if (g === 'SIGNAL') return 'sig';
   return 'oth';
 }
 
 function gradeBadge(g) {
-  const map = { PLATINUM:'gGOLD', GOLD:'gGOLD', SILVER:'gPOT', SKIP:'gSKIP', SIGNAL:'gSIG', SEEN:'gSEEN' };
+  const map = { PLATINUM:'gPLATINUM', GOLD:'gGOLD', SILVER:'gSILVER', SKIP:'gSKIP', SIGNAL:'gSIG', SEEN:'gSEEN' };
   const cls = map[g] || 'gSKIP';
   const lbl = g || '?';
   return `<span class="gb ${cls}">${lbl}</span>`;
