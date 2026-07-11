@@ -277,16 +277,17 @@ function modeLabel(mode) {
 }
 
 function gradeClass(g) {
+  if (g === 'PLATINUM') return 'gold';
   if (g === 'GOLD') return 'gold';
-  if (g === 'POTENSIAL' || g === 'POT') return 'pot';
+  if (g === 'SILVER') return 'pot';
   if (g === 'SIGNAL') return 'sig';
   return 'oth';
 }
 
 function gradeBadge(g) {
-  const map = { GOLD:'gGOLD', POTENSIAL:'gPOT', SKIP:'gSKIP', SIGNAL:'gSIG', SEEN:'gSEEN', POT:'gPOT' };
+  const map = { PLATINUM:'gGOLD', GOLD:'gGOLD', SILVER:'gPOT', SKIP:'gSKIP', SIGNAL:'gSIG', SEEN:'gSEEN' };
   const cls = map[g] || 'gSKIP';
-  const lbl = g === 'POTENSIAL' ? 'POT' : (g || '?');
+  const lbl = g || '?';
   return `<span class="gb ${cls}">${lbl}</span>`;
 }
 
