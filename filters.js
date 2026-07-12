@@ -88,6 +88,28 @@ function checkPhishingRate(rate, maxPhishingPct) {
   return { skip: false, reason: '' };
 }
 
+// Cek minimal 1 social media terisi (Twitter/Telegram/Website). String kosong
+// atau placeholder umum ('-', 'n/a', 'none') dianggap tidak ada.
+function hasValidLink(v) {
+  if (v == null) return false;
+  var s = String(v).trim();
+  if (s === '') return false;
+  if (/^(-|n\/a|na|none|null)$/i.test(s)) return false;
+  return true;
+}
+
+function checkHasSocial(token, requireSocial) {
+  if (!requireSocial) return { skip: false, reason: '' };
+  var t = token || {};
+  var hasTwitter = hasValidLink(t.twitter_username);
+  var hasTelegram = hasValidLink(t.telegram);
+  var hasWebsite = hasValidLink(t.website);
+  if (!hasTwitter && !hasTelegram && !hasWebsite) {
+    return { skip: true, reason: 'Tidak ada social media (Twitter/Telegram/Website)' };
+  }
+  return { skip: false, reason: '' };
+}
+
 function collectMigrationHardRiskReasons(token, cfg) {
   var t = token;
   var reasons = [];
@@ -111,7 +133,7 @@ function collectMigrationHardRiskReasons(token, cfg) {
   var volLp = checkVolLpRatio(t.volume, t.liquidity, cfg.maxVolLpRatio);
   if (volLp.skip) reasons.push(volLp.reason);
 
-  var rug = checkRugRatio(t.rug_ratio, cfg.maxRugScore);
+  var rug = checkRugRatio(t.rug_ratio, cfg.gmgnRugMaxRatio);
   if (rug.skip) reasons.push(rug.reason);
 
   var insider = checkInsiderRate(t.suspected_insider_hold_rate, cfg.maxInsiderPct);
@@ -132,29 +154,33 @@ function collectMigrationHardRiskReasons(token, cfg) {
 
 function shouldSkipMigration(token, cfg) {
   var t = token || {};
+  var c = cfg || {};
 
   var totalTxn = Number(t.buys || 0) + Number(t.sells || 0);
   var buyPct = totalTxn > 0 ? (Number(t.buys || 0) / totalTxn) * 100 : 0;
-  if (totalTxn > 0 && cfg && cfg.minBuyRatio != null && buyPct < cfg.minBuyRatio) {
-    return { skip: true, reason: 'Buy ratio ' + buyPct.toFixed(0) + '% < ' + cfg.minBuyRatio + '%' };
+  if (totalTxn > 0 && c.minBuyRatio != null && buyPct < c.minBuyRatio) {
+    return { skip: true, reason: 'Buy ratio ' + buyPct.toFixed(0) + '% < ' + c.minBuyRatio + '%' };
   }
 
-  if (cfg && cfg.minVol != null && (Number(t.volume) || 0) < cfg.minVol) {
-    return { skip: true, reason: 'Volume $' + (Number(t.volume) || 0) + ' < $' + cfg.minVol };
+  if (c.minVol != null && (Number(t.volume) || 0) < c.minVol) {
+    return { skip: true, reason: 'Volume $' + (Number(t.volume) || 0) + ' < $' + c.minVol };
   }
 
-  if (cfg && cfg.minLp != null && (Number(t.liquidity) || 0) < cfg.minLp) {
-    return { skip: true, reason: 'LP $' + (Number(t.liquidity) || 0) + ' < $' + cfg.minLp };
+  if (c.minLp != null && (Number(t.liquidity) || 0) < c.minLp) {
+    return { skip: true, reason: 'LP $' + (Number(t.liquidity) || 0) + ' < $' + c.minLp };
   }
 
-  var reasons = collectMigrationHardRiskReasons(t, cfg || {});
+  var reasons = collectMigrationHardRiskReasons(t, c);
   if (reasons.length > 0) return { skip: true, reason: reasons[0] };
 
-  var priceChg = checkPriceChange1h(t.price_change_percent1h, cfg && cfg.maxPriceChange1h);
+  var priceChg = checkPriceChange1h(t.price_change_percent1h, c.maxPriceChange1h);
   if (priceChg.skip) return priceChg;
 
-  var holders = checkMinHolders(t.holder_count, cfg && cfg.minHolders);
+  var holders = checkMinHolders(t.holder_count, c.minHolders);
   if (holders.skip) return holders;
+
+  var social = checkHasSocial(t, c.requireSocial);
+  if (social.skip) return social;
 
   return { skip: false, reason: '' };
 }
@@ -229,21 +255,36 @@ function shouldSkipNewMigration(token, tokenInfo, cfg) {
   var t = token || {};
   var info = tokenInfo || {};
   var price = info.price || {};
+  var c = cfg || {};
 
-  var lp = checkBaseLiquidity(t.liquidity, cfg && cfg.minLp);
+  var lp = checkBaseLiquidity(t.liquidity, c.minLp);
   if (lp.skip) return lp;
 
-  var age = checkBaseAgeHours(t.creation_timestamp, cfg && cfg.maxAgeHours);
+  var age = checkBaseAgeHours(t.creation_timestamp, c.maxAgeHours);
   if (age.skip) return age;
 
-  var vol1h = checkVol1h(price.volume_1h, cfg && cfg.minVol1h);
+  var vol1h = checkVol1h(price.volume_1h, c.minVol1h);
   if (vol1h.skip) return vol1h;
 
-  var swaps5m = checkSwaps5m(price.swaps_5m, cfg && cfg.minSwaps5m);
+  var swaps5m = checkSwaps5m(price.swaps_5m, c.minSwaps5m);
   if (swaps5m.skip) return swaps5m;
 
-  var vol5m = checkVol5m(price.volume_5m, cfg && cfg.minVol5m);
+  var vol5m = checkVol5m(price.volume_5m, c.minVol5m);
   if (vol5m.skip) return vol5m;
+
+  // Gate yang sebelumnya cuma di-log ke console tapi tidak pernah benar-benar
+  // menyaring token. Sekarang dijalankan lewat collectMigrationHardRiskReasons().
+  var hardRisk = collectMigrationHardRiskReasons(t, c);
+  if (hardRisk.length > 0) return { skip: true, reason: hardRisk[0] };
+
+  var priceChg = checkPriceChange1h(t.price_change_percent1h, c.maxPriceChange1h);
+  if (priceChg.skip) return priceChg;
+
+  var holders = checkMinHolders(t.holder_count, c.minHoldersMig);
+  if (holders.skip) return holders;
+
+  var social = checkHasSocial(t, c.requireSocial);
+  if (social.skip) return social;
 
   return { skip: false, reason: '' };
 }
@@ -257,6 +298,7 @@ module.exports = {
   checkRugRatio,
   checkInsiderRate,
   checkPhishingRate,
+  checkHasSocial,
   shouldSkipMigration,
   collectMigrationHardRiskReasons,
   shouldSkipMigrationHardRisk,
