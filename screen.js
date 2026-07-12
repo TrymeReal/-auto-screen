@@ -10,6 +10,7 @@ const {
   checkVol1h,
   checkSwaps5m,
   checkVol5m,
+  checkHasSocial,
 } = require('./filters');
 
 // ─────────────────────────────────────────────
@@ -17,41 +18,46 @@ const {
 // ─────────────────────────────────────────────
 const CFG = {
   // New Migration V2 — base gates
-  minVol1h:        Number(process.env.MIN_VOL_1H)        || 60000,
-  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
-  minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
+  minVol1h:        Number(process.env.MIN_VOL_1H)        || 14000,
+  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
+  minVol5m:        Number(process.env.MIN_VOL_5M)        || 2000,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 5000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 2000,
   // Sekarang pakai skala score_normalised RugCheck (0-100, makin RENDAH makin
-  // aman). Default 30 = ambang batas kategori "Good" versi RugCheck.
+  // aman). Default 20 = ambang batas kategori "Good" versi RugCheck.
   // Catatan: dulu field ini dibandingkan ke rug.score (raw score, skalanya bisa
   // ribuan/puluhan-ribu bahkan utk token legit) — jadi longgar tanpa disadari.
-  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 30,
+  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 20,
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
   // New Migration extra gates
-  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 25,
+  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 30,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
-  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 20,
-  maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 10,
+  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 15,
+  maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 15,
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
-  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
-  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 40,
+  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
+  gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 45,
+  maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 5,
+  requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
+  requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
 
   // Mode Swing 1D — filter lebih ketat
-  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
-  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 20000,
-  swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 15,   // tidak sedang pump >15% per jam
+  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 35000,
+  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 15000,
+  swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 25,   // tidak sedang pump >25% per jam
   swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
   swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
-  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
+  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 300,
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
-  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
+  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 168,  // max 7 hari (168 jam)
+  swingMinBuyRatio: Number(process.env.SWING_MIN_BUY_RATIO) || 35,
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -633,16 +639,21 @@ async function checkSwingSignal(t) {
     return { pass: false, reason: 'Vol 1h terlalu kecil ($' + fmt(vol1h) + ')' };
 
   // — Gate 5: Holder cukup (likuiditas sosial) —
-  if (holders !== null && holders < CFG.swingMinHolders)
+  if (holders === null) {
+    log('[SWING] ' + (t.symbol || '?') + ': holder_count tidak tersedia dari API, gate holder GAGAL (fail-safe)');
+    return { pass: false, reason: 'Data holder tidak tersedia dari API (fail-safe)' };
+  }
+  if (holders < CFG.swingMinHolders)
     return { pass: false, reason: 'Holder terlalu sedikit (' + holders + ')' };
-  if (holders === null)
-    log('[SWING] ' + (t.symbol || '?') + ': holder_count tidak tersedia dari API, gate holder di-skip');
 
-  // — Gate 6: Buy ratio minimal 50% —
+  // — Gate 6: Buy ratio minimal (override via SWING_MIN_BUY_RATIO di .env) —
   const totalTxn = (t.buys || 0) + (t.sells || 0);
   const buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 0;
-  if (totalTxn > 0 && buyRatio < 50)
-    return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy)' };
+  const socialCheck = checkHasSocial(t, CFG.requireSocial);
+  if (socialCheck.skip) return { pass: false, reason: socialCheck.reason };
+
+  if (totalTxn > 0 && buyRatio < CFG.swingMinBuyRatio)
+    return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy < ' + CFG.swingMinBuyRatio + '%)' };
 
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = [];
@@ -1106,13 +1117,25 @@ async function processTokens() {
       continue;
     }
 
-    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m
+    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m, plus gate lain.
     var migCfg = {
       minLp:        CFG.minLp,
       maxAgeHours:  CFG.maxAgeHours,
       minVol1h:     CFG.minVol1h,
       minSwaps5m:   CFG.minSwaps5m,
       minVol5m:     CFG.minVol5m,
+      maxBundlerPct:  CFG.maxBundlerPct,
+      maxTop10Holders: CFG.maxTop10Holders,
+      maxDevHold:      CFG.maxDevHold,
+      maxSniperPct:    CFG.maxSniperPct,
+      maxVolLpRatio:   CFG.maxVolLpRatio,
+      gmgnRugMaxRatio:  CFG.gmgnRugMaxRatio,
+      maxInsiderPct:    CFG.maxInsiderPct,
+      maxPhishingPct:   CFG.maxPhishingPct,
+      maxPriceChange1h: CFG.maxPriceChange1h,
+      minHoldersMig:    CFG.minHoldersMig,
+      requireSocial:    CFG.requireSocial,
+      maxCreatorTokens: CFG.maxCreatorTokens,
     };
     var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
     if (migResult.skip) {
