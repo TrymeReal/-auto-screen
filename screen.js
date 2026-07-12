@@ -1182,7 +1182,7 @@ async function processTokens() {
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     totalNotified++;
 
-    if (t.price && Number(t.price) > 0) {
+    if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
       TRACKED.set(t.address, {
         symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
         entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
