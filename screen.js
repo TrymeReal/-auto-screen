@@ -1342,7 +1342,7 @@ async function checkTrackedPositions(trendingTokens) {
 
     var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
     var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
-    var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
+    var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : pos.mode === 'SIGNAL' ? CFG.tgThreadSignal : CFG.tgThreadMig);
 
     if (CFG.autoSellEnabled && gain >= CFG.autoSellTpPct) {
       log(pos.symbol + ' auto sell TP +' + CFG.autoSellTpPct + '%');
@@ -1414,7 +1414,7 @@ async function checkTrackedPositions(trendingTokens) {
       logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
       var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
       var riskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
-      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : CFG.tgThreadMig);
+      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : pos.mode === 'SIGNAL' ? CFG.tgThreadSignal : CFG.tgThreadMig);
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
         + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
