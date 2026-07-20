@@ -59,6 +59,11 @@ jobs:
           MAX_BUNDLER_PCT: ${{ secrets.MAX_BUNDLER_PCT }}
           MAX_TOP10_HOLDERS: ${{ secrets.MAX_TOP10_HOLDERS }}
           MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
+          MAX_PHISHING_PCT: ${{ secrets.MAX_PHISHING_PCT }}
+          MAX_HOLDER_1_PCT: ${{ secrets.MAX_HOLDER_1_PCT }}
+          MAX_HOLDER_2_PCT: ${{ secrets.MAX_HOLDER_2_PCT }}
+          MAX_HOLDER_3_PCT: ${{ secrets.MAX_HOLDER_3_PCT }}
+          MAX_HOLDER_4_PCT: ${{ secrets.MAX_HOLDER_4_PCT }}
           MAX_DEV_HOLD: ${{ secrets.MAX_DEV_HOLD }}
           MAX_PRICE_CHANGE_1H: ${{ secrets.MAX_PRICE_CHANGE_1H }}
           MIN_HOLDERS_MIG: ${{ secrets.MIN_HOLDERS_MIG }}
@@ -74,6 +79,13 @@ jobs:
           SWING_MIN_HOLDERS: ${{ secrets.SWING_MIN_HOLDERS }}
           SWING_MIN_AGE_H: ${{ secrets.SWING_MIN_AGE_H }}
           SWING_MAX_AGE_H: ${{ secrets.SWING_MAX_AGE_H }}
+          SWING_MIN_BUY_RATIO: ${{ secrets.SWING_MIN_BUY_RATIO }}
+          SWING_MAX_RUG_SCORE: ${{ secrets.SWING_MAX_RUG_SCORE }}
+          SWING_MAX_INSIDER_PCT: ${{ secrets.SWING_MAX_INSIDER_PCT }}
+          SWING_MAX_HOLDER_1_PCT: ${{ secrets.SWING_MAX_HOLDER_1_PCT }}
+          SWING_MAX_HOLDER_2_PCT: ${{ secrets.SWING_MAX_HOLDER_2_PCT }}
+          SWING_MAX_HOLDER_3_PCT: ${{ secrets.SWING_MAX_HOLDER_3_PCT }}
+          SWING_MAX_HOLDER_4_PCT: ${{ secrets.SWING_MAX_HOLDER_4_PCT }}
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
