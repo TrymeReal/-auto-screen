@@ -11,6 +11,9 @@ const {
   checkSwaps5m,
   checkVol5m,
   checkHasSocial,
+  calculateRugcheckTopHoldersPct,
+  getRankedRugcheckHolderPcts,
+  checkIndividualTopHolders,
 } = require('./filters');
 
 // ─────────────────────────────────────────────
@@ -45,6 +48,10 @@ const CFG = {
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
   gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 45,
   maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 5,
+  maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 10),
+  maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 3),
+  maxHolder3Pct: process.env.MAX_HOLDER_3_PCT === '' ? null : (Number(process.env.MAX_HOLDER_3_PCT) || 3),
+  maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 3),
   requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
   requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
 
@@ -58,6 +65,12 @@ const CFG = {
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
   swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 168,  // max 7 hari (168 jam)
   swingMinBuyRatio: Number(process.env.SWING_MIN_BUY_RATIO) || 35,
+  swingMaxRugScore: Number(process.env.SWING_MAX_RUG_SCORE) || 20,
+  swingMaxInsiderPct: Number(process.env.SWING_MAX_INSIDER_PCT) || 30,
+  swingMaxHolder1Pct: Number(process.env.SWING_MAX_HOLDER_1_PCT) || 10,
+  swingMaxHolder2Pct: Number(process.env.SWING_MAX_HOLDER_2_PCT) || 4,
+  swingMaxHolder3Pct: Number(process.env.SWING_MAX_HOLDER_3_PCT) || 4,
+  swingMaxHolder4Pct: Number(process.env.SWING_MAX_HOLDER_4_PCT) || 4,
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -501,11 +514,13 @@ async function getRugCheck(ca, insiderThreshold) {
       rugged:          d.rugged || false,
       deployPlatform:  d.deployPlatform || '',
       insiderPct:      maxInsiderPct,
+      top10Pct:        calculateRugcheckTopHoldersPct(d.topHolders, d.knownAccounts),
+      rankedHolderPcts: getRankedRugcheckHolderPcts(d.topHolders, d.knownAccounts),
     };
   } catch {
     return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
              topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
-             insiderPct: 0 };
+             insiderPct: 0, top10Pct: 0, rankedHolderPcts: [] };
   }
 }
 
@@ -1136,6 +1151,10 @@ async function processTokens() {
       minHoldersMig:    CFG.minHoldersMig,
       requireSocial:    CFG.requireSocial,
       maxCreatorTokens: CFG.maxCreatorTokens,
+      maxHolder1Pct: CFG.maxHolder1Pct,
+      maxHolder2Pct: CFG.maxHolder2Pct,
+      maxHolder3Pct: CFG.maxHolder3Pct,
+      maxHolder4Pct: CFG.maxHolder4Pct,
     };
     var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
     if (migResult.skip) {
@@ -1165,6 +1184,15 @@ async function processTokens() {
       log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
       continue;
     }
+    if (rug.top10Pct > CFG.maxTop10Holders) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)');
+      continue;
+    }
+    var migHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
+      holder1: CFG.maxHolder1Pct, holder2: CFG.maxHolder2Pct,
+      holder3: CFG.maxHolder3Pct, holder4: CFG.maxHolder4Pct,
+    });
+    if (migHolderGate.skip) { log('SKIP [MIG] ' + t.symbol + ' (' + migHolderGate.reason + ')'); continue; }
 
     var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
     // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
@@ -1208,12 +1236,18 @@ async function processTokens() {
     log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
 
     try {
-      const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-      if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.maxRugScore) {
-        log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ')');
+      const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
+      if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.swingMaxRugScore) {
+        log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.swingMaxRugScore + ')');
         continue;
       }
-      if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
+      if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
+      if (rug.top10Pct > CFG.maxTop10Holders) { log('SKIP [SWING] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)'); continue; }
+      var swingHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
+        holder1: CFG.swingMaxHolder1Pct, holder2: CFG.swingMaxHolder2Pct,
+        holder3: CFG.swingMaxHolder3Pct, holder4: CFG.swingMaxHolder4Pct,
+      });
+      if (swingHolderGate.skip) { log('SKIP [SWING] ' + t.symbol + ' (' + swingHolderGate.reason + ')'); continue; }
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
