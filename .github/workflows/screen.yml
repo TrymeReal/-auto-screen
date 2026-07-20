@@ -50,6 +50,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          GMGN_RUG_MAX_RATIO: '30'
+          GMGN_RUG_CONFIRM_SCANS: '2'
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
           MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
@@ -58,6 +60,7 @@ jobs:
           MIN_BUY_RATIO: ${{ secrets.MIN_BUY_RATIO }}
           MAX_BUNDLER_PCT: ${{ secrets.MAX_BUNDLER_PCT }}
           MAX_TOP10_HOLDERS: ${{ secrets.MAX_TOP10_HOLDERS }}
+          MAX_TOP10_HOLDERS_RUGCHECK: '25'
           MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
           MAX_PHISHING_PCT: ${{ secrets.MAX_PHISHING_PCT }}
           MAX_HOLDER_1_PCT: ${{ secrets.MAX_HOLDER_1_PCT }}
@@ -71,6 +74,7 @@ jobs:
           MAX_VOL_LP_RATIO: ${{ secrets.MAX_VOL_LP_RATIO }}
           MAX_CREATOR_TOKENS: ${{ secrets.MAX_CREATOR_TOKENS }}
           MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
+          REQUIRE_SOCIAL: 'true'
           SWING_MIN_LP: ${{ secrets.SWING_MIN_LP }}
           SWING_MIN_VOL1H: ${{ secrets.SWING_MIN_VOL1H }}
           SWING_MAX_CHG1H: ${{ secrets.SWING_MAX_CHG1H }}
@@ -86,6 +90,10 @@ jobs:
           SWING_MAX_HOLDER_2_PCT: ${{ secrets.SWING_MAX_HOLDER_2_PCT }}
           SWING_MAX_HOLDER_3_PCT: ${{ secrets.SWING_MAX_HOLDER_3_PCT }}
           SWING_MAX_HOLDER_4_PCT: ${{ secrets.SWING_MAX_HOLDER_4_PCT }}
+          SWING_DAY_FRACTION_FLOOR: '0.1'
+          SWING_SUPPORT_MAX_RANGE_PCT: '0.45'
+          SWING_WARN_HIGH_RANGE_PCT: '0.80'
+          SWING_MAX_CONSOLIDATION_RANGE_RATIO: '0.80'
           ENTRY_STRATEGY: ${{ secrets.ENTRY_STRATEGY }}
           REQUIRE_FIB_ZONE: ${{ secrets.REQUIRE_FIB_ZONE }}
       - name: Push JSON data to repo
