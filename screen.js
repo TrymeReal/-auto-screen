@@ -55,7 +55,7 @@ const CFG = {
   maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 3),
   requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
   requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
-  entryStrategy:     normalizeEntryStrategy(process.env.ENTRY_STRATEGY, 'FIBONACCI'),
+  entryStrategy:     normalizeEntryStrategy(process.env.ENTRY_STRATEGY, 'PREPUMP'),
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 35000,
