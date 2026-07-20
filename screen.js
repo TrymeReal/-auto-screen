@@ -22,14 +22,14 @@ const { normalizeEntryStrategy, requiresFibonacci } = require('./entry-strategy'
 // ─────────────────────────────────────────────
 const CFG = {
   // New Migration V2 — base gates
-  minVol1h:        Number(process.env.MIN_VOL_1H)        || 14000,
+  minVol1h:        Number(process.env.MIN_VOL_1H)        || 20000,
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
-  minVol5m:        Number(process.env.MIN_VOL_5M)        || 2000,
-  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
+  minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
+  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 6,
 
   // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 5000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 2000,
+  minLp:           Number(process.env.MIN_LP)           || 15000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   // Sekarang pakai skala score_normalised RugCheck (0-100, makin RENDAH makin
   // aman). Default 20 = ambang batas kategori "Good" versi RugCheck.
   // Catatan: dulu field ini dibandingkan ke rug.score (raw score, skalanya bisa
@@ -40,36 +40,36 @@ const CFG = {
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 30,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
-  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 15,
+  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 30,
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 15,
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
-  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 40,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 20,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
-  gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 45,
-  maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 5,
-  maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 10),
-  maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 3),
-  maxHolder3Pct: process.env.MAX_HOLDER_3_PCT === '' ? null : (Number(process.env.MAX_HOLDER_3_PCT) || 3),
-  maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 3),
+  gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 30,
+  maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 10,
+  maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 13),
+  maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 4),
+  maxHolder3Pct: process.env.MAX_HOLDER_3_PCT === '' ? null : (Number(process.env.MAX_HOLDER_3_PCT) || 4),
+  maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 4),
   requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
   requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
   entryStrategy:     normalizeEntryStrategy(process.env.ENTRY_STRATEGY, 'PREPUMP'),
 
   // Mode Swing 1D — filter lebih ketat
-  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 35000,
-  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 15000,
+  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 10000,
+  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 5000,
   swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 25,   // tidak sedang pump >25% per jam
   swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
-  swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
-  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 300,
-  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
-  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 168,  // max 7 hari (168 jam)
+  swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 0.1,  // volume spike vs estimasi avg
+  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 250,
+  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 6,    // token minimal 6 jam
+  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
   swingMinBuyRatio: Number(process.env.SWING_MIN_BUY_RATIO) || 35,
   swingMaxRugScore: Number(process.env.SWING_MAX_RUG_SCORE) || 20,
   swingMaxInsiderPct: Number(process.env.SWING_MAX_INSIDER_PCT) || 30,
-  swingMaxHolder1Pct: Number(process.env.SWING_MAX_HOLDER_1_PCT) || 10,
+  swingMaxHolder1Pct: Number(process.env.SWING_MAX_HOLDER_1_PCT) || 5,
   swingMaxHolder2Pct: Number(process.env.SWING_MAX_HOLDER_2_PCT) || 4,
   swingMaxHolder3Pct: Number(process.env.SWING_MAX_HOLDER_3_PCT) || 4,
   swingMaxHolder4Pct: Number(process.env.SWING_MAX_HOLDER_4_PCT) || 4,
