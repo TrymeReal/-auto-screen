@@ -15,6 +15,7 @@ const {
   getRankedRugcheckHolderPcts,
   checkIndividualTopHolders,
 } = require('./filters');
+const { normalizeEntryStrategy, requiresFibonacci } = require('./entry-strategy');
 
 // ─────────────────────────────────────────────
 //  CONFIG
@@ -54,6 +55,7 @@ const CFG = {
   maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 3),
   requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
   requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
+  entryStrategy:     normalizeEntryStrategy(process.env.ENTRY_STRATEGY, 'FIBONACCI'),
 
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 35000,
@@ -963,13 +965,6 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   if (linkParts.length) msg += '🔗 Links   : ' + linkParts.join(' | ') + '\n';
   msg += SEP + '\n';
 
-  // Swing signals khusus
-  if (mode === 'SWING' && swingSignals && swingSignals.length > 0) {
-    msg += '📡 <b>Sinyal Pre-Pump:</b>\n';
-    swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
-    msg += SEP + '\n';
-  }
-
   msg += '🛡️ GMGN:\n';
   msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
   msg += '🔍 Top10   : ' + top10 + '%\n';
@@ -985,16 +980,32 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
   msg += SEP + '\n';
 
+  // f tetap dihitung meskipun strategi PREPUMP dipilih, karena f.support &
+  // f.sl masih dipakai sebagai basis warning FOMO (di bawah) dan tracking —
+  // hanya tampilan pesannya yang berbeda sesuai strategi.
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
+  var useFib = requiresFibonacci(CFG.entryStrategy, CFG.requireFibZone);
+
   msg += '📊 Entry & Targets:\n';
   msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
   msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
-  msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
-  msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
-  msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
-  msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
-  msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
+
+  if (useFib) {
+    var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
+    msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
+    msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
+    msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
+    msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
+    msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
+  } else {
+    msg += '📡 Dasar Entry <i>(PREPUMP)</i>:\n';
+    if (swingSignals && swingSignals.length > 0) {
+      swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
+    } else {
+      msg += '  • Tidak ada sinyal pre-pump spesifik (mode ' + mode + ')\n';
+    }
+    msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
+  }
 
   var dynScore = calculateScore(t, rug);
   msg += 'Score: ' + dynScore + '/100\n';
@@ -1511,6 +1522,8 @@ if (CFG.signalEnabled) {
   log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
   log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
 }
+log('');
+log('Entry Strategy: ' + CFG.entryStrategy + (CFG.requireFibZone ? '' : ' (requireFibZone=false)'));
 log('');
 log('Interval: ' + CFG.interval + 's');
 log('');
