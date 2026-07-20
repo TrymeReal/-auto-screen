@@ -14,6 +14,10 @@ const {
   calculateRugcheckTopHoldersPct,
   getRankedRugcheckHolderPcts,
   checkIndividualTopHolders,
+  checkRugRatio,
+  nextConsecutiveConfirmation,
+  toUnixSeconds,
+  getSwingKlinePlans,
 } = require('./filters');
 const { normalizeEntryStrategy, requiresFibonacci } = require('./entry-strategy');
 
@@ -40,6 +44,7 @@ const CFG = {
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 30,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
+  maxTop10HoldersRugcheck: Number(process.env.MAX_TOP10_HOLDERS_RUGCHECK) || 25,
   maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 30,
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 15,
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
@@ -48,6 +53,7 @@ const CFG = {
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 20,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
   gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 30,
+  gmgnRugConfirmScans: Math.max(1, Math.floor(Number(process.env.GMGN_RUG_CONFIRM_SCANS) || 1)),
   maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 10,
   maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 13),
   maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 4),
@@ -73,6 +79,10 @@ const CFG = {
   swingMaxHolder2Pct: Number(process.env.SWING_MAX_HOLDER_2_PCT) || 4,
   swingMaxHolder3Pct: Number(process.env.SWING_MAX_HOLDER_3_PCT) || 4,
   swingMaxHolder4Pct: Number(process.env.SWING_MAX_HOLDER_4_PCT) || 4,
+  swingDayFractionFloor: Number(process.env.SWING_DAY_FRACTION_FLOOR) || 0.1,
+  swingSupportMaxRangePct: Number(process.env.SWING_SUPPORT_MAX_RANGE_PCT) || 0.45,
+  swingWarnHighRangePct: Number(process.env.SWING_WARN_HIGH_RANGE_PCT) || 0.80,
+  swingMaxConsolidationRangeRatio: Number(process.env.SWING_MAX_CONSOLIDATION_RANGE_RATIO) || 0.80,
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -111,9 +121,12 @@ const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
 
 const SEEN    = new Map();
 const TRACKED = new Map();
+const MIG_RUG_CONFIRM = new Map();
+const SWING_RUG_CONFIRM = new Map();
 const TARGETS = [30, 50, 100, 200, 500];
 let startTime = Date.now();
 let totalNotified = 0;
+let screeningCycleId = 0;
 
 // ─────────────────────────────────────────────
 //  HELPERS
@@ -613,11 +626,31 @@ function calculateScore(t, rug) {
  * Ambil kline 1D (7 candle ke belakang) untuk analisa swing.
  * Return null jika gagal atau data tidak cukup.
  */
-async function fetchSwingKlines(address) {
+async function fetchSwingKlines(address, ageHours) {
   await new Promise(r => setTimeout(r, 500));
-  const nowSec  = Math.floor(Date.now() / 1000);
-  const fromSec = nowSec - 7 * 86400; // 7 hari
-  return await fetchGMGNKline(address, '1d', fromSec, nowSec);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const plans = getSwingKlinePlans(ageHours);
+
+  for (const plan of plans) {
+    const list = await fetchGMGNKline(address, plan.resolution, nowSec - plan.lookbackSec, nowSec);
+    const candles = (list || [])
+      .map(c => ({
+        time:   toUnixSeconds(c.time ?? c.timestamp ?? c.t ?? 0),
+        close:  Number(c.close),
+        high:   Number(c.high),
+        low:    Number(c.low),
+        volume: Number(c.volume) || 0,
+      }))
+      .filter(c => c.time > 0 && c.close > 0 && c.high > 0 && c.low > 0)
+      .sort((a, b) => a.time - b.time);
+
+    if (candles.length >= 3) {
+      log('[SWING][KLINE] ' + plan.label + ' tersedia (' + candles.length + ' candle)');
+      return { candles, ...plan };
+    }
+    log('[SWING][KLINE] ' + plan.label + ' belum cukup (' + candles.length + ' candle valid), coba timeframe berikutnya');
+  }
+  return null;
 }
 
 /**
@@ -674,7 +707,12 @@ async function checkSwingSignal(t) {
 
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = [];
-  const klines  = await fetchSwingKlines(t.address);
+  const klineData = await fetchSwingKlines(t.address, ageH);
+  if (!klineData) {
+    log('[SWING][KLINE] WAIT ' + t.symbol + ' — 1D/4H/1H belum tersedia, scan ulang cycle berikutnya');
+    return { pass: false, reason: 'Kline 1D/4H/1H belum tersedia (WAIT, akan scan ulang)' };
+  }
+  const klines = klineData.candles;
 
   if (klines && klines.length >= 3) {
     // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
@@ -718,8 +756,8 @@ async function checkSwingSignal(t) {
       // ke-skip walau lagi beneran ada momentum, kemaleman bisa keliatan "spike"
       // padahal cuma akumulasi volume semalaman.
       const nowSec        = Math.floor(Date.now() / 1000);
-      const dayElapsedSec = lastCandle.time ? Math.max(nowSec - lastCandle.time, 0) : 86400;
-      const dayFraction   = Math.min(Math.max(dayElapsedSec / 86400, 0.1), 1); // floor 10% biar gak diekstrapolasi gila-gilaan pas hari baru mulai
+      const dayElapsedSec = Math.max(nowSec - lastCandle.time, 0);
+      const dayFraction   = Math.min(Math.max(dayElapsedSec / klineData.intervalSec, CFG.swingDayFractionFloor), 1);
       const normLastVol   = lastCandle.volume / dayFraction;
 
       const highs       = candles.map(c => c.high);
@@ -734,16 +772,16 @@ async function checkSwingSignal(t) {
       // pengganti gate ini.
       const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
       if (volSpike < CFG.swingVolSpikeMin) {
-        return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x, hari baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
+        return { pass: false, reason: 'Tidak ada vol spike ' + klineData.label + ' (hanya ' + volSpike.toFixed(1) + 'x, candle baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
       }
-      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+      signals.push('Vol spike ' + klineData.label + ' ' + volSpike.toFixed(1) + 'x rata-rata (normalized, candle ' + (dayFraction * 100).toFixed(0) + '% jalan)');
 
       // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
       if (priceRange > 0) {
         const posInRange = (lastCandle.close - swingLow) / priceRange; // 0=bawah, 1=atas
-        if (posInRange <= 0.45) {
+        if (posInRange <= CFG.swingSupportMaxRangePct) {
           signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
-        } else if (posInRange >= 0.80) {
+        } else if (posInRange >= CFG.swingWarnHighRangePct) {
           // Sudah terlalu tinggi di range
           signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
         }
@@ -751,12 +789,12 @@ async function checkSwingSignal(t) {
 
       // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
       if (lastCandle.close > prevCandle.close) {
-        signals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
+        signals.push('Green candle ' + klineData.label + ' (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
       }
 
       // Sinyal 4: Konsolidasi — range harga gak lebih dari 80% dari low
-      if (swingLow > 0 && priceRange / swingLow < 0.80) {
-        signals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+      if (swingLow > 0 && priceRange / swingLow < CFG.swingMaxConsolidationRangeRatio) {
+        signals.push('Konsolidasi ' + klineData.label + ' (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
       }
     }
 
@@ -1066,6 +1104,13 @@ function buildSignalMsg(t) {
 //  MAIN PROCESSING LOOP
 // ─────────────────────────────────────────────
 async function processTokens() {
+  const cycleId = ++screeningCycleId;
+  for (const [address, state] of MIG_RUG_CONFIRM) {
+    if (!state || state.lastCycle < cycleId - 1) MIG_RUG_CONFIRM.delete(address);
+  }
+  for (const [address, state] of SWING_RUG_CONFIRM) {
+    if (!state || state.lastCycle < cycleId - 1) SWING_RUG_CONFIRM.delete(address);
+  }
   log('========== SCREENING ==========');
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
@@ -1135,6 +1180,21 @@ async function processTokens() {
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
 
+    var migGmgnCheck = checkRugRatio(t.rug_ratio, CFG.gmgnRugMaxRatio);
+    if (migGmgnCheck.skip) {
+      MIG_RUG_CONFIRM.delete(t.address);
+      log('SKIP [MIG][GMGN Rug] ' + t.symbol + ' (' + migGmgnCheck.reason + ')');
+      continue;
+    }
+    var migRugConfirmation = nextConsecutiveConfirmation(MIG_RUG_CONFIRM.get(t.address), cycleId);
+    MIG_RUG_CONFIRM.set(t.address, migRugConfirmation);
+    if (migRugConfirmation.count < CFG.gmgnRugConfirmScans) {
+      log('[MIG][GMGN Rug] WAIT ' + t.symbol + ' (konfirmasi '
+        + migRugConfirmation.count + '/' + CFG.gmgnRugConfirmScans + ' scan berturut-turut)');
+      continue;
+    }
+    MIG_RUG_CONFIRM.delete(t.address);
+
     // Fetch token info untuk data 5m/1h
     log('[MIG] Fetch info ' + t.symbol + '...');
     const tokenInfo = fetchTokenInfo(t.address);
@@ -1195,8 +1255,8 @@ async function processTokens() {
       log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
       continue;
     }
-    if (rug.top10Pct > CFG.maxTop10Holders) {
-      log('SKIP [MIG] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)');
+    if (rug.top10Pct > CFG.maxTop10HoldersRugcheck) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10HoldersRugcheck + '%)');
       continue;
     }
     var migHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
@@ -1247,13 +1307,28 @@ async function processTokens() {
     log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
 
     try {
+      const swingGmgnCheck = checkRugRatio(t.rug_ratio, CFG.gmgnRugMaxRatio);
+      if (swingGmgnCheck.skip) {
+        SWING_RUG_CONFIRM.delete(t.address);
+        log('SKIP [SWING][GMGN Rug] ' + t.symbol + ' (' + swingGmgnCheck.reason + ')');
+        continue;
+      }
+      const swingRugConfirmation = nextConsecutiveConfirmation(SWING_RUG_CONFIRM.get(t.address), cycleId);
+      SWING_RUG_CONFIRM.set(t.address, swingRugConfirmation);
+      if (swingRugConfirmation.count < CFG.gmgnRugConfirmScans) {
+        log('[SWING][GMGN Rug] WAIT ' + t.symbol + ' (konfirmasi '
+          + swingRugConfirmation.count + '/' + CFG.gmgnRugConfirmScans + ' scan berturut-turut)');
+        continue;
+      }
+      SWING_RUG_CONFIRM.delete(t.address);
+
       const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
       if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.swingMaxRugScore) {
         log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.swingMaxRugScore + ')');
         continue;
       }
       if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
-      if (rug.top10Pct > CFG.maxTop10Holders) { log('SKIP [SWING] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)'); continue; }
+      if (rug.top10Pct > CFG.maxTop10HoldersRugcheck) { log('SKIP [SWING] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10HoldersRugcheck + '%)'); continue; }
       var swingHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
         holder1: CFG.swingMaxHolder1Pct, holder2: CFG.swingMaxHolder2Pct,
         holder3: CFG.swingMaxHolder3Pct, holder4: CFG.swingMaxHolder4Pct,
