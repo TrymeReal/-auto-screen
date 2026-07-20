@@ -86,6 +86,8 @@ jobs:
           SWING_MAX_HOLDER_2_PCT: ${{ secrets.SWING_MAX_HOLDER_2_PCT }}
           SWING_MAX_HOLDER_3_PCT: ${{ secrets.SWING_MAX_HOLDER_3_PCT }}
           SWING_MAX_HOLDER_4_PCT: ${{ secrets.SWING_MAX_HOLDER_4_PCT }}
+          ENTRY_STRATEGY: ${{ secrets.ENTRY_STRATEGY }}
+          REQUIRE_FIB_ZONE: ${{ secrets.REQUIRE_FIB_ZONE }}
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
