@@ -370,22 +370,15 @@ function fetchTokenInfo(address) {
   }
 }
 
-async function fetchPaidDex(address) {
-  try {
-    const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + address, { timeout: 8000 }, 2);
-    const pairs = res.data?.pairs;
-    if (!pairs || pairs.length === 0) return false;
-    var hasBoost = false;
-    for (var i = 0; i < pairs.length; i++) {
-      var p = pairs[i];
-      if (p.boosts && Number(p.boosts.active) > 0) { hasBoost = true; break; }
-      if (p.labels && Array.isArray(p.labels) && p.labels.length > 0) hasBoost = true;
-    }
-    return hasBoost;
-  } catch (e) {
-    log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
-    return false;
-  }
+// Cek status "Dex Paid" dari field GMGN trenches/trending.
+// Token dianggap paid jika minimal satu produk marketing Dexscreener aktif.
+function isPaidDex(t) {
+  if (!t) return false;
+  var ad          = isTruthyFlag(t.dexscr_ad);
+  var updateLink  = isTruthyFlag(t.dexscr_update_link);
+  var trendingBar = isTruthyFlag(t.dexscr_trending_bar);
+  var boostFee    = Number(t.dexscr_boost_fee) > 0;
+  return ad || updateLink || trendingBar || boostFee;
 }
 
 function getCreatorTokenCount(walletAddress) {
@@ -1260,9 +1253,8 @@ async function processTokens() {
       continue;
     }
 
-    // Cek paid DEX via DEX Screener API
-    log('[MIG] Cek paid DEX ' + t.symbol + '...');
-    var paidDex = await fetchPaidDex(t.address);
+    // Cek paid DEX langsung dari field dexscr_* di data GMGN
+    var paidDex = isPaidDex(t);
     if (!paidDex) {
       log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
       continue;
