@@ -548,6 +548,7 @@ async function getRugCheck(ca, insiderThreshold) {
       score:           d.score || 0,
       scoreNormalised: d.score_normalised ?? -1,
       risks:           riskNames.join(', '),
+      risksArr:        riskNames,
       creator:         d.creator || d.owner || '?',
       topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
       topWarns:        riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, '')),
@@ -559,7 +560,7 @@ async function getRugCheck(ca, insiderThreshold) {
       rankedHolderPcts: getRankedRugcheckHolderPcts(d.topHolders, d.knownAccounts),
     };
   } catch {
-    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
+    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', risksArr: [], creator: '?',
              topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
              insiderPct: 0, top10Pct: 0, rankedHolderPcts: [] };
   }
@@ -1277,6 +1278,10 @@ async function processTokens() {
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
       continue;
     }
+    if (rug.risksArr.length > 0) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck risks: ' + rug.risksArr.join(', ') + ')');
+      continue;
+    }
     if (rug.insiderPct > CFG.maxInsiderPct) {
       log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
       continue;
@@ -1351,6 +1356,10 @@ async function processTokens() {
       const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
       if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.swingMaxRugScore) {
         log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.swingMaxRugScore + ')');
+        continue;
+      }
+      if (rug.risksArr.length > 0) {
+        log('SKIP [SWING] ' + t.symbol + ' (RugCheck risks: ' + rug.risksArr.join(', ') + ')');
         continue;
       }
       if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
