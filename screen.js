@@ -16,6 +16,7 @@ const {
   checkIndividualTopHolders,
   checkRugRatio,
   nextConsecutiveConfirmation,
+  toUnixMillis,
   toUnixSeconds,
   getSwingKlinePlans,
 } = require('./filters');
@@ -463,15 +464,35 @@ function normalizeSignal(signals) {
   return result;
 }
 
+const GMGN_KLINE_CACHE_TTL_MS = 90 * 1000;
+const GMGN_KLINE_COOLDOWN_MS = 180 * 1000;
+const GMGN_KLINE_MIN_INTERVAL_MS = 400;
+const GMGN_KLINE_CACHE = new Map();
+let gmgnKlineCooldownUntil = 0;
+let lastGmgnKlineCallAt = 0;
+
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
+  const cacheKey = address + '|' + resolution;
+  const cached = GMGN_KLINE_CACHE.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < GMGN_KLINE_CACHE_TTL_MS) return cached.value;
+
+  if (Date.now() < gmgnKlineCooldownUntil) {
+    log('[GMGN KLINE][COOLDOWN] skip ' + address.slice(0, 8) + ' [' + resolution + ']');
+    return null;
+  }
+
   try {
+    const waitMs = lastGmgnKlineCallAt + GMGN_KLINE_MIN_INTERVAL_MS - Date.now();
+    if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
+    lastGmgnKlineCallAt = Date.now();
+
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
     const ts   = Math.floor(Date.now() / 1000);
     const cid  = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
     const url  = host + '/v1/market/token_kline?chain=sol&address=' + address
                + '&resolution=' + resolution
-               + '&from=' + Math.floor(fromSec)
-               + '&to='   + Math.floor(toSec)
+               + '&from=' + toUnixMillis(fromSec)
+               + '&to='   + toUnixMillis(toSec)
                + '&timestamp=' + ts + '&client_id=' + cid;
     const res  = await axios.get(url, {
       headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
@@ -490,8 +511,13 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
         + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
     }
 
+    GMGN_KLINE_CACHE.set(cacheKey, { fetchedAt: Date.now(), value: list });
     return list;
   } catch (e) {
+    if (e.response?.status === 429) {
+      gmgnKlineCooldownUntil = Date.now() + GMGN_KLINE_COOLDOWN_MS;
+      log('[GMGN KLINE][429] Rate limited — cooldown 180s aktif');
+    }
     log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
     return null;
   }
