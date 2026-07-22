@@ -66,12 +66,16 @@ function checkMinHolders(holderCount, minHolders) {
 // Gate minimal jumlah KOL holder (renowned_count) — MANDIRI, tidak nempel
 // di evaluateAppStyleMigration, supaya tetap jalan walau MIG_APP_FILTER_ENABLED
 // = false (gate lain di app-style filter mati, tapi KOL tetap dicek).
-// Fail-open kalau kolCount null (data tidak tersedia) — sama seperti
-// checkMinHolders, data hilang tidak diam-diam mereject semua token.
+// Fail-closed: data kosong/invalid tidak membuktikan syarat minimal KOL.
 function checkMinKolCount(kolCount, minKolCount) {
-  if (kolCount == null || minKolCount == null) return { skip: false, reason: '' };
+  if (minKolCount == null) return { skip: false, reason: '' };
+  if (kolCount == null || kolCount === '') {
+    return { skip: true, reason: 'Data KOL holder tidak tersedia' };
+  }
   var count = Number(kolCount);
-  if (!Number.isFinite(count)) return { skip: false, reason: '' };
+  if (!Number.isFinite(count)) {
+    return { skip: true, reason: 'Data KOL holder tidak valid' };
+  }
   if (count < minKolCount) {
     return { skip: true, reason: 'KOL holder terlalu sedikit (' + count + ' < ' + minKolCount + ')' };
   }
