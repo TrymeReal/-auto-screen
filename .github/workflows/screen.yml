@@ -70,6 +70,7 @@ jobs:
           MAX_DEV_HOLD: ${{ secrets.MAX_DEV_HOLD }}
           MAX_PRICE_CHANGE_1H: ${{ secrets.MAX_PRICE_CHANGE_1H }}
           MIN_HOLDERS_MIG: ${{ secrets.MIN_HOLDERS_MIG }}
+          MIN_KOL_COUNT_MIG: ${{ secrets.MIN_KOL_COUNT_MIG }}
           MAX_SNIPER_PCT: ${{ secrets.MAX_SNIPER_PCT }}
           MAX_VOL_LP_RATIO: ${{ secrets.MAX_VOL_LP_RATIO }}
           MAX_CREATOR_TOKENS: ${{ secrets.MAX_CREATOR_TOKENS }}
