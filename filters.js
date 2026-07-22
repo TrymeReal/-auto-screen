@@ -1,1528 +1,964 @@
-require('dotenv').config();
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
-const {
-  shouldSkipNewMigration,
-  checkBaseLiquidity,
+// ─────────────────────────────────────────────
+//  NEW MIGRATION GATES — pure filter functions
+// ─────────────────────────────────────────────
+// GMGN percentages come as decimals (0.10 = 10%),
+// but config thresholds are in whole percentages (10 = 10%).
+
+function asPct(rate) {
+  var n = Number(rate);
+  if (!Number.isFinite(n)) return 0;
+  return n > 1 ? n : n * 100;
+}
+
+function toUnixMillis(value) {
+  var n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.trunc(n < 1e12 ? n * 1000 : n);
+}
+
+function toUnixSeconds(value) {
+  var n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.trunc(n >= 1e12 ? n / 1000 : n);
+}
+
+function getSwingKlinePlans(ageHours) {
+  var intraday = [
+    { resolution: '4h', label: '4H', intervalSec: 4 * 3600, lookbackSec: 7 * 86400 },
+    { resolution: '1h', label: '1H', intervalSec: 3600, lookbackSec: 3 * 86400 },
+  ];
+  if (Number(ageHours) < 72) return intraday;
+  return [
+    { resolution: '1d', label: '1D', intervalSec: 86400, lookbackSec: 7 * 86400 },
+    ...intraday,
+  ];
+}
+
+function checkDevHoldRate(rate, maxDevHold) {
+  if (rate == null) return { skip: false, reason: '' };
+  var pct = asPct(rate);
+  if (pct > maxDevHold) {
+    return { skip: true, reason: 'Creator hold ' + pct.toFixed(0) + '% > ' + maxDevHold + '%' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkPriceChange1h(change, maxChange) {
+  if (change == null || maxChange == null) return { skip: false, reason: '' };
+  var pct = Number(change);
+  if (!Number.isFinite(pct)) return { skip: false, reason: '' };
+  if (pct > maxChange) {
+    return { skip: true, reason: 'Harga sudah naik ' + pct.toFixed(0) + '% dalam 1 jam (max ' + maxChange + '%)' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkMinHolders(holderCount, minHolders) {
+  if (holderCount == null || minHolders == null) return { skip: false, reason: '' };
+  var count = Number(holderCount);
+  if (!Number.isFinite(count)) return { skip: false, reason: '' };
+  if (count < minHolders) {
+    return { skip: true, reason: 'Holder terlalu sedikit (' + count + ' < ' + minHolders + ')' };
+  }
+  return { skip: false, reason: '' };
+}
+
+// Gate minimal jumlah KOL holder (renowned_count) — MANDIRI, tidak nempel
+// di evaluateAppStyleMigration, supaya tetap jalan walau MIG_APP_FILTER_ENABLED
+// = false (gate lain di app-style filter mati, tapi KOL tetap dicek).
+// Fail-open kalau kolCount null (data tidak tersedia) — sama seperti
+// checkMinHolders, data hilang tidak diam-diam mereject semua token.
+function checkMinKolCount(kolCount, minKolCount) {
+  if (kolCount == null || minKolCount == null) return { skip: false, reason: '' };
+  var count = Number(kolCount);
+  if (!Number.isFinite(count)) return { skip: false, reason: '' };
+  if (count < minKolCount) {
+    return { skip: true, reason: 'KOL holder terlalu sedikit (' + count + ' < ' + minKolCount + ')' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkSniperRate(sniperRate, maxSniperPct) {
+  if (sniperRate == null) return { skip: false, reason: '' };
+  var pct = asPct(sniperRate);
+  if (pct > maxSniperPct) {
+    return { skip: true, reason: 'Sniper hold ' + pct.toFixed(0) + '% > ' + maxSniperPct + '%' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkVolLpRatio(vol, lp, maxRatio) {
+  if (!maxRatio || Number(maxRatio) <= 0) return { skip: false, reason: '' };
+  var volume = Number(vol) || 0;
+  var liquidity = Number(lp) || 0;
+  if (liquidity <= 0) return { skip: false, reason: '' };
+  var ratio = volume / liquidity;
+  if (ratio > maxRatio) {
+    return { skip: true, reason: 'Vol/LP ratio ' + ratio.toFixed(1) + 'x > ' + maxRatio + 'x (wash trading)' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkRugRatio(rugRatio, maxScore) {
+  if (rugRatio == null) {
+    return { skip: true, reason: 'Rug ratio GMGN tidak tersedia (data hilang)' };
+  }
+  var score = asPct(rugRatio);
+  if (score > maxScore) {
+    return { skip: true, reason: 'Rug score ' + score.toFixed(0) + ' > ' + maxScore };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkInsiderRate(rate, maxInsiderPct) {
+  if (!maxInsiderPct || Number(maxInsiderPct) <= 0) return { skip: false, reason: '' };
+  if (rate == null) return { skip: false, reason: '' };
+  var pct = asPct(rate);
+  if (pct > maxInsiderPct) {
+    return { skip: true, reason: 'Insider ' + pct.toFixed(0) + '% > ' + maxInsiderPct + '%' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function nextConsecutiveConfirmation(previous, cycleId) {
+  var currentCycle = Number(cycleId);
+  var previousCycle = previous && Number(previous.lastCycle);
+  var previousCount = previous && Number(previous.count);
+  var isConsecutive = Number.isFinite(previousCycle) && previousCycle === currentCycle - 1;
+  return {
+    count: isConsecutive && Number.isFinite(previousCount) ? previousCount + 1 : 1,
+    lastCycle: currentCycle,
+  };
+}
+
+function checkPhishingRate(rate, maxPhishingPct) {
+  if (rate == null) return { skip: false, reason: '' };
+  var pct = asPct(rate);
+  if (pct > maxPhishingPct) {
+    return { skip: true, reason: 'Phishing ' + pct.toFixed(0) + '% > ' + maxPhishingPct + '%' };
+  }
+  return { skip: false, reason: '' };
+}
+
+// Cek minimal 1 social media terisi (Twitter/Telegram/Website). String kosong
+// atau placeholder umum ('-', 'n/a', 'none') dianggap tidak ada.
+function hasValidLink(v) {
+  if (v == null) return false;
+  var s = String(v).trim();
+  if (s === '') return false;
+  if (/^(-|n\/a|na|none|null)$/i.test(s)) return false;
+  return true;
+}
+
+function checkHasSocial(token, requireSocial) {
+  if (!requireSocial) return { skip: false, reason: '' };
+  var t = token || {};
+  var hasTwitter  = hasValidLink(t.twitter_username);
+  var hasTelegram = hasValidLink(t.telegram);
+  var hasWebsite  = hasValidLink(t.website);
+  if (!hasTwitter && !hasTelegram && !hasWebsite) {
+    return { skip: true, reason: 'Tidak ada social media (Twitter/Telegram/Website)' };
+  }
+  return { skip: false, reason: '' };
+}
+
+// Dipanggil tiap kali sebuah field hard-risk hilang (null/undefined) dari
+// response GMGN. Sebelumnya field kosong diam-diam dianggap "0% risiko" alias
+// otomatis lolos, tanpa jejak apapun di log. Sekarang minimal ada warning
+// eksplisit lewat cfg.onMissingHardRiskData, jadi kalau API berubah field
+// atau field ilang, itu keliatan — bukan silently pass tanpa jejak.
+function warnMissingHardRiskField(fieldLabel, tokenAddress) {
+  return fieldLabel + ' data hilang (token=' + (tokenAddress || '?') + ')';
+}
+
+function collectMigrationHardRiskReasons(token, cfg) {
+  var t = token;
+  var reasons = [];
+  var missingDataWarnings = [];
+  var addr = t && (t.address || t.token_address);
+
+  if (t.bundler_rate == null) {
+    missingDataWarnings.push(warnMissingHardRiskField('Bundler rate', addr));
+  }
+  var bundlerPct = asPct(t.bundler_rate || 0);
+  if (bundlerPct > cfg.maxBundlerPct) {
+    reasons.push('Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%');
+  }
+
+  if (t.top_10_holder_rate == null) {
+    missingDataWarnings.push(warnMissingHardRiskField('Top10 holder rate', addr));
+  }
+  var top10 = asPct(t.top_10_holder_rate || 0);
+  if (top10 > cfg.maxTop10Holders) {
+    reasons.push('Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%');
+  }
+
+  if (t.dev_team_hold_rate == null) {
+    missingDataWarnings.push(warnMissingHardRiskField('Dev hold rate', addr));
+  }
+  var devHold = checkDevHoldRate(t.dev_team_hold_rate, cfg.maxDevHold);
+  if (devHold.skip) reasons.push(devHold.reason);
+
+  if (t.top70_sniper_hold_rate == null) {
+    missingDataWarnings.push(warnMissingHardRiskField('Sniper hold rate', addr));
+  }
+  var sniper = checkSniperRate(t.top70_sniper_hold_rate, cfg.maxSniperPct);
+  if (sniper.skip) reasons.push(sniper.reason);
+
+  var volLp = checkVolLpRatio(t.volume, t.liquidity, cfg.maxVolLpRatio);
+  if (volLp.skip) reasons.push(volLp.reason);
+
+  // t.rug_ratio (GMGN) pakai threshold TERPISAH dari cfg.maxRugScore, supaya
+  // gak numpuk dengan skor RugCheck API asli (getRugCheck() di screen.js).
+  // Dua sinyal beda sumber, dua threshold beda — sesuai niat awal comment ini,
+  // sebelumnya kodenya masih salah pakai cfg.maxRugScore di sini juga.
+  // rug_ratio SUDAH fail-closed dari awal (lihat checkRugRatio) — data hilang
+  // di sini otomatis jadi reject reason, jadi gak perlu warning tambahan.
+  var rug = checkRugRatio(t.rug_ratio, cfg.gmgnRugMaxRatio);
+  if (rug.skip) reasons.push(rug.reason);
+
+  if (t.suspected_insider_hold_rate == null) {
+    missingDataWarnings.push(warnMissingHardRiskField('Insider hold rate', addr));
+  }
+  var insider = checkInsiderRate(t.suspected_insider_hold_rate, cfg.maxInsiderPct);
+  if (insider.skip) reasons.push(insider.reason);
+
+  var phishingRate =
+    t.phishing_rate ??
+    t.phishing_wallet_rate ??
+    t.phishing_hold_rate ??
+    t.phishing_holders_rate ??
+    t.rat_trader_amount_rate ??
+    t.entrapment_ratio;
+  if (phishingRate == null) {
+    missingDataWarnings.push(warnMissingHardRiskField('Phishing rate', addr));
+  }
+  var phishing = checkPhishingRate(phishingRate, cfg.maxPhishingPct);
+  if (phishing.skip) reasons.push(phishing.reason);
+
+  if (missingDataWarnings.length > 0 && cfg && typeof cfg.onMissingHardRiskData === 'function') {
+    cfg.onMissingHardRiskData(missingDataWarnings, t);
+  }
+
+  return reasons;
+}
+
+function shouldSkipMigration(token, cfg) {
+  var t = token || {};
+
+  var totalTxn = Number(t.buys || 0) + Number(t.sells || 0);
+  var buyPct = totalTxn > 0 ? (Number(t.buys || 0) / totalTxn) * 100 : 0;
+  if (totalTxn > 0 && cfg && cfg.minBuyRatio != null && buyPct < cfg.minBuyRatio) {
+    return { skip: true, reason: 'Buy ratio ' + buyPct.toFixed(0) + '% < ' + cfg.minBuyRatio + '%' };
+  }
+
+  if (cfg && cfg.minVol != null && (Number(t.volume) || 0) < cfg.minVol) {
+    return { skip: true, reason: 'Volume $' + (Number(t.volume) || 0) + ' < $' + cfg.minVol };
+  }
+
+  if (cfg && cfg.minLp != null && (Number(t.liquidity) || 0) < cfg.minLp) {
+    return { skip: true, reason: 'LP $' + (Number(t.liquidity) || 0) + ' < $' + cfg.minLp };
+  }
+
+  var reasons = collectMigrationHardRiskReasons(t, cfg || {});
+  if (reasons.length > 0) return { skip: true, reason: reasons[0] };
+
+  var priceChg = checkPriceChange1h(t.price_change_percent1h, cfg && cfg.maxPriceChange1h);
+  if (priceChg.skip) return priceChg;
+
+  var holders = checkMinHolders(t.holder_count, cfg && cfg.minHolders);
+  if (holders.skip) return holders;
+
+  return { skip: false, reason: '' };
+}
+
+function shouldSkipMigrationHardRisk(token, cfg) {
+  var reasons = collectMigrationHardRiskReasons(token || {}, cfg || {});
+  if (reasons.length > 0) return { skip: true, reason: reasons[0] };
+  return { skip: false, reason: '' };
+}
+
+// ─────────────────────────────────────────────
+//  NEW MIGRATION V2 — base gates
+// ─────────────────────────────────────────────
+
+function checkBaseLiquidity(lp, minLp) {
+  var val = Number(lp) || 0;
+  if (val < minLp) {
+    return { skip: true, reason: 'LP $' + fmtNum(val) + ' < $' + minLp };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkBaseAgeHours(creationTimestamp, maxHours) {
+  if (!creationTimestamp) {
+    return { skip: true, reason: 'Tidak ada data creation time' };
+  }
+  if (maxHours == null || Number(maxHours) <= 0) {
+    return { skip: false, reason: '' };
+  }
+  var ageHours = (Date.now() - Number(creationTimestamp) * 1000) / 3600000;
+  if (!Number.isFinite(ageHours)) {
+    return { skip: true, reason: 'Tidak ada data creation time' };
+  }
+  if (ageHours >= maxHours) {
+    return { skip: true, reason: 'Token sudah ' + ageHours.toFixed(0) + 'j (max ' + maxHours + 'j)' };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkVol1h(vol1h, minVol1h) {
+  var vol = Number(vol1h) || 0;
+  if (vol < minVol1h) {
+    return { skip: true, reason: 'Vol 1h $' + fmtNum(vol) + ' < $' + minVol1h };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkSwaps5m(swaps5m, minSwaps) {
+  var swaps = Number(swaps5m) || 0;
+  if (swaps < minSwaps) {
+    return { skip: true, reason: 'Txns 5m ' + swaps + ' < ' + minSwaps };
+  }
+  return { skip: false, reason: '' };
+}
+
+function checkVol5m(vol5m, minVol5m) {
+  var vol = Number(vol5m) || 0;
+  if (vol < minVol5m) {
+    return { skip: true, reason: 'Vol 5m $' + fmtNum(vol) + ' < $' + minVol5m };
+  }
+  return { skip: false, reason: '' };
+}
+
+function shouldSkipNewMigration(token, tokenInfo, cfg) {
+  var t = token || {};
+  var info = tokenInfo || {};
+  var price = info.price || {};
+  var c = cfg || {};
+
+  var lp = checkBaseLiquidity(t.liquidity, c.minLp);
+  if (lp.skip) return lp;
+
+  var age = checkBaseAgeHours(t.creation_timestamp, c.maxAgeHours);
+  if (age.skip) return age;
+
+  var vol1h = checkVol1h(price.volume_1h, c.minVol1h);
+  if (vol1h.skip) return vol1h;
+
+  var swaps5m = checkSwaps5m(price.swaps_5m, c.minSwaps5m);
+  if (swaps5m.skip) return swaps5m;
+
+  var vol5m = checkVol5m(price.volume_5m, c.minVol5m);
+  if (vol5m.skip) return vol5m;
+
+  // — Gate yang sebelumnya cuma di-log ke console tapi tidak pernah benar-benar
+  // menyaring token (maxBundlerPct, maxTop10Holders, maxDevHold, maxSniperPct,
+  // maxVolLpRatio, maxInsiderPct via rug_ratio GMGN, phishing). Sekarang
+  // benar-benar dijalankan lewat collectMigrationHardRiskReasons(). —
+  var hardRisk = collectMigrationHardRiskReasons(t, c);
+  if (hardRisk.length > 0) return { skip: true, reason: hardRisk[0] };
+
+  // — Gate price change 1h (maxPriceChange1h) — sebelumnya juga cuma di-log —
+  var priceChg = checkPriceChange1h(t.price_change_percent1h, c.maxPriceChange1h);
+  if (priceChg.skip) return priceChg;
+
+  // — Gate holder minimum (minHoldersMig) — sebelumnya juga cuma di-log —
+  var holders = checkMinHolders(t.holder_count, c.minHoldersMig);
+  if (holders.skip) return holders;
+
+  // — Gate minimal KOL holder (minKolCount) — mandiri, selalu jalan terlepas
+  // dari MIG_APP_FILTER_ENABLED —
+  var kolRaw = t.renowned_count;
+  var kolCheck = checkMinKolCount(kolRaw, c.minKolCount);
+  if (kolCheck.skip) return kolCheck;
+
+  // — Gate wajib minimal 1 social media (Twitter/Telegram/Website) —
+  var social = checkHasSocial(t, c.requireSocial);
+  if (social.skip) return social;
+
+  return { skip: false, reason: '' };
+}
+
+function fmtNum(n) {
+  if (!n || isNaN(n)) return '0';
+  if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return Number(n).toFixed(0);
+}
+
+// FIX (bug Kairos): d.topHolders.slice(0, 10).sum(pct) di screen.js dulu
+// ikut menghitung akun AMM/pool (mis. Pump Fun AMM) sebagai "holder" biasa,
+// jadi persentase top-10 ke-inflate. Contoh nyata: bot baca 34.47%, padahal
+// 14.63% dari situ punya akun Pump Fun AMM — holder asli cuma ~21.42%.
+// Fix: keluarkan akun bertipe AMM/LOCKER (berdasarkan d.knownAccounts dari
+// response RugCheck) SEBELUM ambil 10 holder terbesar. CREATOR tetap ikut
+// dihitung — dia tetap wallet yang bisa dump.
+//
+// knownAccounts dari RugCheck di-key by wallet OWNER address, formatnya:
+//   { [ownerAddress]: { name: 'Pump Fun AMM', type: 'AMM' }, ... }
+// Fallback ke h.address kalau suatu saat entry-nya di-key by token account
+// address, bukan owner.
+function calculateRugcheckTopHoldersPct(topHolders, knownAccounts) {
+  if (!Array.isArray(topHolders)) return 0;
+
+  const known = knownAccounts || {};
+  const EXCLUDED_TYPES = new Set(['AMM', 'LOCKER']);
+
+  const filtered = topHolders.filter(h => {
+    const info = known[h.owner] || known[h.address];
+    if (!info) return true; // holder biasa, tidak ada di knownAccounts
+    return !EXCLUDED_TYPES.has(String(info.type || '').toUpperCase());
+  });
+
+  return filtered
+    .slice() // jangan mutate array asli
+    .sort((a, b) => (Number(b.pct) || 0) - (Number(a.pct) || 0))
+    .slice(0, 10)
+    .reduce((sum, h) => sum + (Number(h.pct) || 0), 0);
+}
+
+// VERSI A -- RAW, TIDAK exclude AMM/LOCKER. Semua wallet di topHolders ikut
+// di-ranking apa adanya (termasuk yang ke-label AMM/LOCKER oleh RugCheck),
+// karena label type itu sendiri berasal dari RugCheck dan bisa saja tidak
+// akurat / bisa dimanfaatkan dev untuk menyamarkan wallet asli sebagai
+// "locker" atau "pool". Kalau Holder#1 raw > threshold, gate ini anggap itu
+// tetap risiko konsentrasi supply nyata, apapun label yang menempel.
+//
+// Dipakai untuk gate "single wallet terlalu besar" yang independen dari
+// gate top10 gabungan: token bisa saja top10-nya di bawah threshold tapi
+// holder #1 sendirian pegang porsi besar (whale tunggal, risiko dump
+// berbeda dari sekadar "supply nyebar ke 10 wallet menengah").
+function getRankedRugcheckHolderPcts(topHolders, knownAccounts) {
+  if (!Array.isArray(topHolders)) return [];
+
+  return topHolders
+    .slice()
+    .sort((a, b) => (Number(b.pct) || 0) - (Number(a.pct) || 0))
+    .map(h => Number(h.pct) || 0);
+}
+
+// Gate top holder INDIVIDUAL (rank 1-4), bukan gabungan top10.
+// limits = { holder1, holder2, holder3, holder4 } — masing-masing dalam
+// PERSEN (mis. 15 = 15%). Kalau sebuah limit null/undefined, rank itu
+// TIDAK dicek sama sekali (di-skip dari pengecekan). Fungsi ini sendiri
+// tidak tahu soal default angka — itu diatur di screen.js (CFG.maxHolder*Pct
+// / CFG.swingMaxHolder*Pct), yang defaultnya SUDAH angka aktif (bukan null)
+// kalau var .env tidak di-set. limit jadi null di sini hanya kalau user
+// sengaja set .env ke string kosong (mis. MAX_HOLDER_4_PCT=), yang berarti
+// "matikan rank ini" secara eksplisit.
+// Kembalikan reason string pada skip pertama yang match (rank 1 dicek duluan),
+// atau { skip: false } kalau semua rank yang AKTIF lolos / datanya tidak cukup.
+function checkIndividualTopHolders(rankedPcts, limits) {
+  const l = limits || {};
+  const ranks = [
+    { idx: 0, label: 'Holder#1', limit: l.holder1 },
+    { idx: 1, label: 'Holder#2', limit: l.holder2 },
+    { idx: 2, label: 'Holder#3', limit: l.holder3 },
+    { idx: 3, label: 'Holder#4', limit: l.holder4 },
+  ];
+
+  for (const r of ranks) {
+    if (r.limit == null || !Number.isFinite(Number(r.limit))) continue; // rank ini di-skip (tidak diset di .env)
+    const pct = Number(rankedPcts[r.idx]) || 0;
+    if (pct > Number(r.limit)) {
+      return { skip: true, reason: r.label + ' ' + pct.toFixed(1) + '% > ' + r.limit + '%' };
+    }
+  }
+  return { skip: false, reason: '' };
+}
+
+function mergeRugcheckReports(report, summary) {
+  const full = report && typeof report === 'object' ? report : {};
+  const brief = summary && typeof summary === 'object' ? summary : {};
+  const risksByName = new Map();
+
+  for (const risk of [...(Array.isArray(full.risks) ? full.risks : []), ...(Array.isArray(brief.risks) ? brief.risks : [])]) {
+    const name = String(risk?.name || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const previous = risksByName.get(key);
+    if (!previous || Number(risk?.score || 0) > Number(previous?.score || 0)) risksByName.set(key, risk);
+  }
+
+  return {
+    ...brief,
+    ...full,
+    score: Math.max(Number(full.score) || 0, Number(brief.score) || 0),
+    score_normalised: Math.max(Number(full.score_normalised) || 0, Number(brief.score_normalised) || 0),
+    risks: Array.from(risksByName.values()),
+  };
+}
+
+function isPermanentRugcheckLock(seenEntry) {
+  return String(seenEntry?.lockedReason || '').startsWith('rug_');
+}
+
+function isPermanentSafetyLock(seenEntry) {
+  return isPermanentRugcheckLock(seenEntry) || String(seenEntry?.lockedReason || '') === 'dev_cluster';
+}
+
+// ─────────────────────────────────────────────
+//  DEV REPUTATION — ported from PowerShell Get-GmgnDevReputation
+// ─────────────────────────────────────────────
+// Porting 1:1 dari `Get-GmgnDevReputation` (profile PS1, versi "PATCHED +
+// fallback timestamp"). Sumber input SAMA PERSIS dengan yang dipakai screen.js
+// untuk MIG mode: tokenInfo di sini = $info di PS1, keduanya hasil parse
+// langsung `gmgn-cli token info --chain sol --address <ca> --raw` tanpa
+// transformasi apapun (lihat fetchTokenInfo() di screen.js). Jadi
+// tokenInfo.dev.* di JS = $info.dev.* di PS1, field-per-field identik.
+//
+// PS1 murni tool tampilan manual (gmgn $ca -> print doang, tidak ada
+// reject/skip). Di sini fungsi ini TETAP murni menghasilkan profile object
+// (skor + status), TIDAK memutuskan skip sendiri -- keputusan skip/pass ada
+// di caller (screen.js), lihat shouldSkipDevReputation() di bawah.
+
+// Porting `ConvertTo-GmgnFiniteNumber($value, [double]$default = 0.0)`.
+function convertToGmgnFiniteNumber(value, defaultVal) {
+  var def = defaultVal == null ? 0.0 : defaultVal;
+  if (value == null || (typeof value === 'string' && value.trim() === '')) return def;
+  var n = Number(value);
+  if (!Number.isFinite(n)) return def;
+  return n;
+}
+
+// Porting `Test-GmgnTrue($value)`.
+function testGmgnTrue(value) {
+  if (typeof value === 'boolean') return value;
+  var text = String(value == null ? '' : value).trim().toLowerCase();
+  return text === '1' || text === 'true' || text === 'yes';
+}
+
+// Default cfg dev-reputation — dipakai kalau caller tidak mengoper cfg sama
+// sekali (mis. pemanggilan lama/test lain), supaya fungsi ini tidak pernah
+// crash karena cfg.xxx undefined. screen.js akan mengoper cfg.devReputation*
+// dari CFG (baca .env), TIDAK memakai default di bawah ini secara diam-diam
+// — lihat CFG.devReputation di screen.js untuk nilai default .env yang
+// sesungguhnya dipakai kalau env var tidak diisi.
+var DEV_REPUTATION_DEFAULT_CFG = {
+  minSample: 10,           // DEV_REPUTATION_MIN_SAMPLE — breakpoint Confidence HIGH
+  maxDeadFailedPct: 70,    // DEV_REPUTATION_MAX_DEAD_FAILED_PCT — dalam skala PERSEN (0-100), bukan desimal
+  minInnerFail: 50,        // DEV_REPUTATION_MIN_INNER_FAIL
+  minSerialLaunches: 20,   // DEV_REPUTATION_MIN_SERIAL_LAUNCHES
+  maxScore: 15,            // DEV_REPUTATION_MAX_SCORE — breakpoint BAD REPUTATION
+  securityScanEnabled: true, // DEV_REPUTATION_SECURITY_SCAN_ENABLED — kode asli tidak punya saklar, jadi selalu true
+  // DEV_REPUTATION_MIN_LOGO_REUSE — BUKAN bagian dari 9 var asli, ditambahkan
+  // belakangan atas permintaan eksplisit. Sebelumnya hardcode >= 2 di dua
+  // tempat (reason text + hardRisk flag), sekarang satu sumber lewat cfg ini.
+  // Dipakai sebagai PERBANDINGAN >= (default 2 = reuse logo minimal 2x baru
+  // dianggap indikasi). TIDAK mengubah formula skor (reskin penalty di
+  // formula tetap pakai (LogoReuse-1)/4.0 mentah, itu bobot skor kontinu,
+  // beda dari threshold on/off reason & hardRisk ini).
+  minLogoReuse: 2,
+};
+
+// Porting badan utama `Get-GmgnDevReputation($info)`.
+// tokenInfo: hasil fetchTokenInfo() (= $info di PS1). Harus punya tokenInfo.dev.
+// execFn: fungsi exec sinkron dengan tanda tangan (cmd) -> stdout string, timeout
+//   dan error ditangani oleh caller lewat try/catch (samakan pola execSync di
+//   screen.js). Di-inject supaya filters.js tetap tidak punya dependency
+//   langsung ke child_process (semua fungsi lain di file ini pure).
+// cfg (opsional): { minSample, maxDeadFailedPct, minInnerFail, minSerialLaunches,
+//   maxScore, securityScanEnabled, minLogoReuse }. maxDeadFailedPct dalam PERSEN
+//   (mis. 70 = 70%), bukan desimal — fungsi ini yang membagi /100 secara
+//   internal supaya perbandingan ke RugRate (desimal 0-1) tetap benar. Field
+//   yang tidak diisi jatuh ke DEV_REPUTATION_DEFAULT_CFG di atas.
+//
+// PENTING: formula skor (bobot 0.25/0.55/0.3/0.15, athTrack, threshold
+// liquidity mati $4000, ATH-crash 0.05, status boundary Score<35/<60, sample
+// floor <3) SENGAJA TIDAK dibuat configurable di sini — itu di luar 9 nama
+// variabel yang sudah ada padanan .env-nya. Kalau itu juga mau dibikin
+// configurable, itu perubahan terpisah.
+// Return: profile object (lihat shape di bawah) atau null kalau
+//   tokenInfo.dev.creator_address tidak ada (persis kondisi PS1 `return $null`).
+function getGmgnDevReputation(tokenInfo, execFn, cfg) {
+  var c = Object.assign({}, DEV_REPUTATION_DEFAULT_CFG, cfg || {});
+  var info = tokenInfo || {};
+  var dev = info.dev;
+  if (!dev || !dev.creator_address) return null;
+
+  var wallet = String(dev.creator_address);
+  var profile = {
+    Wallet: wallet,
+    Score: 50,
+    Status: 'UNKNOWN',
+    Confidence: 'LOW',
+    Analyzed: 0,
+    Alive: 0,
+    Rugged: 0,
+    RugRate: null,
+    Survival: null,
+    GraduationRate: null,
+    InnerCount: 0,
+    Launches: Math.trunc(convertToGmgnFiniteNumber(dev.creator_open_count, 0.0)),
+    AthMc: dev.ath_token_info ? convertToGmgnFiniteNumber(dev.ath_token_info.ath_mc, 0.0) : 0.0,
+    LogoReuse: 0,
+    LogoDataAvailable: false,
+    SecurityBad: 0,
+    SecuritySeen: 0,
+    Exited: false,
+    Cto: testGmgnTrue(dev.cto_flag),
+    Reasons: [],
+    DataSource: 'token info fallback',
+  };
+
+  var status = dev.creator_token_status == null ? '' : String(dev.creator_token_status);
+  var balance = convertToGmgnFiniteNumber(dev.creator_token_balance, 0.0);
+  profile.Exited = balance <= 0 && status === 'sell';
+
+  try {
+    var raw = execFn(
+      'npx gmgn-cli portfolio created-tokens --chain sol --wallet ' + wallet + ' --raw'
+    );
+    if (raw) {
+      var response = JSON.parse(raw);
+      var body = response && response.data ? response.data : response;
+      var tokens = [];
+      if (body && Array.isArray(body.tokens)) tokens = body.tokens.slice();
+      else if (Array.isArray(body)) tokens = body.slice();
+      else if (Array.isArray(response)) tokens = response.slice();
+
+      profile.DataSource = 'GMGN created-tokens';
+      var innerC = convertToGmgnFiniteNumber(body ? body.inner_count : null, 0.0);
+      var openC = convertToGmgnFiniteNumber(body ? body.open_count : null, 0.0);
+      if (body && (body.inner_count != null || body.open_count != null)) {
+        profile.Launches = Math.trunc(innerC + openC);
+      }
+      if (body && body.inner_count != null) profile.InnerCount = Math.trunc(innerC);
+      if (body && body.creator_ath_info && body.creator_ath_info.ath_mc) {
+        profile.AthMc = convertToGmgnFiniteNumber(body.creator_ath_info.ath_mc, 0.0);
+      }
+
+      if (tokens.length > 0) {
+        var dead = tokens.filter(function (tk) {
+          var liq = convertToGmgnFiniteNumber(tk.pool_liquidity, 0.0);
+          var tokAthMc = convertToGmgnFiniteNumber(tk.token_ath_mc, 0.0);
+          var tokCurMc = convertToGmgnFiniteNumber(tk.market_cap, 0.0);
+          return liq < 4000 || (tokAthMc > 0 && tokCurMc / tokAthMc < 0.05);
+        }).length;
+        profile.Analyzed = tokens.length;
+        profile.Alive = tokens.length - dead;
+        profile.Rugged = dead;
+        profile.RugRate = profile.Rugged / tokens.length;
+        profile.Survival = profile.Alive / tokens.length;
+
+        var graduated = tokens.filter(function (tk) { return testGmgnTrue(tk.is_open); }).length;
+        profile.GraduationRate = graduated / tokens.length;
+
+        var logos = tokens.map(function (tk) { return tk.logo; }).filter(function (l) { return l; });
+        if (logos.length > 0) {
+          var uniqueLogos = new Set(logos).size;
+          profile.LogoReuse = Math.max(0, logos.length - uniqueLogos);
+          profile.LogoDataAvailable = true;
+        }
+
+        var recent = tokens
+          .slice()
+          .sort(function (a, b) {
+            var ta = a.create_timestamp != null ? convertToGmgnFiniteNumber(a.create_timestamp, 0.0)
+              : a.created_timestamp != null ? convertToGmgnFiniteNumber(a.created_timestamp, 0.0) : 0;
+            var tb = b.create_timestamp != null ? convertToGmgnFiniteNumber(b.create_timestamp, 0.0)
+              : b.created_timestamp != null ? convertToGmgnFiniteNumber(b.created_timestamp, 0.0) : 0;
+            return tb - ta; // descending
+          })
+          .slice(0, 3);
+
+        // DEV_REPUTATION_SECURITY_SCAN_ENABLED — kode asli tidak punya saklar
+        // (selalu jalan), sekarang bisa dimatikan lewat cfg.securityScanEnabled.
+        // Kalau dimatikan: profile.SecuritySeen/SecurityBad tetap 0 (default
+        // awal), jadi cabang skor `if (profile.SecuritySeen > 0)` di bawah
+        // otomatis di-skip juga — perilakunya sama seperti dev ini tidak
+        // pernah discan, bukan "dianggap aman" secara eksplisit.
+        if (c.securityScanEnabled) {
+          for (var i = 0; i < recent.length; i++) {
+            var token = recent[i];
+            var tokenAddress = token.token_address ? token.token_address : token.address;
+            if (!tokenAddress) continue;
+            try {
+              var secOut = execFn('npx gmgn-cli token security --chain sol --address ' + tokenAddress);
+              var tokenSec = JSON.parse(secOut);
+              profile.SecuritySeen++;
+              if (
+                tokenSec.is_honeypot === true ||
+                tokenSec.renounced_mint !== true ||
+                tokenSec.renounced_freeze_account !== true
+              ) {
+                profile.SecurityBad++;
+              }
+            } catch (eSec) {
+              // sesuai PS1: try/catch kosong, gagal per-token diabaikan diam-diam
+            }
+          }
+        }
+      } else if (body && body.open_ratio != null) {
+        var ratio = convertToGmgnFiniteNumber(body.open_ratio, 0.0);
+        if (ratio > 1) ratio = ratio / 100;
+        profile.GraduationRate = Math.max(0.0, Math.min(1.0, ratio));
+        profile.Survival = profile.GraduationRate;
+        profile.RugRate = 1.0 - profile.Survival;
+      }
+    }
+  } catch (eOuter) {
+    // sesuai PS1: try/catch terluar kosong, gagal fetch created-tokens diabaikan
+    // diam-diam -> profile jatuh ke default awal ('token info fallback')
+  }
+
+  var athTrack = (Math.log10(Math.max(1.0, profile.AthMc)) - 5.0) / 2.0;
+  athTrack = Math.max(0.0, Math.min(1.0, athTrack));
+
+  var score;
+  if (profile.Survival != null) {
+    score = 0.25 + 0.55 * profile.Survival;
+    var innerPenalty = (profile.InnerCount - c.minInnerFail) / 950.0;
+    innerPenalty = Math.max(0.0, Math.min(1.0, innerPenalty));
+    score -= 0.3 * innerPenalty;
+    score += 0.15 * athTrack * profile.Survival;
+  } else {
+    var serial = (profile.Launches - c.minSerialLaunches) / 180.0;
+    serial = Math.max(0.0, Math.min(1.0, serial));
+    score = 0.3 + 0.55 * athTrack * (1 - 0.7 * serial) - 0.2 * serial;
+  }
+
+  if (profile.SecuritySeen > 0) {
+    score -= 0.35 * (profile.SecurityBad / profile.SecuritySeen);
+  }
+  if (profile.LogoDataAvailable) {
+    var reskin = (profile.LogoReuse - 1) / 4.0;
+    reskin = Math.max(0.0, Math.min(1.0, reskin));
+    score -= 0.2 * reskin;
+  }
+  if (profile.Exited) score -= 0.1;
+  if (profile.Cto) score += 0.05;
+  if (!Number.isFinite(score)) {
+    score = profile.Survival != null ? 0.25 + 0.55 * profile.Survival : 0.5;
+  }
+  score = Math.max(0.0, Math.min(1.0, score));
+  profile.Score = Math.round(score * 100);
+
+  // maxDeadFailedPct di cfg dalam skala PERSEN (mis. 70 = 70%), sedangkan
+  // profile.RugRate desimal (0-1) — dibagi /100 di titik pembandingan ini
+  // supaya "70" di .env beneran berarti 70%, bukan 7000%.
+  var maxDeadFailedRatio = c.maxDeadFailedPct / 100;
+
+  var reasons = [];
+  if (profile.RugRate != null && profile.RugRate >= maxDeadFailedRatio) reasons.push('dead/failed rate tinggi');
+  if (profile.InnerCount > c.minInnerFail) reasons.push('internal market gagal ' + profile.InnerCount + 'x');
+  if (profile.SecurityBad > 0) reasons.push('token lama tidak aman ' + profile.SecurityBad + '/' + profile.SecuritySeen);
+  if (profile.LogoDataAvailable && profile.LogoReuse >= c.minLogoReuse) reasons.push('reskin/logo reuse ' + profile.LogoReuse + 'x');
+  if (profile.Launches > c.minSerialLaunches) reasons.push('serial creator ' + profile.Launches + ' launch');
+  if (profile.Exited) reasons.push('dev sudah exit token ini');
+  profile.Reasons = reasons;
+
+  var sampleSize = profile.Analyzed > 0 ? profile.Analyzed : profile.Launches;
+  profile.Confidence = sampleSize >= c.minSample ? 'HIGH' : sampleSize >= 3 ? 'MEDIUM' : 'LOW';
+
+  var hardRisk =
+    profile.SecurityBad > 0 ||
+    (profile.RugRate != null && profile.RugRate >= maxDeadFailedRatio) ||
+    profile.InnerCount > c.minInnerFail ||
+    (profile.LogoDataAvailable && profile.LogoReuse >= c.minLogoReuse);
+
+  if (sampleSize < 3 && !hardRisk) {
+    profile.Status = 'NEW DEV / DATA MINIM';
+  } else if (profile.Score < c.maxScore) {
+    profile.Status = 'BAD REPUTATION';
+  } else if (profile.Score < 35 || hardRisk) {
+    profile.Status = 'HIGH RISK';
+  } else if (profile.Score < 60) {
+    profile.Status = 'MIXED/UNKNOWN';
+  } else {
+    profile.Status = 'GOOD HISTORY';
+  }
+
+  return profile;
+}
+
+// Gate untuk MIG mode: skip token kalau Status = 'BAD REPUTATION' atau
+// 'HIGH RISK' (pola sama seperti PS1 -- devColor merah untuk kedua status
+// itu). Bukan bagian dari PS1 (PS1 gak punya skip), tapi keputusan skip
+// eksplisit sesuai jawaban: "Skip kalau Status = BAD REPUTATION/HIGH RISK".
+function shouldSkipDevReputation(profile) {
+  if (!profile) return { skip: false, reason: '' };
+  if (profile.Status === 'BAD REPUTATION' || profile.Status === 'HIGH RISK') {
+    return {
+      skip: true,
+      reason: 'Dev reputation ' + profile.Status + ' (score=' + profile.Score + '/100, confidence=' + profile.Confidence + ')',
+    };
+  }
+  return { skip: false, reason: '' };
+}
+
+// ─────────────────────────────────────────────
+//  APP-STYLE MIGRATION FILTER (soft-score gate, MIG mode)
+// ─────────────────────────────────────────────
+// SEBELUMNYA: fungsi ini di-import di screen.js (`const { ..., evaluateAppStyleMigration }
+// = require('./filters')`) tapi TIDAK PERNAH didefinisikan di file ini maupun di-export.
+// Akibatnya evaluateAppStyleMigration di screen.js selalu `undefined`, dan begitu ada
+// token New Migration yang lolos sampai ke gate ini (MIG_APP_FILTER_ENABLED default ON),
+// screen.js crash "evaluateAppStyleMigration is not a function" — loop MIG TIDAK dibungkus
+// try/catch per-token, jadi exception ini nembus sampai keluar processTokens() dan
+// menghentikan SISA cycle (termasuk Swing 1D & Signal yang jalan setelah loop MIG).
+//
+// Implementasi di bawah ini BARU ditulis sekarang (bukan restore kode lama yang hilang —
+// fungsi ini memang belum pernah ada), disusun mengikuti kontrak pemanggilan yang sudah
+// ada di screen.js baris ~2329-2344: parameter opts (maxBuyTaxPct, maxSellTaxPct,
+// maxBotDegenPct, minSmartMoneyConfluence, maxCreatorTokens, momentumReject1h,
+// momentumReject5m, buyRatioReject, buyRatioPass, minConviction, minPriority) dan bentuk
+// return { skip, reason, verdict, conviction, priority }.
+//
+// CATATAN PENTING (perlu diverifikasi manual terhadap output nyata `gmgn-cli token info
+// --raw`): field buy_tax/sell_tax/bot_degen_rate/smart_degen_count DIASUMSIKAN ada di
+// tokenInfo (atau token trenches `t`) dengan nama-nama umum GMGN. Kalau field itu ternyata
+// tidak ada / beda nama di response asli, sub-check terkait otomatis fail-open (di-skip,
+// tidak menolak token) — sama seperti pola fail-open di checkDevHoldRate/checkSniperRate
+// dkk di atas — supaya data hilang tidak diam-diam mereject semua token, tapi juga tidak
+// bikin gate ini "buta". Kalau nanti ternyata field-nya memang ada dengan nama beda, tinggal
+// sesuaikan bagian pembacaan field (bagian atas fungsi), logika skip/scoring-nya tidak perlu
+// diubah.
+//
+// momentumReject1h/momentumReject5m/buyRatioReject/buyRatioPass di opts memakai skala
+// DESIMAL (mis. -0.12 = -12%, 0.5 = 50%) — beda dari kebanyakan gate lain di file ini yang
+// pakai skala PERSEN. Konversi dilakukan di dalam fungsi ini supaya pemanggil di screen.js
+// tidak perlu berubah.
+function evaluateAppStyleMigration(token, tokenInfo, devEvalScore, opts) {
+  var t = token || {};
+  var info = tokenInfo || {};
+  var price = info.price || {};
+  var o = opts || {};
+  var reasons = [];
+
+  // — Buy/Sell tax (kalau field tidak ada di tokenInfo, skip sub-check ini, fail-open) —
+  var buyTaxPct = info.buy_tax != null ? asPct(info.buy_tax) : null;
+  if (buyTaxPct != null && o.maxBuyTaxPct != null && buyTaxPct > o.maxBuyTaxPct) {
+    reasons.push('Buy tax ' + buyTaxPct.toFixed(1) + '% > ' + o.maxBuyTaxPct + '%');
+  }
+  var sellTaxPct = info.sell_tax != null ? asPct(info.sell_tax) : null;
+  if (sellTaxPct != null && o.maxSellTaxPct != null && sellTaxPct > o.maxSellTaxPct) {
+    reasons.push('Sell tax ' + sellTaxPct.toFixed(1) + '% > ' + o.maxSellTaxPct + '%');
+  }
+
+  // — Bot degen rate (fail-open kalau data tidak tersedia untuk token MIG) —
+  var botRaw = t.bot_degen_rate != null ? t.bot_degen_rate : info.bot_degen_rate;
+  var botPct = botRaw != null ? asPct(botRaw) : null;
+  if (botPct != null && o.maxBotDegenPct != null && botPct > o.maxBotDegenPct) {
+    reasons.push('Bot degen ' + botPct.toFixed(1) + '% > ' + o.maxBotDegenPct + '%');
+  }
+
+  // — Smart money confluence (fail-open kalau data tidak tersedia) —
+  var smRaw = t.smart_degen_count != null ? t.smart_degen_count : info.smart_degen_count;
+  var smCount = smRaw != null ? Number(smRaw) : null;
+  if (smCount != null && o.minSmartMoneyConfluence != null && smCount < o.minSmartMoneyConfluence) {
+    reasons.push('Smart money wallet ' + smCount + ' < ' + o.minSmartMoneyConfluence);
+  }
+
+  // — Serial creator (maxCreatorTokens), sumber sama dengan getGmgnDevReputation —
+  var creatorTokens = info.dev && info.dev.creator_open_count != null
+    ? Number(info.dev.creator_open_count) : null;
+  if (creatorTokens != null && o.maxCreatorTokens != null && creatorTokens > o.maxCreatorTokens) {
+    reasons.push('Creator sudah launch ' + creatorTokens + ' token > ' + o.maxCreatorTokens);
+  }
+
+  // — Momentum reject 1h/5m — t.price_change_percent1h dkk sudah dalam skala PERSEN
+  // (sama seperti dipakai checkPriceChange1h), dikonversi ke desimal di sini supaya
+  // sebanding dengan opts.momentumReject1h/5m yang desimal.
+  var chg1hPct = t.price_change_percent1h != null ? Number(t.price_change_percent1h)
+    : (price.price_change_percent1h != null ? Number(price.price_change_percent1h) : null);
+  var chg1hDec = (chg1hPct != null && Number.isFinite(chg1hPct)) ? chg1hPct / 100 : null;
+  if (chg1hDec != null && o.momentumReject1h != null && chg1hDec < o.momentumReject1h) {
+    reasons.push('Momentum 1h ' + chg1hPct.toFixed(1) + '% (reject < ' + (o.momentumReject1h * 100).toFixed(0) + '%)');
+  }
+
+  var chg5mPct = price.price_change_percent5m != null ? Number(price.price_change_percent5m)
+    : (t.price_change_percent5m != null ? Number(t.price_change_percent5m) : null);
+  var chg5mDec = (chg5mPct != null && Number.isFinite(chg5mPct)) ? chg5mPct / 100 : null;
+  if (chg5mDec != null && o.momentumReject5m != null && chg5mDec < o.momentumReject5m) {
+    reasons.push('Momentum 5m ' + chg5mPct.toFixed(1) + '% (reject < ' + (o.momentumReject5m * 100).toFixed(0) + '%)');
+  }
+
+  // — Buy ratio keras: di bawah buyRatioReject langsung tolak. Antara buyRatioReject
+  // dan buyRatioPass tidak ditolak tapi menurunkan conviction (lihat scoring di bawah) —
+  var totalTxn = Number(t.buys || 0) + Number(t.sells || 0);
+  var buyRatioDec = totalTxn > 0 ? Number(t.buys || 0) / totalTxn : null;
+  if (buyRatioDec != null && o.buyRatioReject != null && buyRatioDec < o.buyRatioReject) {
+    reasons.push('Buy ratio ' + (buyRatioDec * 100).toFixed(0) + '% < ' + (o.buyRatioReject * 100).toFixed(0) + '%');
+  }
+
+  if (reasons.length > 0) {
+    return { skip: true, reason: reasons[0], verdict: 'REJECT', conviction: 0, priority: 0 };
+  }
+
+  // — Scoring: gabungkan dev reputation (devEvalScore, 0-1) dengan sinyal momentum/buy
+  // ratio/smart money/bot jadi satu skor conviction (0-1) -> priority (0-100). Ini soft
+  // score, BUKAN gate keras (gate keras sudah selesai di atas) —
+  var conviction = Number.isFinite(devEvalScore) ? devEvalScore : 0.5;
+  var buyRatioPassThreshold = o.buyRatioPass != null ? o.buyRatioPass : 0.5;
+  if (buyRatioDec != null) {
+    conviction += buyRatioDec >= buyRatioPassThreshold ? 0.15 : -0.05;
+  }
+  if (chg1hDec != null && chg1hDec > 0) {
+    conviction += Math.min(chg1hDec, 0.2) * 0.5;
+  }
+  if (smCount != null) {
+    conviction += Math.min(smCount, 5) * 0.03;
+  }
+  if (botPct != null) {
+    conviction -= (Math.min(botPct, 50) / 100) * 0.3;
+  }
+  conviction = Math.max(0, Math.min(1, conviction));
+  var priority = Math.round(conviction * 100);
+
+  var minConviction = o.minConviction != null ? o.minConviction : 0;
+  var minPriority = o.minPriority != null ? o.minPriority : 0;
+  if (conviction < minConviction) {
+    return {
+      skip: true, reason: 'Conviction ' + conviction.toFixed(2) + ' < ' + minConviction,
+      verdict: 'LOW_CONVICTION', conviction, priority,
+    };
+  }
+  if (priority < minPriority) {
+    return {
+      skip: true, reason: 'Priority ' + priority + ' < ' + minPriority,
+      verdict: 'LOW_PRIORITY', conviction, priority,
+    };
+  }
+
+  return { skip: false, reason: '', verdict: 'PASS', conviction, priority };
+}
+
+module.exports = {
+  asPct,
+  toUnixMillis,
+  toUnixSeconds,
+  getSwingKlinePlans,
+  checkDevHoldRate,
+  checkPriceChange1h,
+  checkMinHolders,
+  checkMinKolCount,
+  checkSniperRate,
+  checkVolLpRatio,
+  checkRugRatio,
+  nextConsecutiveConfirmation,
+  checkInsiderRate,
+  checkPhishingRate,
+  checkHasSocial,
+  shouldSkipMigration,
+  collectMigrationHardRiskReasons,
+  shouldSkipMigrationHardRisk,
   checkBaseAgeHours,
+  checkBaseLiquidity,
   checkVol1h,
   checkSwaps5m,
   checkVol5m,
-  checkHasSocial,
+  shouldSkipNewMigration,
   calculateRugcheckTopHoldersPct,
   getRankedRugcheckHolderPcts,
   checkIndividualTopHolders,
-} = require('./filters');
-
-// ─────────────────────────────────────────────
-//  CONFIG
-// ─────────────────────────────────────────────
-const CFG = {
-  // New Migration V2 — base gates
-  minVol1h:        Number(process.env.MIN_VOL_1H)        || 14000,
-  minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
-  minVol5m:        Number(process.env.MIN_VOL_5M)        || 2000,
-  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
-
-  // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 5000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 2000,
-  // Sekarang pakai skala score_normalised RugCheck (0-100, makin RENDAH makin
-  // aman). Default 20 = ambang batas kategori "Good" versi RugCheck.
-  // Catatan: dulu field ini dibandingkan ke rug.score (raw score, skalanya bisa
-  // ribuan/puluhan-ribu bahkan utk token legit) — jadi longgar tanpa disadari.
-  maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 20,
-  minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
-
-  // New Migration extra gates
-  maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 30,
-  maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
-  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 15,
-  maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 15,
-  maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
-  minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
-  maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
-  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 40,
-  maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
-  gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 45,
-  maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 5,
-  maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 10),
-  maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 3),
-  maxHolder3Pct: process.env.MAX_HOLDER_3_PCT === '' ? null : (Number(process.env.MAX_HOLDER_3_PCT) || 3),
-  maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 3),
-  requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
-  requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
-
-  // Mode Swing 1D — filter lebih ketat
-  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 35000,
-  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 15000,
-  swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 25,   // tidak sedang pump >25% per jam
-  swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
-  swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
-  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 300,
-  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
-  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 168,  // max 7 hari (168 jam)
-  swingMinBuyRatio: Number(process.env.SWING_MIN_BUY_RATIO) || 35,
-  swingMaxRugScore: Number(process.env.SWING_MAX_RUG_SCORE) || 20,
-  swingMaxInsiderPct: Number(process.env.SWING_MAX_INSIDER_PCT) || 30,
-  swingMaxHolder1Pct: Number(process.env.SWING_MAX_HOLDER_1_PCT) || 10,
-  swingMaxHolder2Pct: Number(process.env.SWING_MAX_HOLDER_2_PCT) || 4,
-  swingMaxHolder3Pct: Number(process.env.SWING_MAX_HOLDER_3_PCT) || 4,
-  swingMaxHolder4Pct: Number(process.env.SWING_MAX_HOLDER_4_PCT) || 4,
-
-  // Smart Money Signal
-  signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
-  tgThreadSignal:     Number(process.env.TG_THREAD_SIGNAL) || undefined,
-  signalMinLiquidity: Number(process.env.SIGNAL_MIN_LIQ)   || 10000,
-  signalMinHolders:   Number(process.env.SIGNAL_MIN_HOLDERS)|| 100,
-  signalMaxMc:        Number(process.env.SIGNAL_MAX_MC)     || 300000,
-  signalMaxTop10Rate: Number(process.env.SIGNAL_MAX_TOP10)  || 35,
-  autoSellEnabled:    process.env.AUTO_SELL_ENABLED === 'true',
-  autoSellTpPct:      Number(process.env.AUTO_SELL_TP_PCT) || 30,
-  autoSellCutlossPct: Number(process.env.AUTO_SELL_CUTLOSS_PCT) || 50,
-
-  // Umum
-  interval:        Number(process.env.POLL_INTERVAL)     || 60,
-  healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
-  seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
-  tgToken:         process.env.TG_TOKEN,
-  tgChatId:        process.env.TG_CHAT_ID,
-  tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
-  tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
-  tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
+  mergeRugcheckReports,
+  isPermanentRugcheckLock,
+  isPermanentSafetyLock,
+  convertToGmgnFiniteNumber,
+  testGmgnTrue,
+  getGmgnDevReputation,
+  shouldSkipDevReputation,
+  evaluateAppStyleMigration,
 };
-
-if (!CFG.tgToken || !CFG.tgChatId) {
-  console.error('Isi TG_TOKEN dan TG_CHAT_ID di .env');
-  process.exit(1);
-}
-
-console.log('DEBUG thread SWING=' + process.env.TG_THREAD_ID + ' MIG=' + process.env.TG_THREAD_MIG);
-
-const TG_API        = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
-const SEEN_FILE     = path.join(__dirname, 'seen.json');
-const POSITIONS_FILE= path.join(__dirname, 'positions.json');
-const LOG_FILE      = path.join(__dirname, 'screen.log');
-const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
-
-const SEEN    = new Map();
-const TRACKED = new Map();
-const TARGETS = [30, 50, 100, 200, 500];
-let startTime = Date.now();
-let totalNotified = 0;
-
-// ─────────────────────────────────────────────
-//  HELPERS
-// ─────────────────────────────────────────────
-function fmt(n) {
-  if (!n || isNaN(n)) return '0';
-  if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M';
-  if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
-  return Number(n).toFixed(2);
-}
-
-function fmtPrice(n) {
-  var v = Number(n);
-  if (!v || isNaN(v)) return '0';
-  if (v >= 1000)     return (v / 1000).toFixed(2) + 'K';
-  if (v >= 1)        return v.toFixed(4);
-  if (v >= 0.0001)   return v.toFixed(6);
-  if (v >= 0.000001) return v.toFixed(8);
-  return v.toFixed(10);
-}
-
-function timeNow() {
-  return new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
-}
-
-function log(msg) {
-  const line = '[' + timeNow() + '] ' + msg;
-  console.log(line);
-  fs.appendFileSync(LOG_FILE, line + '\n');
-}
-
-function timeAgo(ts) {
-  if (!ts) return '?';
-  const diff = Date.now() - ts * 1000;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1)  return 'Baru saja';
-  if (mins < 60) return mins + 'm';
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)  return hrs + 'j';
-  return Math.floor(hrs / 24) + 'd';
-}
-
-function tokenAgeHours(ts) {
-  if (!ts) return 0;
-  return (Date.now() - ts * 1000) / 3600000;
-}
-
-// ─────────────────────────────────────────────
-//  PERSISTENCE
-// ─────────────────────────────────────────────
-function loadSeen() {
-  try {
-    const data = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8'));
-    for (const [ca, entry] of Object.entries(data.entries || {})) SEEN.set(ca, entry);
-    log('Loaded ' + SEEN.size + ' seen tokens');
-  } catch { log('No existing seen.json, starting fresh'); }
-}
-
-function saveSeen() {
-  try {
-    fs.writeFileSync(SEEN_FILE, JSON.stringify({
-      version: 2, savedAt: Date.now(), entries: Object.fromEntries(SEEN),
-    }));
-  } catch (e) { log('Failed to save seen.json: ' + e.message); }
-}
-
-function cleanupSeen() {
-  const cutoff = Date.now() - CFG.seenCleanupDays * 86400000;
-  let deleted = 0;
-  for (const [ca, entry] of SEEN) {
-    if (entry.firstSeen < cutoff) { SEEN.delete(ca); deleted++; }
-  }
-  if (deleted > 0) { log('Cleaned up ' + deleted + ' old entries'); saveSeen(); }
-}
-
-function logTrackingEvent(event) {
-  try {
-    const data = [];
-    try { data.push(...JSON.parse(fs.readFileSync(TRACKING_LOG, 'utf8'))); } catch {}
-    data.push({ ...event, time: Date.now() });
-    fs.writeFileSync(TRACKING_LOG, JSON.stringify(data));
-  } catch {}
-}
-
-function loadPositions() {
-  try {
-    const data = JSON.parse(fs.readFileSync(POSITIONS_FILE, 'utf8'));
-    for (const [ca, entry] of Object.entries(data.entries || {})) TRACKED.set(ca, entry);
-    log('Loaded ' + TRACKED.size + ' tracked positions');
-  } catch { log('No existing positions.json, starting fresh'); }
-}
-
-function savePositions() {
-  try {
-    fs.writeFileSync(POSITIONS_FILE, JSON.stringify({
-      version: 1, savedAt: Date.now(), entries: Object.fromEntries(TRACKED),
-    }));
-  } catch (e) { log('Failed to save positions.json: ' + e.message); }
-}
-
-// ─────────────────────────────────────────────
-//  AUTO PUSH JSON KE GITHUB
-// ─────────────────────────────────────────────
-async function pushFileToGitHub(filename, content) {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
-  if (!token) return;
-  const encoded = Buffer.from(content).toString('base64');
-  const url = `https://api.github.com/repos/TrymeReal/-auto-screen/contents/${filename}`;
-  try {
-    // Cek SHA file yang ada (diperlukan untuk update)
-    let sha = null;
-    try {
-      const res = await axios.get(url, { headers: { Authorization: `token ${token}` }, timeout: 5000 });
-      sha = res.data.sha;
-    } catch {}
-    await axios.put(url, {
-      message: 'chore: update data [skip ci]',
-      content: encoded,
-      ...(sha ? { sha } : {}),
-    }, { headers: { Authorization: `token ${token}` }, timeout: 10000 });
-    log('[GitHub] ' + filename + ' pushed');
-  } catch (e) {
-    log('[GitHub] Failed to push ' + filename + ': ' + (e.response?.data?.message || e.message));
-  }
-}
-
-async function pushJSONToGitHub() {
-  log('[GitHub] Pushing JSON files...');
-  const files = [
-    { name: 'seen.json', path: SEEN_FILE },
-    { name: 'positions.json', path: POSITIONS_FILE },
-    { name: 'tracking_log.json', path: TRACKING_LOG },
-  ];
-  for (const f of files) {
-    try {
-      const content = fs.readFileSync(f.path, 'utf8');
-      await pushFileToGitHub(f.name, content);
-    } catch { log('[GitHub] ' + f.name + ' not found, skip'); }
-  }
-}
-
-// ─────────────────────────────────────────────
-//  NETWORK
-// ─────────────────────────────────────────────
-async function getWithRetry(url, opts, retries) {
-  const maxRetries = retries ?? 3;
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await axios.get(url, { timeout: 10000, ...(opts || {}) });
-    } catch (e) {
-      if (i === maxRetries - 1) throw e;
-      await new Promise(r => setTimeout(r, (i + 1) * 1000));
-    }
-  }
-}
-
-function fetchGmgnTrending() {
-  try {
-    const out = execSync(
-      'npx gmgn-cli market trending --chain sol --interval 1h --limit 100 --raw',
-      { encoding: 'utf8', timeout: 30000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
-    );
-    const d = JSON.parse(out);
-    if (!d.data || !d.data.rank) return [];
-    log('GMGN trending: ' + d.data.rank.length + ' tokens');
-    return d.data.rank;
-  } catch (e) {
-    log('GMGN trending error: ' + e.message);
-    return [];
-  }
-}
-
-// Terima berbagai bentuk "ya": true, 1, "1", "true", "yes".
-function isTruthyFlag(v) {
-  return v === true || v === 1 || v === '1' || v === 'true' || v === 'yes';
-}
-
-// Normalisasi item trenches → nama field yang dipakai sisa kode (sama spt trending).
-// Trenches tak punya `price`/`market_cap` langsung; diturunkan dari market cap / supply.
-function normalizeTrench(t) {
-  const supply = Number(t.total_supply) || 0;
-  const mc     = Number(t.usd_market_cap) || 0;
-  return Object.assign({}, t, {
-    price:              supply > 0 ? mc / supply : 0,
-    market_cap:         mc,
-    creation_timestamp: t.created_timestamp,
-    volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
-    buys:               t.buys_24h,
-    sells:              t.sells_24h,
-    bundler_rate:       t.bundler_trader_amount_rate,
-    rug_ratio:          Number(t.rug_ratio) || 0,
-    suspected_insider_hold_rate: Number(t.suspected_insider_hold_rate) || 0,
-    renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
-    renounced_freeze_account: isTruthyFlag(t.renounced_freeze_account) ? 1 : 0,
-  });
-}
-
-// Sumber khusus New Migration: token yang sudah graduate ke DEX (`completed`).
-// CLI sudah unwrap `.data`, jadi kategori ada di root (d.completed).
-function fetchGmgnTrenches() {
-  try {
-    const args = [
-      'market trenches',
-      '--chain sol',
-      '--type completed',
-      '--limit 50',
-      '--min-smart-degen-count 1',
-      '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
-      '--min-liquidity ' + CFG.minLp,
-      '--raw',
-    ].join(' ');
-    const out = execSync('npx gmgn-cli ' + args, {
-      encoding: 'utf8', timeout: 30000,
-      env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' },
-    });
-    const d = JSON.parse(out);
-    // Utamakan d.completed (CLI sudah unwrap). Fallback d.data.completed kalau masih terbungkus.
-    const root = (d && d.completed) ? d : (d && d.data) ? d.data : {};
-    const list = root.completed || [];
-    log('GMGN trenches completed: ' + list.length + ' tokens');
-    return list.map(normalizeTrench);
-  } catch (e) {
-    log('GMGN trenches error: ' + e.message);
-    return [];
-  }
-}
-
-function fetchTokenInfo(address) {
-  try {
-    const out = execSync(
-      'npx gmgn-cli token info --chain sol --address ' + address + ' --raw',
-      { encoding: 'utf8', timeout: 15000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
-    );
-    const d = JSON.parse(out);
-    return d;
-  } catch (e) {
-    log('Token info error ' + (address || '').slice(0, 8) + ': ' + e.message);
-    return null;
-  }
-}
-
-async function fetchPaidDex(address) {
-  try {
-    const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + address, { timeout: 8000 }, 2);
-    const pairs = res.data?.pairs;
-    if (!pairs || pairs.length === 0) return false;
-    var hasBoost = false;
-    for (var i = 0; i < pairs.length; i++) {
-      var p = pairs[i];
-      if (p.boosts && Number(p.boosts.active) > 0) { hasBoost = true; break; }
-      if (p.labels && Array.isArray(p.labels) && p.labels.length > 0) hasBoost = true;
-    }
-    return hasBoost;
-  } catch (e) {
-    log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
-    return false;
-  }
-}
-
-function getCreatorTokenCount(walletAddress) {
-  if (!walletAddress || walletAddress === '?' || walletAddress.length < 30) return 0;
-  try {
-    var out = execSync(
-      'npx gmgn-cli portfolio created-tokens --chain sol --wallet ' + walletAddress + ' --raw',
-      { encoding: 'utf8', timeout: 10000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
-    );
-    var data = JSON.parse(out);
-    var tokens = Array.isArray(data) ? data : (data.data || []);
-    return tokens.length;
-  } catch (e) {
-    return 0;
-  }
-}
-
-function fetchGmgnSignal() {
-  try {
-    const out = execSync(
-      'npx gmgn-cli market signal --chain sol --signal-type 12 --raw',
-      { encoding: 'utf8', timeout: 30000, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
-    );
-    const d = JSON.parse(out);
-    if (!Array.isArray(d) || d.length === 0) return [];
-    log('GMGN signal: ' + d.length + ' events');
-    return d;
-  } catch (e) {
-    log('GMGN signal error: ' + e.message);
-    return [];
-  }
-}
-
-function normalizeSignal(signals) {
-  var grouped = new Map();
-  for (var i = 0; i < signals.length; i++) {
-    var s = signals[i];
-    if (!s.token_address || !s.data) continue;
-    var existing = grouped.get(s.token_address);
-    if (!existing || s.trigger_at > existing.trigger_at) {
-      grouped.set(s.token_address, s);
-    }
-  }
-  var result = [];
-  for (var s of grouped.values()) {
-    var d = s.data;
-    var supply = Number(d.total_supply) || 0;
-    var mc = Number(s.market_cap) || Number(d.usd_market_cap) || 0;
-    result.push({
-      address:       d.address,
-      symbol:        d.symbol,
-      name:          d.name,
-      exchange:      d.exchange || '',
-      price:         supply > 0 ? mc / supply : 0,
-      market_cap:    mc,
-      liquidity:     Number(d.liquidity) || 0,
-      volume:        Number(d.volume_1h) || 0,
-      holder_count:  Number(d.holder_count) || 0,
-      top_10_holder_rate: Number(d.top_10_holder_rate) || 0,
-      rug_ratio:     Number(d.rug_ratio) || 0,
-      creator:       d.creator || '',
-      trigger_mc:    Number(s.trigger_mc) || 0,
-      trigger_at:    Number(s.trigger_at) || 0,
-      signal_times:  Number(s.signal_times) || 0,
-      smart_degen_wallets: d.smart_degen_wallets || [],
-      smart_degen_count: Number(d.smart_degen_count) || 0,
-      bot_degen_rate: Number(d.bot_degen_rate) || 0,
-      bot_degen_count: Number(d.bot_degen_count) || 0,
-      suspected_insider_hold_rate: Number(d.suspected_insider_hold_rate) || 0,
-      bundler_rate:  Number(d.bundler_trader_amount_rate) || 0,
-      sniper_count:  Number(d.sniper_count) || 0,
-      dev_team_hold_rate: Number(d.dev_team_hold_rate) || 0,
-      creator_created_count: Number(d.creator_created_count) || 0,
-    });
-  }
-  return result;
-}
-
-async function fetchGMGNKline(address, resolution, fromSec, toSec) {
-  try {
-    const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
-    const ts   = Math.floor(Date.now() / 1000);
-    const cid  = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
-    const url  = host + '/v1/market/token_kline?chain=sol&address=' + address
-               + '&resolution=' + resolution
-               + '&from=' + Math.floor(fromSec)
-               + '&to='   + Math.floor(toSec)
-               + '&timestamp=' + ts + '&client_id=' + cid;
-    const res  = await axios.get(url, {
-      headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
-      timeout: 10000,
-    });
-
-    // Dulu cuma coba res.data.list — kalau API-nya bungkus payload di level
-    // "data" (kayak endpoint trending: d.data.rank), .list bakal selalu
-    // undefined dan fungsi ini diam-diam balik null tanpa error sama sekali.
-    // Coba dua kemungkinan struktur sekaligus:
-    const list = res.data?.list ?? res.data?.data?.list ?? null;
-
-    if (!list || list.length < 3) {
-      log('[DEBUG KLINE] ' + address.slice(0, 8)
-        + ' — list: ' + (list ? list.length + ' candle' : 'null')
-        + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
-    }
-
-    return list;
-  } catch (e) {
-    log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
-    return null;
-  }
-}
-
-async function getRugCheck(ca, insiderThreshold) {
-  try {
-    const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
-    const d   = res.data;
-    const riskNames = (d.risks || []).map(r => {
-      const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
-      return lv + r.name;
-    });
-    let maxInsiderPct = 0;
-    const insThreshold = insiderThreshold || 10;
-    if (d.graphInsidersDetected > 0 && d.insiderNetworks && d.insiderNetworks.length > 0) {
-      d.insiderNetworks.forEach(net => {
-        const totalSupply = d.token?.supply ? Number(d.token.supply) : 0;
-        const pct = totalSupply > 0 ? (net.tokenAmount / totalSupply) * 100 : 0;
-        if (pct > maxInsiderPct) maxInsiderPct = pct;
-        if (pct >= insThreshold) {
-          riskNames.push('[DANGER] Insider Analysis: ' + Math.round(net.tokenAmount / 1e6) + 'M tokens ('
-            + pct.toFixed(0) + '% of supply) | ' + net.size + ' wallets');
-        }
-      });
-    }
-    return {
-      score:           d.score || 0,
-      scoreNormalised: d.score_normalised ?? -1,
-      risks:           riskNames.join(', '),
-      creator:         d.creator || d.owner || '?',
-      topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
-      topWarns:        riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, '')),
-      tokenType:       d.tokenType || '',
-      rugged:          d.rugged || false,
-      deployPlatform:  d.deployPlatform || '',
-      insiderPct:      maxInsiderPct,
-      top10Pct:        calculateRugcheckTopHoldersPct(d.topHolders, d.knownAccounts),
-      rankedHolderPcts: getRankedRugcheckHolderPcts(d.topHolders, d.knownAccounts),
-    };
-  } catch {
-    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
-             topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
-             insiderPct: 0, top10Pct: 0, rankedHolderPcts: [] };
-  }
-}
-
-async function sendTelegram(msg, replyTo, threadId) {
-  try {
-    var resolvedThread = threadId !== undefined ? threadId : null;
-    var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
-    if (resolvedThread)  payload.message_thread_id  = resolvedThread;
-    if (replyTo)         payload.reply_to_message_id = replyTo;
-    var res = await axios.post(TG_API, payload, { timeout: 10000 });
-    return res.data.result?.message_id || null;
-  } catch (e) {
-    const desc = e.response?.data?.description || e.message;
-    log('TG error: ' + desc);
-    return null;
-  }
-}
-
-
-
-
-// ─────────────────────────────────────────────
-//  KLASIFIKASI & SCORING
-// ─────────────────────────────────────────────
-function isMigratedDex(t) {
-  return t.exchange && t.exchange !== 'pump';
-}
-
-function gradeToken(lp, vol, rugScore) {
-  let score = 0;
-  if (lp > 100000) score += 35; else if (lp > 50000) score += 25; else if (lp > 30000) score += 15;
-  if (vol > 100000) score += 35; else if (vol > 50000) score += 25; else if (vol > 10000) score += 15;
-  if (rugScore < 50) score += 30; else if (rugScore < 100) score += 20; else score -= 10;
-  if (score >= 90) return 'PLATINUM';
-  if (score >= 75) return 'GOLD';
-  if (score >= 60) return 'SILVER';
-  return 'SKIP';
-}
-
-function calculateScore(t, rug) {
-  var score = 0;
-  var lp  = t.liquidity || 0;
-  var vol = t.volume || 0;
-
-  if (lp > 100000) score += 20; else if (lp > 50000) score += 15;
-  else if (lp > 30000) score += 10; else if (lp > 15000) score += 5;
-
-  if (vol > 200000) score += 20; else if (vol > 100000) score += 15;
-  else if (vol > 50000) score += 10; else if (vol > 10000) score += 5;
-
-  var totalTxn = (t.buys || 0) + (t.sells || 0);
-  var buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 50;
-  if (buyRatio >= 65) score += 10; else if (buyRatio >= 55) score += 7; else if (buyRatio >= 45) score += 3;
-
-  var rs = rug.score || 999;
-  if (rs < 20) score += 15; else if (rs < 50) score += 10; else if (rs < 100) score += 5; else score -= 10;
-
-  if (t.renounced_mint === 1) score += 5;
-  if (t.renounced_freeze_account === 1) score += 5;
-
-  var burn = (t.burn_ratio || 0) * 100;
-  if (burn >= 50) score += 5; else if (burn >= 20) score += 3; else if (burn >= 5) score += 1;
-
-  var holders  = t.holder_count || 1;
-  var botRatio = (t.bot_degen_count || 0) / holders;
-  if (botRatio > 0.40) score -= 15; else if (botRatio > 0.25) score -= 10; else if (botRatio > 0.10) score -= 5;
-
-  var bundler = (t.bundler_rate || 0) * 100;
-  if (bundler > 30) score -= 10; else if (bundler > 20) score -= 7; else if (bundler > 10) score -= 3;
-
-  var creatorHold = (t.dev_team_hold_rate || 0) * 100;
-  if (creatorHold > 10) score -= 10; else if (creatorHold > 5) score -= 5;
-
-  var top10 = (t.top_10_holder_rate || 0) * 100;
-  if (top10 > 50) score -= 5; else if (top10 > 35) score -= 3;
-
-  var smart = t.smart_degen_count || 0;
-  if (smart >= 10) score += 5; else if (smart >= 5) score += 3; else if (smart >= 1) score += 1;
-
-  return Math.min(100, Math.max(0, score));
-}
-
-// ─────────────────────────────────────────────
-//  SWING 1D — ANALISA PRE-PUMP
-// ─────────────────────────────────────────────
-
-/**
- * Ambil kline 1D (7 candle ke belakang) untuk analisa swing.
- * Return null jika gagal atau data tidak cukup.
- */
-async function fetchSwingKlines(address) {
-  await new Promise(r => setTimeout(r, 500));
-  const nowSec  = Math.floor(Date.now() / 1000);
-  const fromSec = nowSec - 7 * 86400; // 7 hari
-  return await fetchGMGNKline(address, '1d', fromSec, nowSec);
-}
-
-/**
- * Cek apakah token memenuhi kriteria swing pre-pump.
- * Return { pass: bool, reason: string, signals: [] }
- */
-async function checkSwingSignal(t) {
-  const ageH      = tokenAgeHours(t.creation_timestamp);
-  const change1h  = Number(t.price_change_percent1h)  || 0;
-  const change24h = Number(t.price_change_percent24h) || 0;
-  const lp        = t.liquidity || 0;
-  const vol1h     = t.volume    || 0;
-  // Bedakan "data holder gak tersedia" (null) vs "beneran 0 holder" — sebelumnya
-  // dua-duanya numpuk jadi 0 dan gate holder jadi silently bypass tiap kali API
-  // gak ngirim field ini.
-  const holders   = (typeof t.holder_count === 'number') ? t.holder_count : null;
-
-  // — Gate 1: usia token —
-  if (ageH < CFG.swingMinAge)
-    return { pass: false, reason: 'Terlalu baru (' + ageH.toFixed(0) + 'j < ' + CFG.swingMinAge + 'j)' };
-  if (ageH > CFG.swingMaxAge)
-    return { pass: false, reason: 'Terlalu tua (' + Math.floor(ageH / 24) + 'h > ' + (CFG.swingMaxAge / 24) + 'h)' };
-
-  // — Gate 2: LP cukup untuk swing —
-  if (lp < CFG.swingMinLp)
-    return { pass: false, reason: 'LP terlalu kecil ($' + fmt(lp) + ')' };
-
-  // — Gate 3: Belum terlanjur pump —
-  if (change1h > CFG.swingMaxChange1h)
-    return { pass: false, reason: 'Sudah pump 1h +' + change1h.toFixed(1) + '% (FOMO)' };
-  if (change24h > CFG.swingMaxChange24h)
-    return { pass: false, reason: 'Sudah pump 24h +' + change24h.toFixed(1) + '% (terlambat)' };
-
-  // — Gate 4: Volume 1h minimal —
-  if (vol1h < CFG.swingMinVol1h)
-    return { pass: false, reason: 'Vol 1h terlalu kecil ($' + fmt(vol1h) + ')' };
-
-  // — Gate 5: Holder cukup (likuiditas sosial) —
-  if (holders === null) {
-    log('[SWING] ' + (t.symbol || '?') + ': holder_count tidak tersedia dari API, gate holder GAGAL (fail-safe)');
-    return { pass: false, reason: 'Data holder tidak tersedia dari API (fail-safe)' };
-  }
-  if (holders < CFG.swingMinHolders)
-    return { pass: false, reason: 'Holder terlalu sedikit (' + holders + ')' };
-
-  // — Gate 6: Buy ratio minimal (override via SWING_MIN_BUY_RATIO di .env) —
-  const totalTxn = (t.buys || 0) + (t.sells || 0);
-  const buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 0;
-  const socialCheck = checkHasSocial(t, CFG.requireSocial);
-  if (socialCheck.skip) return { pass: false, reason: socialCheck.reason };
-
-  if (totalTxn > 0 && buyRatio < CFG.swingMinBuyRatio)
-    return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy < ' + CFG.swingMinBuyRatio + '%)' };
-
-  // — Analisa kline 1D untuk konfirmasi sinyal —
-  const signals = [];
-  const klines  = await fetchSwingKlines(t.address);
-
-  if (klines && klines.length >= 3) {
-    // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
-    // masing-masing array) — kalau satu candle datanya bolong di salah satu field,
-    // array jadi geser dan index gak nyambung lagi (closes[i] bisa beda hari sama
-    // volumes[i]). Sekarang digabung jadi satu objek per candle dulu, baru di-filter
-    // sebagai satu kesatuan, dan di-sort by time supaya gak asumsi urutan dari API
-    // (kalau API ternyata ngirim terbaru-duluan, sort ini yang nyelametin logikanya).
-    const candles = klines
-      .map(c => ({
-        time:   Number(c.time ?? c.timestamp ?? c.t ?? 0),
-        close:  Number(c.close),
-        high:   Number(c.high),
-        low:    Number(c.low),
-        volume: Number(c.volume) || 0,
-      }))
-      .filter(c => c.close > 0 && c.high > 0 && c.low > 0)
-      .sort((a, b) => a.time - b.time);
-
-    if (!candles.some(c => c.time > 0)) {
-      log('[SWING] WARNING ' + (t.symbol || '?') + ': kline gak ada field time, urutan candle gak bisa divalidasi — cek manual response GMGN kline');
-    }
-
-    if (candles.length < 3) {
-      log('Kline 1D kurang valid setelah cleanup untuk ' + t.symbol + ', fallback ke sinyal dasar');
-      if (vol1h >= CFG.swingMinVol1h)
-        signals.push('Vol 1h cukup $' + fmt(vol1h));
-      if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
-        signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
-      if (change24h < 0)
-        signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
-    } else {
-      const lastCandle = candles[candles.length - 1];
-      const prevCandle = candles[candles.length - 2];
-      const histVols   = candles.slice(0, -1).map(c => c.volume).filter(v => v > 0);
-      const avgVol      = histVols.length > 0 ? histVols.reduce((a, b) => a + b, 0) / histVols.length : 0;
-
-      // Candle hari ini biasanya belum closed (masih real-time) — volumenya cuma
-      // ngitung dari jam 00:00 sampai sekarang, bukan sehari penuh. Kalau gak
-      // dinormalisasi, hasilnya tergantung jam berapa script jalan: kepagian bisa
-      // ke-skip walau lagi beneran ada momentum, kemaleman bisa keliatan "spike"
-      // padahal cuma akumulasi volume semalaman.
-      const nowSec        = Math.floor(Date.now() / 1000);
-      const dayElapsedSec = lastCandle.time ? Math.max(nowSec - lastCandle.time, 0) : 86400;
-      const dayFraction   = Math.min(Math.max(dayElapsedSec / 86400, 0.1), 1); // floor 10% biar gak diekstrapolasi gila-gilaan pas hari baru mulai
-      const normLastVol   = lastCandle.volume / dayFraction;
-
-      const highs       = candles.map(c => c.high);
-      const lows         = candles.map(c => c.low);
-      const swingHigh   = Math.max(...highs);
-      const swingLow    = Math.min(...lows);
-      const priceRange  = swingHigh - swingLow;
-
-      // Sinyal 1 (GATE wajib, bukan opsional): Volume hari ini (ternormalisasi)
-      // harus spike vs rata-rata candle sebelumnya. Kalau gak ada spike, langsung
-      // gagal — jadi sinyal 2/3/4 di bawah itu cuma konfirmasi tambahan, bukan
-      // pengganti gate ini.
-      const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
-      if (volSpike < CFG.swingVolSpikeMin) {
-        return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x, hari baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
-      }
-      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
-
-      // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
-      if (priceRange > 0) {
-        const posInRange = (lastCandle.close - swingLow) / priceRange; // 0=bawah, 1=atas
-        if (posInRange <= 0.45) {
-          signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
-        } else if (posInRange >= 0.80) {
-          // Sudah terlalu tinggi di range
-          signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
-        }
-      }
-
-      // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
-      if (lastCandle.close > prevCandle.close) {
-        signals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
-      }
-
-      // Sinyal 4: Konsolidasi — range harga gak lebih dari 80% dari low
-      if (swingLow > 0 && priceRange / swingLow < 0.80) {
-        signals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
-      }
-    }
-
-  } else {
-    // Kline tidak tersedia — fallback ke sinyal dasar dari data trending
-    log('Kline 1D tidak tersedia untuk ' + t.symbol + ', fallback ke sinyal dasar');
-    if (vol1h >= CFG.swingMinVol1h)
-      signals.push('Vol 1h cukup $' + fmt(vol1h));
-    if (change1h > 0 && change1h <= CFG.swingMaxChange1h)
-      signals.push('Price naik ' + change1h.toFixed(1) + '% (1h, belum FOMO)');
-    if (change24h < 0)
-      signals.push('Pullback 24h ' + change24h.toFixed(1) + '% (potensi reversal)');
-  }
-
-  // Minimal 1 sinyal positif harus ada
-  const positiveSignals = signals.filter(s => !s.startsWith('[WARN]'));
-  if (positiveSignals.length === 0)
-    return { pass: false, reason: 'Tidak ada sinyal pre-pump' };
-
-  return { pass: true, signals };
-}
-
-// ─────────────────────────────────────────────
-//  FIBONACCI
-// ─────────────────────────────────────────────
-async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
-  var p     = Number(price);
-  if (!p || p <= 0) p = 0.0001;
-  var floor = p * 0.1;
-
-  // Untuk swing: pakai kline 1D (7 candle), lebih akurat
-  const resolution = mode === 'SWING' ? '1d' : '1h';
-  const lookback   = mode === 'SWING' ? 7 * 86400 : 86400;
-
-  try {
-    const nowSec  = Math.floor(Date.now() / 1000);
-    const klines  = await fetchGMGNKline(address, resolution, nowSec - lookback, nowSec);
-    if (klines && klines.length >= 3) {
-      var highs      = klines.map(c => Number(c.high)).filter(v => v > 0);
-      var lows       = klines.map(c => Number(c.low)).filter(v => v > 0);
-      var swingHigh  = Math.max(...highs);
-      var swingLow   = Math.min(...lows);
-      if (swingHigh > swingLow) {
-        var range = swingHigh - swingLow;
-        log('Fib dari kline ' + resolution + ': H=' + swingHigh + ' L=' + swingLow);
-        return {
-          source: 'kline_' + resolution,
-          swingHigh, swingLow,
-          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
-          fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
-          resist:  (swingHigh + range * 0.382).toFixed(10),
-          sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
-        };
-      }
-    }
-  } catch (e) { log('Kline fetch failed, fallback estimasi: ' + e.message); }
-
-  // Fallback estimasi
-  log('Fib fallback estimasi untuk ' + address);
-  var h, l, priceIsHigh;
-  if (athMc && mc && Number(athMc) > Number(mc)) {
-    var ratio = Math.min(Number(athMc) / Number(mc), 20);
-    h = p * ratio; l = p; priceIsHigh = false;
-  } else {
-    var ch = Number(changePct) || 0;
-    if (ch > 0)      { h = p; l = p / (1 + ch / 100); priceIsHigh = true; }
-    else if (ch < 0) { h = p / (1 + ch / 100); l = p; priceIsHigh = false; }
-    else             { h = p * 1.2; l = p * 0.8; priceIsHigh = false; }
-  }
-  var range = h - l;
-  if (range < p * 0.05) range = p * 0.1;
-  if (priceIsHigh) {
-    return {
-      source: 'estimasi',
-      swingHigh: h, swingLow: l,
-      support: Math.max(h - range * 0.500, floor).toFixed(10),
-      fair:    Math.max(h - range * 0.618, floor).toFixed(10),
-      resist:  (h + range * 0.382).toFixed(10),
-      sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
-    };
-  } else {
-    return {
-      source: 'estimasi',
-      swingHigh: h, swingLow: l,
-      support: Math.max(l - range * 0.272, floor).toFixed(10),
-      fair:    Math.max(l - range * 0.500, floor).toFixed(10),
-      resist:  (l + range * 0.382).toFixed(10),
-      sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
-    };
-  }
-}
-
-// ─────────────────────────────────────────────
-//  NARRATIVE DETECTION
-// ─────────────────────────────────────────────
-function detectNarrative(name, symbol) {
-  var s = ((name || '') + ' ' + (symbol || '')).toLowerCase();
-  var cat = [], tag = [];
-
-  var animalKws = {dog:'🐕',cat:'🐱',frog:'🐸',pepe:'🐸',horse:'🐴',bird:'🐦',fish:'🐟',
-    wolf:'🐺',bear:'🐻',bull:'🐂',dragon:'🐉',whale:'🐋',shark:'🦈',lion:'🦁',
-    tiger:'🐯',panda:'🐼',snake:'🐍',rabbit:'🐇',turtle:'🐢',duck:'🦆',seal:'🦭',
-    koala:'🐨',monkey:'🐵',gorilla:'🦍',hippo:'🦛',fox:'🦊',rat:'🐀',hamster:'🐹',
-    owl:'🦉',eagle:'🦅',penguin:'🐧'};
-  for (var kw in animalKws) { if (s.includes(kw)) { cat.push(animalKws[kw] + ' Animal'); tag.push(kw[0].toUpperCase() + kw.slice(1)); break; } }
-
-  var celebKws = ['trump','musk','elon','kanye','biden','obama','hawk','pnut','taylor','kamala','vance','melania','barron'];
-  for (var i = 0; i < celebKws.length; i++) { if (s.includes(celebKws[i])) { cat.push('🎭 Celebrity'); tag.push(celebKws[i][0].toUpperCase() + celebKws[i].slice(1)); break; } }
-
-  var aiKws = ['ai','gpt','claude','agent','neural','deep','grok','chatbot','llm','tokenai','bot','predict'];
-  for (var j = 0; j < aiKws.length; j++) { if (s.includes(aiKws[j]) && !cat.length) { cat.push('🤖 AI/Agent'); tag.push('AI'); break; } }
-
-  var gameKws = ['game','play','guild','raid','arena','legends','gaming','rpg','pixel'];
-  for (var k = 0; k < gameKws.length; k++) { if (s.includes(gameKws[k])) { cat.push('🎮 Gaming'); tag.push('Gaming'); break; } }
-
-  var defiKws = ['swap','lend','borrow','stake','yield','vault','farm','defi','liquid'];
-  for (var l = 0; l < defiKws.length; l++) { if (s.includes(defiKws[l])) { cat.push('🏛️ DeFi'); tag.push('DeFi'); break; } }
-
-  var cultureKws = ['degen','based','wagmi','ngmi','fren','ser','dao','moon','lambo','wen','gm','chad','soy','normie'];
-  for (var m = 0; m < cultureKws.length; m++) { if (s.includes(cultureKws[m]) && !cat.length) { cat.push('💎 Culture'); tag.push('Culture'); break; } }
-
-  var infraKws = ['bridge','oracle','layer','protocol','infra','cross','inter'];
-  for (var n = 0; n < infraKws.length; n++) { if (s.includes(infraKws[n])) { cat.push('🔧 Infra'); tag.push('Infra'); break; } }
-
-  if (!cat.length) {
-    var symDigits = (symbol || '').replace(/[^a-zA-Z]/g, '');
-    if (symDigits !== (symbol || '')) { cat.push('🔄 Copycat'); tag.push('Copycat'); }
-    else { cat.push('🔷 Meme'); tag.push('Meme'); }
-  }
-  return { category: cat[0] || '🔷 Meme', tag: tag[0] || '' };
-}
-
-// ─────────────────────────────────────────────
-//  BUILD MESSAGE
-// ─────────────────────────────────────────────
-async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
-  var re = rug.score < 50 ? '✅' : rug.score < 100 ? '⚠️' : '🚨';
-  var ve = t.volume > 100000 ? '🚀' : t.volume > 50000 ? '📈' : '📊';
-  var le = t.liquidity > 100000 ? '🟢' : t.liquidity > 50000 ? '🟡' : '🔵';
-
-  var ratio    = '?';
-  var totalTxn = (t.buys || 0) + (t.sells || 0);
-  if (totalTxn > 0) ratio = (t.buys / totalTxn * 100).toFixed(0) + '%';
-
-  var age   = timeAgo(t.creation_timestamp);
-  var chg1h = '';
-  if (t.price_change_percent1h != null) {
-    chg1h = t.price_change_percent1h > 0
-      ? ' 📈 +' + Number(t.price_change_percent1h).toFixed(1) + '%'
-      : ' 📉 '  + Number(t.price_change_percent1h).toFixed(1) + '%';
-  }
-  var chg24h = '';
-  if (t.price_change_percent24h != null) {
-    chg24h = t.price_change_percent24h > 0
-      ? ' (+' + Number(t.price_change_percent24h).toFixed(1) + '% 24h)'
-      : ' ('   + Number(t.price_change_percent24h).toFixed(1) + '% 24h)';
-  }
-
-  var linkParts = [];
-  if (t.twitter_username) linkParts.push('<a href="' + t.twitter_username + '">Twitter</a>');
-  if (t.website)          linkParts.push('<a href="' + t.website + '">Web</a>');
-  if (t.telegram)         linkParts.push('<a href="' + t.telegram + '">TG</a>');
-
-  var mi          = t.renounced_mint === 1 ? '✅' : '❌';
-  var fr          = t.renounced_freeze_account === 1 ? '✅' : '❌';
-  var hp          = t.is_honeypot === 1 ? '🚨' : '✅';
-  var burnPct     = ((t.burn_ratio || 0) * 100).toFixed(1);
-  var top10       = ((t.top_10_holder_rate || 0) * 100).toFixed(1);
-  var bundlerPct  = ((t.bundler_rate || 0) * 100).toFixed(1);
-  var snipers     = ((t.top70_sniper_hold_rate || 0) * 100).toFixed(1);
-  var creatorHold = ((t.dev_team_hold_rate || 0) * 100).toFixed(1);
-  var SEP         = '━━━━━━━━━━━━━━━━━━━━';
-
-  var nar        = detectNarrative(t.name, t.symbol);
-  var modeLabel  = mode === 'SWING' ? '🔄 Swing 1D' : '🆕 New Migration';
-  var gradeEmoji = grade === 'PLATINUM' ? '💎' : grade === 'GOLD' ? '🥇' : grade === 'SILVER' ? '🥈' : '🔴';
-  var riskLabel  = grade === 'PLATINUM' ? 'PLATINUM' : grade === 'GOLD' ? 'GOLD' : grade === 'SILVER' ? 'SILVER' : 'SKIP';
-
-  var msg = '';
-  msg += gradeEmoji + ' <b>' + riskLabel + '</b> | ' + modeLabel + ' | ' + nar.category + '\n';
-  msg += '<b>' + t.name + '</b> (<code>' + t.symbol + '</code>)\n';
-  msg += SEP + '\n';
-  msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
-  msg += ve + ' Vol 1h  : $' + fmt(t.volume) + '\n';
-
-  // Untuk swing: tampilkan Vol 24h juga jika tersedia
-  if (mode === 'SWING' && dex24h && dex24h.vol24h > 0)
-    msg += '📊 Vol 24h : $' + fmt(dex24h.vol24h) + '\n';
-
-  var rugLabel   = rug.score < 50 ? 'Rendah' : rug.score < 100 ? 'Sedang' : 'Bahaya!';
-  var riskLevel  = rug.scoreNormalised >= 0
-    ? (rug.scoreNormalised <= 30 ? 'Good' : rug.scoreNormalised <= 60 ? 'Warning' : 'Danger') : '';
-  msg += re + ' RugCheck: ' + rug.score + ' (' + rugLabel + ')';
-  if (riskLevel) msg += ' | ' + riskLevel;
-  if (rug.tokenType && !/unknown|deprecated/i.test(rug.tokenType)) msg += ' | ' + rug.tokenType;
-  if (rug.deployPlatform && !/unknown/i.test(rug.deployPlatform)) msg += ' | ' + rug.deployPlatform;
-  msg += '\n';
-  if (rug.topDangers.length > 0) msg += '🚨 Danger  : ' + rug.topDangers.join(' | ') + '\n';
-  if (rug.topWarns.length  > 0) msg += '⚠️ Warning : ' + rug.topWarns.join(' | ')  + '\n';
-  msg += '💰 Harga   : $' + fmtPrice(t.price) + chg1h + chg24h + '\n';
-  msg += '🔄 Buy/Sell: ' + (t.buys || 0) + '/' + (t.sells || 0) + ' (' + ratio + ' Buy)\n';
-  msg += '📊 MC      : $' + fmt(t.market_cap) + '\n';
-  if (dex24h && dex24h.dexName) msg += '🛡️ DEX     : ' + dex24h.dexName + '\n';
-  msg += '⏱️ Age     : ' + age + '\n';
-  msg += '👤 Creator : <code>' + rug.creator + '</code>\n';
-  if (linkParts.length) msg += '🔗 Links   : ' + linkParts.join(' | ') + '\n';
-  msg += SEP + '\n';
-
-  // Swing signals khusus
-  if (mode === 'SWING' && swingSignals && swingSignals.length > 0) {
-    msg += '📡 <b>Sinyal Pre-Pump:</b>\n';
-    swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
-    msg += SEP + '\n';
-  }
-
-  msg += '🛡️ GMGN:\n';
-  msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
-  msg += '🔍 Top10   : ' + top10 + '%\n';
-  msg += '🔗 Bundler : ' + bundlerPct + '%\n';
-  msg += '🤖 Bots    : ' + (t.bot_degen_count || 0) + '\n';
-  msg += '🎯 Snipers : ' + snipers + '%\n';
-  msg += '👤 Creator : ' + creatorHold + '%\n';
-  msg += '♻️ Burn    : ' + burnPct + '%\n';
-  // Mint/Freeze/Honeypot tidak ditampilkan: di sumber trenches field renounce
-  // selalu kosong (tampil ❌) → misleading. Patokan keamanan pakai RugCheck.
-  msg += '💎 Smart   : ' + (t.smart_degen_count || 0) + '\n';
-  msg += '🌟 KOL     : ' + (t.renowned_count || 0) + '\n';
-  msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
-  msg += SEP + '\n';
-
-  var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
-  msg += '📊 Entry & Targets:\n';
-  msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
-  msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
-  msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
-  msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
-  msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
-  msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
-  msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
-
-  var dynScore = calculateScore(t, rug);
-  msg += 'Score: ' + dynScore + '/100\n';
-
-  // Auto-warnings
-  var warnings = [];
-  var currentPrice = Number(t.price);
-  var supportPrice = Number(f.support);
-  if (currentPrice > 0 && supportPrice > 0) {
-    var pctAbove = ((currentPrice - supportPrice) / supportPrice) * 100;
-    if (pctAbove > 100) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — sangat rawan FOMO, tunggu pullback');
-    else if (pctAbove > 50) warnings.push('📈 Harga ' + pctAbove.toFixed(0) + '% di atas Support — rawan FOMO');
-  }
-  if (Number(creatorHold) > 5)  warnings.push('👤 Creator hold ' + creatorHold + '% — rawan dump');
-  if (Number(bundlerPct) > 20 && Number(top10) > 30) warnings.push('🔄 Bundler ' + bundlerPct + '% + Top10 ' + top10 + '% — rawan distribusi');
-  if (Number(snipers) > 10)     warnings.push('🎯 Snipers ' + snipers + '% — rawan sniper activity');
-  var holdCount = t.holder_count || 0;
-  if (holdCount > 0 && (t.bot_degen_count / holdCount) > 0.05)
-    warnings.push('🤖 Bots ' + (t.bot_degen_count / holdCount * 100).toFixed(1) + '% dari holders');
-  if (t.volume && t.volume < CFG.minVol * 2)
-    warnings.push('📊 Volume tipis ($' + fmt(t.volume) + ') — rawan manipulasi');
-  warnings.forEach(w => { msg += '⚠️ ' + w + '\n'; });
-
-  msg += SEP + '\n';
-  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Buka Chart</a>';
-  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
-  msg += '<code>' + t.address + '</code>';
-
-  return msg;
-}
-
-function buildSignalMsg(t) {
-  var SEP = '━━━━━━━━━━━━━━━━━━━━';
-  var re = (t.rug_ratio || 0) * 100 < 50 ? '✅' : '🚨';
-  var le = t.liquidity > 50000 ? '🟢' : t.liquidity > 10000 ? '🟡' : '🔵';
-  var smWallets = t.smart_degen_wallets || [];
-  var totalSol = smWallets.reduce(function(a, b) { return a + (b.buy_amount || 0); }, 0);
-  var avgSol = smWallets.length > 0 ? (totalSol / smWallets.length).toFixed(1) : '0';
-  var msg = '';
-  msg += '🔔 <b>SMART MONEY SIGNAL</b>\n';
-  msg += '<b>' + (t.name || t.symbol) + '</b> (<code>' + t.symbol + '</code>)\n';
-  msg += SEP + '\n';
-  msg += le + ' LP      : $' + fmt(t.liquidity) + '\n';
-  msg += '💎 SM Buy  : ' + smWallets.length + ' wallets (total ' + totalSol.toFixed(0) + ' SOL, rata2 ' + avgSol + ' SOL)\n';
-  msg += '📊 MC trig : $' + fmt(t.trigger_mc) + '\n';
-  msg += '📊 MC skrg : $' + fmt(t.market_cap) + '\n';
-  msg += re + ' Rug     : ' + Math.round((t.rug_ratio || 0) * 100) + '\n';
-  msg += '👥 Holders : ' + (t.holder_count || 0) + ' | 🤖 Bot ' + ((t.bot_degen_rate || 0) * 100).toFixed(0) + '%\n';
-  msg += '🔍 Top10   : ' + ((t.top_10_holder_rate || 0) * 100).toFixed(1) + '%\n';
-  msg += SEP + '\n';
-  msg += '<a href="https://dexscreener.com/solana/' + t.address + '">Chart</a>';
-  msg += ' | <a href="https://gmgn.ai/sol/token/' + t.address + '">GMGN</a>\n';
-  msg += '<code>' + t.address + '</code>';
-  return msg;
-}
-
-// ─────────────────────────────────────────────
-//  MAIN PROCESSING LOOP
-// ─────────────────────────────────────────────
-async function processTokens() {
-  log('========== SCREENING ==========');
-  // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
-  var migrationTokens = fetchGmgnTrenches();
-  var swingTokens     = fetchGmgnTrending();
-
-  var newMigration = [];
-  var swingCandidates = [];
-
-  // — Klasifikasi New Migration (sumber: trenches completed) —
-  for (let i = 0; i < migrationTokens.length; i++) {
-    const t = migrationTokens[i];
-    if (!t.address) continue;
-    if (SEEN.has(t.address)) continue;          // belum pernah dilihat
-    if (!isMigratedDex(t)) continue;            // pastikan sudah di DEX (bukan masih pump)
-    // umur < maxAgeHours sudah dijamin server (--max-created), cek lagi sbg pengaman
-    if (tokenAgeHours(t.creation_timestamp) >= CFG.maxAgeHours) continue;
-    newMigration.push(t);
-  }
-
-  // — Klasifikasi Swing 1D (sumber: trending) —
-  for (let i = 0; i < swingTokens.length; i++) {
-    const t = swingTokens[i];
-    if (!t.address) continue;
-
-    const isDex = isMigratedDex(t);
-    const ageH  = tokenAgeHours(t.creation_timestamp);
-
-    if (!isDex) {
-      log('SKIP ' + (t.symbol || '?') + ' (still ' + (t.exchange || 'pump') + ')');
-      continue;
-    }
-
-    // Token yang sudah lebih tua (≥ swingMinAge), cek pre-pump signal.
-    if (ageH >= CFG.swingMinAge && ageH <= CFG.swingMaxAge) {
-      const seenEntry = SEEN.get(t.address);
-
-      // Jangan re-notify swing yang sudah pernah dinotif sebagai swing
-      if (seenEntry && seenEntry.swingNotified) continue;
-
-      // Jika token pernah masuk SEEN sebelumnya, verifikasi usia SEEN juga sudah cukup.
-      if (seenEntry && seenEntry.seenAt) {
-        const seenAgeH = (Date.now() - seenEntry.seenAt) / 3600000;
-        if (seenAgeH < CFG.swingMinAge) {
-          log('SKIP [SWING] ' + (t.symbol || '?') + ' — sudah di SEEN tapi baru ' + seenAgeH.toFixed(1) + 'j (< ' + CFG.swingMinAge + 'j)');
-          continue;
-        }
-      }
-
-      swingCandidates.push(t);
-    }
-  }
-
-  // — Smart Money Signal (sumber: signal endpoint) —
-  var signalTokens = CFG.signalEnabled ? fetchGmgnSignal() : [];
-  var signalCandidates = normalizeSignal(signalTokens);
-  // Skip token yg udah pernah dilihat (dari mode manapun)
-  var uniqueSignal = [];
-  for (var i = 0; i < signalCandidates.length; i++) {
-    if (!SEEN.has(signalCandidates[i].address)) uniqueSignal.push(signalCandidates[i]);
-  }
-
-  log('New Migration candidates: ' + newMigration.length);
-  log('Swing 1D candidates: ' + swingCandidates.length);
-  log('Signal candidates: ' + uniqueSignal.length);
-
-  // — Proses New Migration V2 (6 base gates only) —
-  for (let i = 0; i < newMigration.length; i++) {
-    const t = newMigration[i];
-
-    // Fetch token info untuk data 5m/1h
-    log('[MIG] Fetch info ' + t.symbol + '...');
-    const tokenInfo = fetchTokenInfo(t.address);
-    if (!tokenInfo) {
-      log('SKIP [MIG] ' + t.symbol + ' (Gagal fetch token info)');
-      continue;
-    }
-
-    // Gunakan filter baru untuk cek LP, age, vol1h, swaps5m, vol5m, plus gate lain.
-    var migCfg = {
-      minLp:        CFG.minLp,
-      maxAgeHours:  CFG.maxAgeHours,
-      minVol1h:     CFG.minVol1h,
-      minSwaps5m:   CFG.minSwaps5m,
-      minVol5m:     CFG.minVol5m,
-      maxBundlerPct:  CFG.maxBundlerPct,
-      maxTop10Holders: CFG.maxTop10Holders,
-      maxDevHold:      CFG.maxDevHold,
-      maxSniperPct:    CFG.maxSniperPct,
-      maxVolLpRatio:   CFG.maxVolLpRatio,
-      gmgnRugMaxRatio:  CFG.gmgnRugMaxRatio,
-      maxInsiderPct:    CFG.maxInsiderPct,
-      maxPhishingPct:   CFG.maxPhishingPct,
-      maxPriceChange1h: CFG.maxPriceChange1h,
-      minHoldersMig:    CFG.minHoldersMig,
-      requireSocial:    CFG.requireSocial,
-      maxCreatorTokens: CFG.maxCreatorTokens,
-      maxHolder1Pct: CFG.maxHolder1Pct,
-      maxHolder2Pct: CFG.maxHolder2Pct,
-      maxHolder3Pct: CFG.maxHolder3Pct,
-      maxHolder4Pct: CFG.maxHolder4Pct,
-    };
-    var migResult = shouldSkipNewMigration(t, tokenInfo, migCfg);
-    if (migResult.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + migResult.reason + ')');
-      continue;
-    }
-
-    // Cek paid DEX via DEX Screener API
-    log('[MIG] Cek paid DEX ' + t.symbol + '...');
-    var paidDex = await fetchPaidDex(t.address);
-    if (!paidDex) {
-      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
-      continue;
-    }
-
-    // RugCheck — filter identik dengan Swing 1D
-    log('[MIG] Cek RugCheck ' + t.symbol + '...');
-    const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-    // scoreNormalised: -1 berarti data invalid/fetch gagal → treat sebagai gagal,
-    // bukan otomatis lolos (karena -1 > CFG.maxRugScore selalu false).
-    if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.maxRugScore) {
-      log('SKIP [MIG] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.maxRugScore + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
-      continue;
-    }
-    if (rug.insiderPct > CFG.maxInsiderPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
-      continue;
-    }
-    if (rug.top10Pct > CFG.maxTop10Holders) {
-      log('SKIP [MIG] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)');
-      continue;
-    }
-    var migHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
-      holder1: CFG.maxHolder1Pct, holder2: CFG.maxHolder2Pct,
-      holder3: CFG.maxHolder3Pct, holder4: CFG.maxHolder4Pct,
-    });
-    if (migHolderGate.skip) { log('SKIP [MIG] ' + t.symbol + ' (' + migHolderGate.reason + ')'); continue; }
-
-    var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
-    // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
-    t.volume = vol1h;
-    const grade = gradeToken(t.liquidity, t.volume, rug.score);
-    if (grade === 'SKIP') {
-      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol terlalu kecil)');
-      continue;
-    }
-
-    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
-
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:✅)');
-    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-    const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
-    totalNotified++;
-
-    if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
-      TRACKED.set(t.address, {
-        symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
-        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-        threadId: CFG.tgThreadMig,
-      });
-      log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
-    }
-  }
-
-
-  // — Proses Swing 1D —
-  for (let i = 0; i < swingCandidates.length; i++) {
-    const t = swingCandidates[i];
-
-    log('[SWING] Cek ' + t.symbol + ' (age ' + tokenAgeHours(t.creation_timestamp).toFixed(0) + 'j)');
-    const swingResult = await checkSwingSignal(t);
-
-    if (!swingResult.pass) {
-      log('SKIP [SWING] ' + t.symbol + ': ' + swingResult.reason);
-      continue;
-    }
-
-    log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
-
-    try {
-      const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
-      if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.swingMaxRugScore) {
-        log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.swingMaxRugScore + ')');
-        continue;
-      }
-      if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
-      if (rug.top10Pct > CFG.maxTop10Holders) { log('SKIP [SWING] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)'); continue; }
-      var swingHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
-        holder1: CFG.swingMaxHolder1Pct, holder2: CFG.swingMaxHolder2Pct,
-        holder3: CFG.swingMaxHolder3Pct, holder4: CFG.swingMaxHolder4Pct,
-      });
-      if (swingHolderGate.skip) { log('SKIP [SWING] ' + t.symbol + ' (' + swingHolderGate.reason + ')'); continue; }
-
-      const grade = gradeToken(t.liquidity, t.volume, rug.score);
-      if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
-
-      // Mark sudah dinotif sebagai swing (update SEEN entry)
-      const existingEntry = SEEN.get(t.address) || { firstSeen: Date.now(), seenAt: Date.now() };
-      SEEN.set(t.address, { ...existingEntry, swingNotified: Date.now(), mode: 'swing' });
-
-      log('[SWING] ' + grade + ' ' + t.symbol + ' — Kirim notif');
-      const fullMsg = await buildMsg(t, rug, grade, null, 'SWING', swingResult.signals);
-      const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadId);
-      totalNotified++;
-
-      if (t.price && Number(t.price) > 0 && !TRACKED.has(t.address)) {
-        TRACKED.set(t.address, {
-          symbol: t.symbol, name: t.name, grade, mode: 'SWING',
-          entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-          threadId: CFG.tgThreadId,
-        });
-        log('Tracked [SWING] ' + t.symbol + ' @ $' + t.price);
-      }
-    } catch (e) { log('Error [SWING] ' + t.symbol + ': ' + e.message); }
-  }
-
-  // — Proses Smart Money Signal —
-  for (var i = 0; i < uniqueSignal.length; i++) {
-    var t = uniqueSignal[i];
-    if (!t.address) continue;
-
-    // Gate 1: SM masih pegang — cek awal karena paling sering kena
-    if (t.smart_degen_count < 1) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (SM udah gak pegang — count 0)');
-      continue;
-    }
-    // Gate 3: trigger_mc (cegah token udah pump)
-    if (t.trigger_mc > CFG.signalMaxMc) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (MC trig $' + fmt(t.trigger_mc) + ' > $' + fmt(CFG.signalMaxMc) + ')');
-      continue;
-    }
-    // Gate 4: liquidity
-    if (t.liquidity < CFG.signalMinLiquidity) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (LP $' + fmt(t.liquidity) + ' < $' + fmt(CFG.signalMinLiquidity) + ')');
-      continue;
-    }
-    // Gate 5: holder count
-    if (t.holder_count < CFG.signalMinHolders) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Holders ' + t.holder_count + ' < ' + CFG.signalMinHolders + ')');
-      continue;
-    }
-    // Gate 6: top10 holder
-    var top10Pct = (t.top_10_holder_rate || 0) * 100;
-    if (top10Pct > CFG.signalMaxTop10Rate) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Top10 ' + top10Pct.toFixed(1) + '% > ' + CFG.signalMaxTop10Rate + '%)');
-      continue;
-    }
-    // Gate 7: rug ratio
-    var rugScore = Math.round((t.rug_ratio || 0) * 100);
-    if (rugScore > CFG.maxRugScore) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
-      SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
-      continue;
-    }
-    // Gate 8: bot degen rate
-    var botPct = (t.bot_degen_rate || 0) * 100;
-    if (botPct > 50) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Bot ' + botPct.toFixed(1) + '% dari holders > 50%)');
-      continue;
-    }
-    // Gate 9: serial creator
-    if (t.creator_created_count > CFG.maxCreatorTokens) {
-      log('SKIP [SIGNAL] ' + t.symbol + ' (Creator bikin ' + t.creator_created_count + ' token > ' + CFG.maxCreatorTokens + ')');
-      continue;
-    }
-
-    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal' });
-
-    log('[SIGNAL] ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Holders:' + t.holder_count + ' Rug:' + rugScore + ')');
-    var fullMsg = buildSignalMsg(t);
-    var msgId = await sendTelegram(fullMsg, null, CFG.tgThreadSignal);
-    totalNotified++;
-    // Delay 1.5s antar notif signal biar gak kena TG rate limit
-    await new Promise(r => setTimeout(r, 1500));
-
-    if (t.price && Number(t.price) > 0) {
-      TRACKED.set(t.address, {
-        symbol: t.symbol, name: t.name, grade: 'SIGNAL', mode: 'SIGNAL',
-        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
-        threadId: CFG.tgThreadSignal,
-      });
-      log('Tracked [SIGNAL] ' + t.symbol + ' @ $' + t.price);
-    }
-  }
-
-  saveSeen();
-  savePositions();
-  cleanupSeen();
-
-  if (TRACKED.size > 0) {
-    await checkTrackedPositions(migrationTokens.concat(swingTokens));
-    savePositions();
-  }
-  log('Cycle done. Total notified: ' + totalNotified);
-}
-
-// ─────────────────────────────────────────────
-//  POSITION TRACKING
-// ─────────────────────────────────────────────
-async function checkTrackedPositions(trendingTokens) {
-  var priceMap = {};
-  trendingTokens.forEach(tt => { if (tt.address && tt.price) priceMap[tt.address] = Number(tt.price); });
-
-  var toRemove = [];
-  for (const [ca, pos] of TRACKED) {
-    var currentPrice = priceMap[ca];
-
-    if (!currentPrice) {
-      try {
-        var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + ca, { timeout: 8000 });
-        var pairs = ds.data.pairs || [];
-        var best  = pairs.find(p => p.priceUsd) || pairs[0] || null;
-        if (best && best.priceUsd) currentPrice = Number(best.priceUsd);
-      } catch {}
-    }
-
-    if (!currentPrice || currentPrice <= 0) continue;
-
-    var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
-    var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
-    var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : pos.mode === 'SIGNAL' ? CFG.tgThreadSignal : CFG.tgThreadMig);
-
-    if (CFG.autoSellEnabled && gain >= CFG.autoSellTpPct) {
-      log(pos.symbol + ' auto sell TP +' + CFG.autoSellTpPct + '%');
-      logTrackingEvent({ type: 'AUTOSELL_TP', ...pos, currentPrice, gain: gain.toFixed(1) });
-      toRemove.push(ca);
-      var tpGradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
-      var tpRiskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
-      await sendTelegram(
-        tpGradeEmoji + ' ' + tpRiskLabel + ' | ' + modeLabel + ' | <b>✅ AUTOSELL TP +' + CFG.autoSellTpPct + '%</b>\n'
-        + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
-        + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
-        + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
-        + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
-        + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
-        + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId,
-        safeThread
-      );
-      continue;
-    }
-
-    if (CFG.autoSellEnabled && gain <= -(CFG.autoSellCutlossPct)) {
-      log(pos.symbol + ' auto sell cutloss -' + CFG.autoSellCutlossPct + '%');
-      logTrackingEvent({ type: 'AUTOSELL_CUTLOSS', ...pos, currentPrice, gain: gain.toFixed(1) });
-      toRemove.push(ca);
-      var clGradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
-      var clRiskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
-      await sendTelegram(
-        clGradeEmoji + ' ' + clRiskLabel + ' | ' + modeLabel + ' | <b>🔻 AUTOSELL CUTLOSS -' + CFG.autoSellCutlossPct + '%</b>\n'
-        + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
-        + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
-        + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
-        + 'Loss: <b>' + gain.toFixed(1) + '%</b>\n'
-        + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
-        + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId,
-        safeThread
-      );
-      continue;
-    }
-
-    if (gain <= -80) {
-      var wasProfit   = (pos.nextTargetIdx || 0) > 0;
-      var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
-      var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
-      log(pos.symbol + ' dropped >80%, stop tracking' + (wasProfit ? ' [was profit]' : ''));
-      logTrackingEvent({ type: stopType, ...pos, currentPrice, gain: gain.toFixed(1) });
-      toRemove.push(ca);
-      var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
-      var riskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
-        + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
-        + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
-        pos.msgId,
-        safeThread
-      );
-      continue;
-    }
-
-    var highestIdx = -1;
-    for (var ti = 0; ti < TARGETS.length; ti++) {
-      if (gain >= TARGETS[ti]) highestIdx = ti;
-    }
-    if (highestIdx >= 0 && highestIdx >= pos.nextTargetIdx) {
-      var target = TARGETS[highestIdx];
-      var emoji  = target >= 100 ? '🚀' : target >= 50 ? '📈' : '⬆️';
-      log(pos.symbol + ' hit target +' + target + '%');
-      logTrackingEvent({ type: 'TERCAPAI', ...pos, currentPrice, target, gain: gain.toFixed(1) });
-      var gradeEmoji = pos.grade === 'PLATINUM' ? '💎' : pos.grade === 'GOLD' ? '🥇' : pos.grade === 'SILVER' ? '🥈' : '🔴';
-      var riskLabel  = pos.grade === 'PLATINUM' ? 'PLATINUM' : pos.grade === 'GOLD' ? 'GOLD' : pos.grade === 'SILVER' ? 'SILVER' : 'SKIP';
-      var safeThread = pos.threadId || (pos.mode === 'SWING' ? CFG.tgThreadId : pos.mode === 'SIGNAL' ? CFG.tgThreadSignal : CFG.tgThreadMig);
-      await sendTelegram(
-        gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | ' + emoji + ' <b>Target +' + target + '% Tercapai!</b>\n'
-        + '<b>' + pos.name + '</b> (<code>' + pos.symbol + '</code>)\n'
-        + 'Entry: $' + pos.entryPrice.toFixed(10) + '\n'
-        + 'Sekarang: $' + currentPrice.toFixed(10) + '\n'
-        + 'Gain: <b>+' + gain.toFixed(1) + '%</b>\n'
-        + '<a href="https://dexscreener.com/solana/' + ca + '">Buka Chart</a>'
-        + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
-        pos.msgId,
-        safeThread
-      );
-      pos.nextTargetIdx = highestIdx + 1;
-      savePositions();
-    }
-  }
-
-  toRemove.forEach(ca => TRACKED.delete(ca));
-  if (toRemove.length > 0) savePositions();
-}
-
-// ─────────────────────────────────────────────
-//  HEALTH & RUN LOOP
-// ─────────────────────────────────────────────
-function doHealthCheck() {
-  var u = Math.floor((Date.now() - startTime) / 1000);
-  var h = Math.floor(u / 3600);
-  var m = Math.floor((u % 3600) / 60);
-  var s = u % 60;
-  log('[HEALTH] ' + h + 'h ' + m + 'm ' + s + 's | Seen: ' + SEEN.size + ' | Notified: ' + totalNotified + ' | Tracked: ' + TRACKED.size);
-}
-
-async function runLoop() {
-  try { await processTokens(); } catch (e) { log('FATAL: ' + e.message); }
-  setTimeout(runLoop, CFG.interval * 1000);
-}
-
-process.on('SIGINT',  () => { log('Saving...'); saveSeen(); process.exit(0); });
-process.on('SIGTERM', () => { log('Saving...'); saveSeen(); process.exit(0); });
-
-log('');
-log('╔══════════════════════════════════════╗');
-log('║   AUTO SCREENING v6 — TRIPLE MODE   ║');
-log('╚══════════════════════════════════════╝');
-log('');
-log('[ Mode 1: New Migration ]');
-log('  LP > $' + CFG.minLp.toLocaleString() + ' | Vol > $' + CFG.minVol.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
-log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis dibuang');
-log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
-log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
-log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
-log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
-log('[ Mode 2: Swing 1D Pre-Pump ]');
-log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
-log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
-log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
-log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
-if (CFG.signalEnabled) {
-  log('[ Mode 3: Smart Money Signal ]');
-  log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
-  log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
-  log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
-}
-log('');
-log('Interval: ' + CFG.interval + 's');
-log('');
-
-loadSeen();
-loadPositions();
-
-if (process.env.CI === 'true') {
-  processTokens().then(() => process.exit(0));
-} else {
-  runLoop();
-  setInterval(doHealthCheck, CFG.healthInterval * 1000);
-  setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
-  setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
-}
