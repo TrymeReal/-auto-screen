@@ -50,6 +50,10 @@ const CFG = {
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 15,
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
+  // Gate minimal jumlah KOL holder (renowned_count) — MANDIRI dari
+  // MIG_APP_FILTER_ENABLED, selalu jalan sebagai bagian gate dasar New
+  // Migration (shouldSkipNewMigration), sama seperti MIN_HOLDERS_MIG.
+  minKolCountMig:    Number(process.env.MIN_KOL_COUNT_MIG)   || 2,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 20,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
@@ -1242,6 +1246,7 @@ async function processTokens() {
       maxPhishingPct:   CFG.maxPhishingPct,
       maxPriceChange1h: CFG.maxPriceChange1h,
       minHoldersMig:    CFG.minHoldersMig,
+      minKolCount:      CFG.minKolCountMig,
       requireSocial:    CFG.requireSocial,
       maxCreatorTokens: CFG.maxCreatorTokens,
       maxHolder1Pct: CFG.maxHolder1Pct,
@@ -1614,6 +1619,7 @@ log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
+log('  KOL holder >= ' + CFG.minKolCountMig + ' (renowned_count, mandiri dari MIG_APP_FILTER_ENABLED)');
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
