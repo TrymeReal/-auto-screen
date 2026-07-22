@@ -338,7 +338,7 @@ function fetchGmgnTrenches() {
       '--limit 50',
       '--min-smart-degen-count 1',
       '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
+      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // batas umur sumber New Migration
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
