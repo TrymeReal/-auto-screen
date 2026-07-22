@@ -50,6 +50,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
+          GMGN_RUG_MAX_RATIO: '30'
+          GMGN_RUG_CONFIRM_SCANS: '2'
           MIN_LP: ${{ secrets.MIN_LP }}
           MIN_VOL_5M: ${{ secrets.MIN_VOL_5M }}
           MIN_VOL_1H: ${{ secrets.MIN_VOL_1H }}
@@ -58,14 +60,22 @@ jobs:
           MIN_BUY_RATIO: ${{ secrets.MIN_BUY_RATIO }}
           MAX_BUNDLER_PCT: ${{ secrets.MAX_BUNDLER_PCT }}
           MAX_TOP10_HOLDERS: ${{ secrets.MAX_TOP10_HOLDERS }}
+          MAX_TOP10_HOLDERS_RUGCHECK: '25'
           MAX_INSIDER_PCT: ${{ secrets.MAX_INSIDER_PCT }}
+          MAX_PHISHING_PCT: ${{ secrets.MAX_PHISHING_PCT }}
+          MAX_HOLDER_1_PCT: ${{ secrets.MAX_HOLDER_1_PCT }}
+          MAX_HOLDER_2_PCT: ${{ secrets.MAX_HOLDER_2_PCT }}
+          MAX_HOLDER_3_PCT: ${{ secrets.MAX_HOLDER_3_PCT }}
+          MAX_HOLDER_4_PCT: ${{ secrets.MAX_HOLDER_4_PCT }}
           MAX_DEV_HOLD: ${{ secrets.MAX_DEV_HOLD }}
           MAX_PRICE_CHANGE_1H: ${{ secrets.MAX_PRICE_CHANGE_1H }}
           MIN_HOLDERS_MIG: ${{ secrets.MIN_HOLDERS_MIG }}
+          MIN_KOL_COUNT_MIG: ${{ secrets.MIN_KOL_COUNT_MIG }}
           MAX_SNIPER_PCT: ${{ secrets.MAX_SNIPER_PCT }}
           MAX_VOL_LP_RATIO: ${{ secrets.MAX_VOL_LP_RATIO }}
           MAX_CREATOR_TOKENS: ${{ secrets.MAX_CREATOR_TOKENS }}
           MAX_AGE_HOURS: ${{ secrets.MAX_AGE_HOURS }}
+          REQUIRE_SOCIAL: 'true'
           SWING_MIN_LP: ${{ secrets.SWING_MIN_LP }}
           SWING_MIN_VOL1H: ${{ secrets.SWING_MIN_VOL1H }}
           SWING_MAX_CHG1H: ${{ secrets.SWING_MAX_CHG1H }}
@@ -74,6 +84,19 @@ jobs:
           SWING_MIN_HOLDERS: ${{ secrets.SWING_MIN_HOLDERS }}
           SWING_MIN_AGE_H: ${{ secrets.SWING_MIN_AGE_H }}
           SWING_MAX_AGE_H: ${{ secrets.SWING_MAX_AGE_H }}
+          SWING_MIN_BUY_RATIO: ${{ secrets.SWING_MIN_BUY_RATIO }}
+          SWING_MAX_RUG_SCORE: ${{ secrets.SWING_MAX_RUG_SCORE }}
+          SWING_MAX_INSIDER_PCT: ${{ secrets.SWING_MAX_INSIDER_PCT }}
+          SWING_MAX_HOLDER_1_PCT: ${{ secrets.SWING_MAX_HOLDER_1_PCT }}
+          SWING_MAX_HOLDER_2_PCT: ${{ secrets.SWING_MAX_HOLDER_2_PCT }}
+          SWING_MAX_HOLDER_3_PCT: ${{ secrets.SWING_MAX_HOLDER_3_PCT }}
+          SWING_MAX_HOLDER_4_PCT: ${{ secrets.SWING_MAX_HOLDER_4_PCT }}
+          SWING_DAY_FRACTION_FLOOR: '0.1'
+          SWING_SUPPORT_MAX_RANGE_PCT: '0.45'
+          SWING_WARN_HIGH_RANGE_PCT: '0.80'
+          SWING_MAX_CONSOLIDATION_RANGE_RATIO: '0.80'
+          ENTRY_STRATEGY: ${{ secrets.ENTRY_STRATEGY }}
+          REQUIRE_FIB_ZONE: ${{ secrets.REQUIRE_FIB_ZONE }}
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
