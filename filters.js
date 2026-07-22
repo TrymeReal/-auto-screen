@@ -63,6 +63,21 @@ function checkMinHolders(holderCount, minHolders) {
   return { skip: false, reason: '' };
 }
 
+// Gate minimal jumlah KOL holder (renowned_count) — MANDIRI, tidak nempel
+// di evaluateAppStyleMigration, supaya tetap jalan walau MIG_APP_FILTER_ENABLED
+// = false (gate lain di app-style filter mati, tapi KOL tetap dicek).
+// Fail-open kalau kolCount null (data tidak tersedia) — sama seperti
+// checkMinHolders, data hilang tidak diam-diam mereject semua token.
+function checkMinKolCount(kolCount, minKolCount) {
+  if (kolCount == null || minKolCount == null) return { skip: false, reason: '' };
+  var count = Number(kolCount);
+  if (!Number.isFinite(count)) return { skip: false, reason: '' };
+  if (count < minKolCount) {
+    return { skip: true, reason: 'KOL holder terlalu sedikit (' + count + ' < ' + minKolCount + ')' };
+  }
+  return { skip: false, reason: '' };
+}
+
 function checkSniperRate(sniperRate, maxSniperPct) {
   if (sniperRate == null) return { skip: false, reason: '' };
   var pct = asPct(sniperRate);
@@ -351,6 +366,12 @@ function shouldSkipNewMigration(token, tokenInfo, cfg) {
   // — Gate holder minimum (minHoldersMig) — sebelumnya juga cuma di-log —
   var holders = checkMinHolders(t.holder_count, c.minHoldersMig);
   if (holders.skip) return holders;
+
+  // — Gate minimal KOL holder (minKolCount) — mandiri, selalu jalan terlepas
+  // dari MIG_APP_FILTER_ENABLED —
+  var kolRaw = t.renowned_count;
+  var kolCheck = checkMinKolCount(kolRaw, c.minKolCount);
+  if (kolCheck.skip) return kolCheck;
 
   // — Gate wajib minimal 1 social media (Twitter/Telegram/Website) —
   var social = checkHasSocial(t, c.requireSocial);
@@ -912,6 +933,7 @@ module.exports = {
   checkDevHoldRate,
   checkPriceChange1h,
   checkMinHolders,
+  checkMinKolCount,
   checkSniperRate,
   checkVolLpRatio,
   checkRugRatio,
