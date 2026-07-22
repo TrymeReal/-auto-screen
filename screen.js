@@ -14,27 +14,21 @@ const {
   calculateRugcheckTopHoldersPct,
   getRankedRugcheckHolderPcts,
   checkIndividualTopHolders,
-  checkRugRatio,
-  nextConsecutiveConfirmation,
-  toUnixMillis,
-  toUnixSeconds,
-  getSwingKlinePlans,
 } = require('./filters');
-const { normalizeEntryStrategy, requiresFibonacci } = require('./entry-strategy');
 
 // ─────────────────────────────────────────────
 //  CONFIG
 // ─────────────────────────────────────────────
 const CFG = {
   // New Migration V2 — base gates
-  minVol1h:        Number(process.env.MIN_VOL_1H)        || 20000,
+  minVol1h:        Number(process.env.MIN_VOL_1H)        || 14000,
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
-  minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
+  minVol5m:        Number(process.env.MIN_VOL_5M)        || 2000,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
-  minLp:           Number(process.env.MIN_LP)           || 15000,
-  minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
+  minLp:           Number(process.env.MIN_LP)           || 5000,
+  minVol:          Number(process.env.MIN_VOL_5M)       || 2000,
   // Sekarang pakai skala score_normalised RugCheck (0-100, makin RENDAH makin
   // aman). Default 20 = ambang batas kategori "Good" versi RugCheck.
   // Catatan: dulu field ini dibandingkan ke rug.score (raw score, skalanya bisa
@@ -45,49 +39,38 @@ const CFG = {
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 30,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
-  maxTop10HoldersRugcheck: Number(process.env.MAX_TOP10_HOLDERS_RUGCHECK) || 25,
-  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 30,
+  maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 15,
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 15,
   maxPriceChange1h:  Number(process.env.MAX_PRICE_CHANGE_1H) || 20,
   minHoldersMig:     Number(process.env.MIN_HOLDERS_MIG)     || 100,
-  // Gate minimal jumlah KOL holder (renowned_count) — MANDIRI dari
-  // MIG_APP_FILTER_ENABLED, selalu jalan sebagai bagian gate dasar New
-  // Migration (shouldSkipNewMigration), sama seperti MIN_HOLDERS_MIG.
-  minKolCountMig:    Number(process.env.MIN_KOL_COUNT_MIG)   || 2,
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
-  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 20,
+  maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 40,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 15,
-  gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 30,
-  gmgnRugConfirmScans: Math.max(1, Math.floor(Number(process.env.GMGN_RUG_CONFIRM_SCANS) || 1)),
-  maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 10,
-  maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 13),
-  maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 4),
-  maxHolder3Pct: process.env.MAX_HOLDER_3_PCT === '' ? null : (Number(process.env.MAX_HOLDER_3_PCT) || 4),
-  maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 4),
+  gmgnRugMaxRatio:   Number(process.env.GMGN_RUG_MAX_RATIO)  || 45,
+  maxPhishingPct:    Number(process.env.MAX_PHISHING_PCT)    || 5,
+  maxHolder1Pct: process.env.MAX_HOLDER_1_PCT === '' ? null : (Number(process.env.MAX_HOLDER_1_PCT) || 10),
+  maxHolder2Pct: process.env.MAX_HOLDER_2_PCT === '' ? null : (Number(process.env.MAX_HOLDER_2_PCT) || 3),
+  maxHolder3Pct: process.env.MAX_HOLDER_3_PCT === '' ? null : (Number(process.env.MAX_HOLDER_3_PCT) || 3),
+  maxHolder4Pct: process.env.MAX_HOLDER_4_PCT === '' ? null : (Number(process.env.MAX_HOLDER_4_PCT) || 3),
   requireSocial:     process.env.REQUIRE_SOCIAL === 'false' ? false : true,
   requireFibZone:    process.env.REQUIRE_FIB_ZONE === 'false' ? false : true,
-  entryStrategy:     normalizeEntryStrategy(process.env.ENTRY_STRATEGY, 'PREPUMP'),
 
   // Mode Swing 1D — filter lebih ketat
-  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 10000,
-  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 5000,
+  swingMinLp:      Number(process.env.SWING_MIN_LP)      || 35000,
+  swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 15000,
   swingMaxChange1h: Number(process.env.SWING_MAX_CHG1H)  || 25,   // tidak sedang pump >25% per jam
   swingMaxChange24h: Number(process.env.SWING_MAX_CHG24H)|| 50,   // belum pump >50% dalam 24h
-  swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 0.1,  // volume spike vs estimasi avg
-  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 250,
-  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 6,    // token minimal 6 jam
-  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
+  swingVolSpikeMin: Number(process.env.SWING_VOL_SPIKE)  || 2.0,  // volume spike vs estimasi avg
+  swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 300,
+  swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
+  swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 168,  // max 7 hari (168 jam)
   swingMinBuyRatio: Number(process.env.SWING_MIN_BUY_RATIO) || 35,
   swingMaxRugScore: Number(process.env.SWING_MAX_RUG_SCORE) || 20,
   swingMaxInsiderPct: Number(process.env.SWING_MAX_INSIDER_PCT) || 30,
-  swingMaxHolder1Pct: Number(process.env.SWING_MAX_HOLDER_1_PCT) || 5,
+  swingMaxHolder1Pct: Number(process.env.SWING_MAX_HOLDER_1_PCT) || 10,
   swingMaxHolder2Pct: Number(process.env.SWING_MAX_HOLDER_2_PCT) || 4,
   swingMaxHolder3Pct: Number(process.env.SWING_MAX_HOLDER_3_PCT) || 4,
   swingMaxHolder4Pct: Number(process.env.SWING_MAX_HOLDER_4_PCT) || 4,
-  swingDayFractionFloor: Number(process.env.SWING_DAY_FRACTION_FLOOR) || 0.1,
-  swingSupportMaxRangePct: Number(process.env.SWING_SUPPORT_MAX_RANGE_PCT) || 0.45,
-  swingWarnHighRangePct: Number(process.env.SWING_WARN_HIGH_RANGE_PCT) || 0.80,
-  swingMaxConsolidationRangeRatio: Number(process.env.SWING_MAX_CONSOLIDATION_RANGE_RATIO) || 0.80,
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -126,12 +109,9 @@ const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
 
 const SEEN    = new Map();
 const TRACKED = new Map();
-const MIG_RUG_CONFIRM = new Map();
-const SWING_RUG_CONFIRM = new Map();
 const TARGETS = [30, 50, 100, 200, 500];
 let startTime = Date.now();
 let totalNotified = 0;
-let screeningCycleId = 0;
 
 // ─────────────────────────────────────────────
 //  HELPERS
@@ -317,9 +297,7 @@ function normalizeTrench(t) {
   return Object.assign({}, t, {
     price:              supply > 0 ? mc / supply : 0,
     market_cap:         mc,
-    // Umur New Migration dihitung sejak token completed/migrasi ke DEX.
-    // Fallback ke waktu pembuatan bila complete_timestamp tidak tersedia.
-    creation_timestamp: t.complete_timestamp || t.created_timestamp,
+    creation_timestamp: t.created_timestamp,
     volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
     buys:               t.buys_24h,
     sells:              t.sells_24h,
@@ -342,7 +320,7 @@ function fetchGmgnTrenches() {
       '--limit 50',
       '--min-smart-degen-count 1',
       '--sort-by smart_degen_count',
-      '--max-created ' + Math.round(CFG.maxAgeHours * 60) + 'm',  // batas umur sumber New Migration
+      '--max-created ' + Math.round(CFG.swingMinAge * 60) + 'm',  // umur < swingMinAge jam
       '--min-liquidity ' + CFG.minLp,
       '--raw',
     ].join(' ');
@@ -376,15 +354,22 @@ function fetchTokenInfo(address) {
   }
 }
 
-// Cek status "Dex Paid" dari field GMGN trenches/trending.
-// Token dianggap paid jika minimal satu produk marketing Dexscreener aktif.
-function isPaidDex(t) {
-  if (!t) return false;
-  var ad          = isTruthyFlag(t.dexscr_ad);
-  var updateLink  = isTruthyFlag(t.dexscr_update_link);
-  var trendingBar = isTruthyFlag(t.dexscr_trending_bar);
-  var boostFee    = Number(t.dexscr_boost_fee) > 0;
-  return ad || updateLink || trendingBar || boostFee;
+async function fetchPaidDex(address) {
+  try {
+    const res = await getWithRetry('https://api.dexscreener.com/latest/dex/tokens/' + address, { timeout: 8000 }, 2);
+    const pairs = res.data?.pairs;
+    if (!pairs || pairs.length === 0) return false;
+    var hasBoost = false;
+    for (var i = 0; i < pairs.length; i++) {
+      var p = pairs[i];
+      if (p.boosts && Number(p.boosts.active) > 0) { hasBoost = true; break; }
+      if (p.labels && Array.isArray(p.labels) && p.labels.length > 0) hasBoost = true;
+    }
+    return hasBoost;
+  } catch (e) {
+    log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
+    return false;
+  }
 }
 
 function getCreatorTokenCount(walletAddress) {
@@ -463,35 +448,15 @@ function normalizeSignal(signals) {
   return result;
 }
 
-const GMGN_KLINE_CACHE_TTL_MS = 90 * 1000;
-const GMGN_KLINE_COOLDOWN_MS = 180 * 1000;
-const GMGN_KLINE_MIN_INTERVAL_MS = 400;
-const GMGN_KLINE_CACHE = new Map();
-let gmgnKlineCooldownUntil = 0;
-let lastGmgnKlineCallAt = 0;
-
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
-  const cacheKey = address + '|' + resolution;
-  const cached = GMGN_KLINE_CACHE.get(cacheKey);
-  if (cached && Date.now() - cached.fetchedAt < GMGN_KLINE_CACHE_TTL_MS) return cached.value;
-
-  if (Date.now() < gmgnKlineCooldownUntil) {
-    log('[GMGN KLINE][COOLDOWN] skip ' + address.slice(0, 8) + ' [' + resolution + ']');
-    return null;
-  }
-
   try {
-    const waitMs = lastGmgnKlineCallAt + GMGN_KLINE_MIN_INTERVAL_MS - Date.now();
-    if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
-    lastGmgnKlineCallAt = Date.now();
-
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
     const ts   = Math.floor(Date.now() / 1000);
     const cid  = 'ax' + ts.toString(36) + Math.random().toString(36).slice(2, 10);
     const url  = host + '/v1/market/token_kline?chain=sol&address=' + address
                + '&resolution=' + resolution
-               + '&from=' + toUnixMillis(fromSec)
-               + '&to='   + toUnixMillis(toSec)
+               + '&from=' + Math.floor(fromSec)
+               + '&to='   + Math.floor(toSec)
                + '&timestamp=' + ts + '&client_id=' + cid;
     const res  = await axios.get(url, {
       headers: { 'X-APIKEY': process.env.GMGN_API_KEY || '' },
@@ -510,13 +475,8 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
         + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
     }
 
-    GMGN_KLINE_CACHE.set(cacheKey, { fetchedAt: Date.now(), value: list });
     return list;
   } catch (e) {
-    if (e.response?.status === 429) {
-      gmgnKlineCooldownUntil = Date.now() + GMGN_KLINE_COOLDOWN_MS;
-      log('[GMGN KLINE][429] Rate limited — cooldown 180s aktif');
-    }
     log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
     return null;
   }
@@ -547,7 +507,6 @@ async function getRugCheck(ca, insiderThreshold) {
       score:           d.score || 0,
       scoreNormalised: d.score_normalised ?? -1,
       risks:           riskNames.join(', '),
-      risksArr:        riskNames,
       creator:         d.creator || d.owner || '?',
       topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
       topWarns:        riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, '')),
@@ -559,7 +518,7 @@ async function getRugCheck(ca, insiderThreshold) {
       rankedHolderPcts: getRankedRugcheckHolderPcts(d.topHolders, d.knownAccounts),
     };
   } catch {
-    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', risksArr: [], creator: '?',
+    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
              topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
              insiderPct: 0, top10Pct: 0, rankedHolderPcts: [] };
   }
@@ -652,31 +611,11 @@ function calculateScore(t, rug) {
  * Ambil kline 1D (7 candle ke belakang) untuk analisa swing.
  * Return null jika gagal atau data tidak cukup.
  */
-async function fetchSwingKlines(address, ageHours) {
+async function fetchSwingKlines(address) {
   await new Promise(r => setTimeout(r, 500));
-  const nowSec = Math.floor(Date.now() / 1000);
-  const plans = getSwingKlinePlans(ageHours);
-
-  for (const plan of plans) {
-    const list = await fetchGMGNKline(address, plan.resolution, nowSec - plan.lookbackSec, nowSec);
-    const candles = (list || [])
-      .map(c => ({
-        time:   toUnixSeconds(c.time ?? c.timestamp ?? c.t ?? 0),
-        close:  Number(c.close),
-        high:   Number(c.high),
-        low:    Number(c.low),
-        volume: Number(c.volume) || 0,
-      }))
-      .filter(c => c.time > 0 && c.close > 0 && c.high > 0 && c.low > 0)
-      .sort((a, b) => a.time - b.time);
-
-    if (candles.length >= 3) {
-      log('[SWING][KLINE] ' + plan.label + ' tersedia (' + candles.length + ' candle)');
-      return { candles, ...plan };
-    }
-    log('[SWING][KLINE] ' + plan.label + ' belum cukup (' + candles.length + ' candle valid), coba timeframe berikutnya');
-  }
-  return null;
+  const nowSec  = Math.floor(Date.now() / 1000);
+  const fromSec = nowSec - 7 * 86400; // 7 hari
+  return await fetchGMGNKline(address, '1d', fromSec, nowSec);
 }
 
 /**
@@ -733,12 +672,7 @@ async function checkSwingSignal(t) {
 
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = [];
-  const klineData = await fetchSwingKlines(t.address, ageH);
-  if (!klineData) {
-    log('[SWING][KLINE] WAIT ' + t.symbol + ' — 1D/4H/1H belum tersedia, scan ulang cycle berikutnya');
-    return { pass: false, reason: 'Kline 1D/4H/1H belum tersedia (WAIT, akan scan ulang)' };
-  }
-  const klines = klineData.candles;
+  const klines  = await fetchSwingKlines(t.address);
 
   if (klines && klines.length >= 3) {
     // PENTING: dulu close/volume/high/low difilter terpisah-pisah (.filter(v=>v>0)
@@ -782,8 +716,8 @@ async function checkSwingSignal(t) {
       // ke-skip walau lagi beneran ada momentum, kemaleman bisa keliatan "spike"
       // padahal cuma akumulasi volume semalaman.
       const nowSec        = Math.floor(Date.now() / 1000);
-      const dayElapsedSec = Math.max(nowSec - lastCandle.time, 0);
-      const dayFraction   = Math.min(Math.max(dayElapsedSec / klineData.intervalSec, CFG.swingDayFractionFloor), 1);
+      const dayElapsedSec = lastCandle.time ? Math.max(nowSec - lastCandle.time, 0) : 86400;
+      const dayFraction   = Math.min(Math.max(dayElapsedSec / 86400, 0.1), 1); // floor 10% biar gak diekstrapolasi gila-gilaan pas hari baru mulai
       const normLastVol   = lastCandle.volume / dayFraction;
 
       const highs       = candles.map(c => c.high);
@@ -798,16 +732,16 @@ async function checkSwingSignal(t) {
       // pengganti gate ini.
       const volSpike = avgVol > 0 ? normLastVol / avgVol : 1;
       if (volSpike < CFG.swingVolSpikeMin) {
-        return { pass: false, reason: 'Tidak ada vol spike ' + klineData.label + ' (hanya ' + volSpike.toFixed(1) + 'x, candle baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
+        return { pass: false, reason: 'Tidak ada vol spike 1D (hanya ' + volSpike.toFixed(1) + 'x, hari baru ' + (dayFraction * 100).toFixed(0) + '% jalan)' };
       }
-      signals.push('Vol spike ' + klineData.label + ' ' + volSpike.toFixed(1) + 'x rata-rata (normalized, candle ' + (dayFraction * 100).toFixed(0) + '% jalan)');
+      signals.push('Vol spike ' + volSpike.toFixed(1) + 'x rata-rata (normalized, hari ' + (dayFraction * 100).toFixed(0) + '% jalan)');
 
       // Sinyal 2: Harga dekat support (belum terlalu jauh dari bawah)
       if (priceRange > 0) {
         const posInRange = (lastCandle.close - swingLow) / priceRange; // 0=bawah, 1=atas
-        if (posInRange <= CFG.swingSupportMaxRangePct) {
+        if (posInRange <= 0.45) {
           signals.push('Harga dekat support (' + (posInRange * 100).toFixed(0) + '% dari range)');
-        } else if (posInRange >= CFG.swingWarnHighRangePct) {
+        } else if (posInRange >= 0.80) {
           // Sudah terlalu tinggi di range
           signals.push('[WARN] Harga sudah tinggi di range (' + (posInRange * 100).toFixed(0) + '%)');
         }
@@ -815,12 +749,12 @@ async function checkSwingSignal(t) {
 
       // Sinyal 3: Harga candle terakhir naik (green candle) — konfirmasi awal
       if (lastCandle.close > prevCandle.close) {
-        signals.push('Green candle ' + klineData.label + ' (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
+        signals.push('Green candle 1D (' + ((lastCandle.close / prevCandle.close - 1) * 100).toFixed(1) + '%)');
       }
 
       // Sinyal 4: Konsolidasi — range harga gak lebih dari 80% dari low
-      if (swingLow > 0 && priceRange / swingLow < CFG.swingMaxConsolidationRangeRatio) {
-        signals.push('Konsolidasi ' + klineData.label + ' (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
+      if (swingLow > 0 && priceRange / swingLow < 0.80) {
+        signals.push('Konsolidasi (range ' + (priceRange / swingLow * 100).toFixed(0) + '%)');
       }
     }
 
@@ -1029,6 +963,13 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   if (linkParts.length) msg += '🔗 Links   : ' + linkParts.join(' | ') + '\n';
   msg += SEP + '\n';
 
+  // Swing signals khusus
+  if (mode === 'SWING' && swingSignals && swingSignals.length > 0) {
+    msg += '📡 <b>Sinyal Pre-Pump:</b>\n';
+    swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
+    msg += SEP + '\n';
+  }
+
   msg += '🛡️ GMGN:\n';
   msg += '📋 Holders : ' + fmt(t.holder_count || 0) + '\n';
   msg += '🔍 Top10   : ' + top10 + '%\n';
@@ -1044,32 +985,16 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   msg += '🎯 Sniper# : ' + (t.sniper_count || 0) + '\n';
   msg += SEP + '\n';
 
-  // f tetap dihitung meskipun strategi PREPUMP dipilih, karena f.support &
-  // f.sl masih dipakai sebagai basis warning FOMO (di bawah) dan tracking —
-  // hanya tampilan pesannya yang berbeda sesuai strategi.
   var f = await calculateFibonacci(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
-  var useFib = requiresFibonacci(CFG.entryStrategy, CFG.requireFibZone);
-
+  var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
   msg += '📊 Entry & Targets:\n';
   msg += '⏰ Entry   : $' + fmtPrice(t.price) + '\n';
   msg += '🎯 Target  : +30% → $' + fmtPrice(t.price * 1.3) + '\n';
-
-  if (useFib) {
-    var fibLabel = f.source.startsWith('kline') ? 'dari candle ' + (mode === 'SWING' ? '1D' : '1h') : 'estimasi, cek chart';
-    msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
-    msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
-    msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
-    msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
-    msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
-  } else {
-    msg += '📡 Dasar Entry <i>(PREPUMP)</i>:\n';
-    if (swingSignals && swingSignals.length > 0) {
-      swingSignals.forEach(s => { msg += '  • ' + s + '\n'; });
-    } else {
-      msg += '  • Tidak ada sinyal pre-pump spesifik (mode ' + mode + ')\n';
-    }
-    msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
-  }
+  msg += '📊 Fib Level <i>(' + fibLabel + ')</i>:\n';
+  msg += '🟢 Support : $' + fmtPrice(f.support) + '\n';
+  msg += '⚖️  Fair    : $' + fmtPrice(f.fair) + '\n';
+  msg += '🔴 Resist  : $' + fmtPrice(f.resist) + '\n';
+  msg += '⛔ SL      : $' + fmtPrice(f.sl) + '\n';
 
   var dynScore = calculateScore(t, rug);
   msg += 'Score: ' + dynScore + '/100\n';
@@ -1130,13 +1055,6 @@ function buildSignalMsg(t) {
 //  MAIN PROCESSING LOOP
 // ─────────────────────────────────────────────
 async function processTokens() {
-  const cycleId = ++screeningCycleId;
-  for (const [address, state] of MIG_RUG_CONFIRM) {
-    if (!state || state.lastCycle < cycleId - 1) MIG_RUG_CONFIRM.delete(address);
-  }
-  for (const [address, state] of SWING_RUG_CONFIRM) {
-    if (!state || state.lastCycle < cycleId - 1) SWING_RUG_CONFIRM.delete(address);
-  }
   log('========== SCREENING ==========');
   // Dua sumber terpisah: trenches `completed` untuk New Migration, trending untuk Swing 1D.
   var migrationTokens = fetchGmgnTrenches();
@@ -1206,21 +1124,6 @@ async function processTokens() {
   for (let i = 0; i < newMigration.length; i++) {
     const t = newMigration[i];
 
-    var migGmgnCheck = checkRugRatio(t.rug_ratio, CFG.gmgnRugMaxRatio);
-    if (migGmgnCheck.skip) {
-      MIG_RUG_CONFIRM.delete(t.address);
-      log('SKIP [MIG][GMGN Rug] ' + t.symbol + ' (' + migGmgnCheck.reason + ')');
-      continue;
-    }
-    var migRugConfirmation = nextConsecutiveConfirmation(MIG_RUG_CONFIRM.get(t.address), cycleId);
-    MIG_RUG_CONFIRM.set(t.address, migRugConfirmation);
-    if (migRugConfirmation.count < CFG.gmgnRugConfirmScans) {
-      log('[MIG][GMGN Rug] WAIT ' + t.symbol + ' (konfirmasi '
-        + migRugConfirmation.count + '/' + CFG.gmgnRugConfirmScans + ' scan berturut-turut)');
-      continue;
-    }
-    MIG_RUG_CONFIRM.delete(t.address);
-
     // Fetch token info untuk data 5m/1h
     log('[MIG] Fetch info ' + t.symbol + '...');
     const tokenInfo = fetchTokenInfo(t.address);
@@ -1246,7 +1149,6 @@ async function processTokens() {
       maxPhishingPct:   CFG.maxPhishingPct,
       maxPriceChange1h: CFG.maxPriceChange1h,
       minHoldersMig:    CFG.minHoldersMig,
-      minKolCount:      CFG.minKolCountMig,
       requireSocial:    CFG.requireSocial,
       maxCreatorTokens: CFG.maxCreatorTokens,
       maxHolder1Pct: CFG.maxHolder1Pct,
@@ -1260,8 +1162,9 @@ async function processTokens() {
       continue;
     }
 
-    // Cek paid DEX langsung dari field dexscr_* di data GMGN
-    var paidDex = isPaidDex(t);
+    // Cek paid DEX via DEX Screener API
+    log('[MIG] Cek paid DEX ' + t.symbol + '...');
+    var paidDex = await fetchPaidDex(t.address);
     if (!paidDex) {
       log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
       continue;
@@ -1277,16 +1180,12 @@ async function processTokens() {
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
       continue;
     }
-    if (rug.risksArr.length > 0) {
-      log('SKIP [MIG] ' + t.symbol + ' (RugCheck risks: ' + rug.risksArr.join(', ') + ')');
-      continue;
-    }
     if (rug.insiderPct > CFG.maxInsiderPct) {
       log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
       continue;
     }
-    if (rug.top10Pct > CFG.maxTop10HoldersRugcheck) {
-      log('SKIP [MIG] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10HoldersRugcheck + '%)');
+    if (rug.top10Pct > CFG.maxTop10Holders) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)');
       continue;
     }
     var migHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
@@ -1337,32 +1236,13 @@ async function processTokens() {
     log('[SWING] PASS ' + t.symbol + ' — signals: ' + swingResult.signals.join(', '));
 
     try {
-      const swingGmgnCheck = checkRugRatio(t.rug_ratio, CFG.gmgnRugMaxRatio);
-      if (swingGmgnCheck.skip) {
-        SWING_RUG_CONFIRM.delete(t.address);
-        log('SKIP [SWING][GMGN Rug] ' + t.symbol + ' (' + swingGmgnCheck.reason + ')');
-        continue;
-      }
-      const swingRugConfirmation = nextConsecutiveConfirmation(SWING_RUG_CONFIRM.get(t.address), cycleId);
-      SWING_RUG_CONFIRM.set(t.address, swingRugConfirmation);
-      if (swingRugConfirmation.count < CFG.gmgnRugConfirmScans) {
-        log('[SWING][GMGN Rug] WAIT ' + t.symbol + ' (konfirmasi '
-          + swingRugConfirmation.count + '/' + CFG.gmgnRugConfirmScans + ' scan berturut-turut)');
-        continue;
-      }
-      SWING_RUG_CONFIRM.delete(t.address);
-
       const rug = await getRugCheck(t.address, CFG.swingMaxInsiderPct);
       if (rug.scoreNormalised < 0 || rug.scoreNormalised > CFG.swingMaxRugScore) {
         log('SKIP [SWING] ' + t.symbol + ' (RugNorm ' + rug.scoreNormalised + ' > ' + CFG.swingMaxRugScore + ')');
         continue;
       }
-      if (rug.risksArr.length > 0) {
-        log('SKIP [SWING] ' + t.symbol + ' (RugCheck risks: ' + rug.risksArr.join(', ') + ')');
-        continue;
-      }
       if (rug.insiderPct > CFG.swingMaxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.swingMaxInsiderPct + '%)'); continue; }
-      if (rug.top10Pct > CFG.maxTop10HoldersRugcheck) { log('SKIP [SWING] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10HoldersRugcheck + '%)'); continue; }
+      if (rug.top10Pct > CFG.maxTop10Holders) { log('SKIP [SWING] ' + t.symbol + ' (RugCheck Top10 ' + rug.top10Pct.toFixed(1) + '% > ' + CFG.maxTop10Holders + '%)'); continue; }
       var swingHolderGate = checkIndividualTopHolders(rug.rankedHolderPcts, {
         holder1: CFG.swingMaxHolder1Pct, holder2: CFG.swingMaxHolder2Pct,
         holder3: CFG.swingMaxHolder3Pct, holder4: CFG.swingMaxHolder4Pct,
@@ -1619,7 +1499,6 @@ log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Grade SKIP otomatis
 log('  Bundler < ' + CFG.maxBundlerPct + '% | Top10 < ' + CFG.maxTop10Holders + '% (display GMGN)');
 log('  CreatorHold < ' + CFG.maxDevHold + '% | PriceChg1h < ' + CFG.maxPriceChange1h + '%');
 log('  Holders > ' + CFG.minHoldersMig + ' | Sniper < ' + CFG.maxSniperPct + '% | Vol/LP < ' + CFG.maxVolLpRatio + 'x');
-log('  KOL holder >= ' + CFG.minKolCountMig + ' (renowned_count, mandiri dari MIG_APP_FILTER_ENABLED)');
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
@@ -1632,8 +1511,6 @@ if (CFG.signalEnabled) {
   log('  Top10 < ' + CFG.signalMaxTop10Rate + '% | MC trig < $' + fmt(CFG.signalMaxMc));
   log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
 }
-log('');
-log('Entry Strategy: ' + CFG.entryStrategy + (CFG.requireFibZone ? '' : ' (requireFibZone=false)'));
 log('');
 log('Interval: ' + CFG.interval + 's');
 log('');
