@@ -30,7 +30,7 @@ const CFG = {
   minVol1h:        Number(process.env.MIN_VOL_1H)        || 20000,
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 40,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
-  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 6,
+  maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
 
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 15000,
@@ -313,7 +313,9 @@ function normalizeTrench(t) {
   return Object.assign({}, t, {
     price:              supply > 0 ? mc / supply : 0,
     market_cap:         mc,
-    creation_timestamp: t.created_timestamp,
+    // Umur New Migration dihitung sejak token completed/migrasi ke DEX.
+    // Fallback ke waktu pembuatan bila complete_timestamp tidak tersedia.
+    creation_timestamp: t.complete_timestamp || t.created_timestamp,
     volume:             Number(t.volume_1h) || Number(t.volume_24h) || 0,
     buys:               t.buys_24h,
     sells:              t.sells_24h,
