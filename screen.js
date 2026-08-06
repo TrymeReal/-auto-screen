@@ -1336,12 +1336,9 @@ async function processTokens() {
       continue;
     }
 
-    var narrativeGate = applyDynamicNarrativeGate(checkNewMigrationNarrative(t), migrationNarrativePulse);
-    if (narrativeGate.skip) {
-      log('SKIP [MIG] ' + t.symbol + ' (' + narrativeGate.reason + ')');
-      continue;
-    }
-    log('[MIG] Narasi OK ' + t.symbol + ' (' + narrativeGate.reason + ')');
+    // Filter narasi dimatikan — semua token lanjut ke gate berikutnya tanpa cek narasi
+    var narrativeGate = { skip: false, reason: 'Narrative filter dimatikan' };
+    log('[MIG] Narasi SKIP-CHECK ' + t.symbol + ' (' + narrativeGate.reason + ')');
 
     var migCfg = {
       minLp:        CFG.minLp,
