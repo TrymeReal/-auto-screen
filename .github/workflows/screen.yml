@@ -58,13 +58,13 @@ jobs:
           MAX_RUG_SCORE: '40'
 
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
-          MAX_BUNDLER_PCT: '25'
+          MAX_BUNDLER_PCT: '40'
           MAX_TOP10_HOLDERS: '25'
           MAX_DEV_HOLD: '10'
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '100'
           MAX_SNIPER_PCT: '10'
-          MAX_VOL_LP_RATIO: '15'
+          MAX_VOL_LP_RATIO: '300'
           MAX_CREATOR_TOKENS: '6'
 
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
@@ -75,7 +75,7 @@ jobs:
           SWING_VOL_SPIKE: '2.0'
           SWING_MIN_HOLDERS: '500'
           SWING_MIN_AGE_H: '24'
-          SWING_MAX_AGE_H: '128'
+          SWING_MAX_AGE_H: '168'
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
