@@ -48,14 +48,14 @@ jobs:
 
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '12000'
-          MIN_VOL_1H: '20000'
-          MIN_SWAPS_5M: '40'
-          MIN_VOL_5M: '2000'
+          MIN_LP: '15000'
+          MIN_VOL_1H: '60000'
+          MIN_SWAPS_5M: '50'
+          MIN_VOL_5M: '5000'
           MAX_AGE_HOURS: '1'
-          MIN_BUY_RATIO: '0'
+          MIN_BUY_RATIO: '51'
           MAX_INSIDER_PCT: '10'
-          MAX_RUG_SCORE: '20'
+          MAX_RUG_SCORE: '40'
 
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '25'
@@ -75,7 +75,7 @@ jobs:
           SWING_VOL_SPIKE: '2.0'
           SWING_MIN_HOLDERS: '500'
           SWING_MIN_AGE_H: '24'
-          SWING_MAX_AGE_H: '720'
+          SWING_MAX_AGE_H: '128'
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
