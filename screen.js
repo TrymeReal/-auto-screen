@@ -6,6 +6,7 @@ const { execSync } = require('child_process');
 const {
   shouldSkipNewMigration,
   collectMigrationHardRiskReasons,
+  shouldSkipMigrationHardRisk,
   checkBaseLiquidity,
   checkBaseAgeHours,
   checkVol1h,
@@ -22,6 +23,9 @@ const CFG = {
   minSwaps5m:      Number(process.env.MIN_SWAPS_5M)      || 50,
   minVol5m:        Number(process.env.MIN_VOL_5M)        || 5000,
   maxAgeHours:     Number(process.env.MAX_AGE_HOURS)     || 24,
+  // Batas umur BAWAH khusus mode MIGRATION (opsional). Default 0 = gak ada
+  // batas bawah sama sekali, behavior lama (cuma max yang dicek).
+  minAgeHoursMig:  Number(process.env.MIN_AGE_HOURS_MIG) || 0,
 
   // Mode New Migration (sama seperti sebelumnya)
   minLp:           Number(process.env.MIN_LP)           || 5000,
@@ -1354,7 +1358,17 @@ async function processTokens() {
       continue;
     }
 
-    var ageGate = checkBaseAgeHours(t.creation_timestamp, CFG.maxAgeHours);
+    // Umur < maxAgeHours sudah dijamin server (--max-created di GMGN CLI),
+    // tapi tetap dicek manual di sini sbg pengaman. Ditambah cek MIN umur
+    // (MIN_AGE_HOURS_MIG) — token yang KEBARU (misal baru migrasi < X menit)
+    // di-skip dulu kalau mau nunggu token agak "settle".
+    var ageHMig = tokenAgeHours(t.creation_timestamp);
+    var ageGate = { skip: false, reason: '' };
+    if (ageHMig < CFG.minAgeHoursMig) {
+      ageGate = { skip: true, reason: 'Terlalu baru (' + ageHMig.toFixed(2) + 'j < ' + CFG.minAgeHoursMig + 'j)' };
+    } else if (ageHMig >= CFG.maxAgeHours) {
+      ageGate = { skip: true, reason: 'Terlalu tua (' + ageHMig.toFixed(2) + 'j >= ' + CFG.maxAgeHours + 'j)' };
+    }
     if (ageGate.skip) {
       log('SKIP [MIG] ' + t.symbol + ' (' + ageGate.reason + ')');
       continue;
@@ -1379,9 +1393,10 @@ async function processTokens() {
       maxRugScore:      CFG.maxRugScore,
       maxInsiderPct:    CFG.maxInsiderPct,
     };
-    var gmgnRiskReasons = collectMigrationHardRiskReasons(t, migCfgStrict);
-    if (gmgnRiskReasons.length > 0) {
-      log('[MIG] WARN ' + t.symbol + ' (GMGN risk: ' + gmgnRiskReasons.join(' | ') + ') — narasi cocok, lanjut RugCheck');
+    var gmgnRiskGate = shouldSkipMigrationHardRisk(t, migCfgStrict);
+    if (gmgnRiskGate.skip) {
+      log('SKIP [MIG] ' + t.symbol + ' (GMGN risk: ' + gmgnRiskGate.reason + ')');
+      continue;
     }
 
     // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
@@ -1400,7 +1415,8 @@ async function processTokens() {
       if (dexInfo.hasTelegram) socialScore++;
 
       if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-        log('[MIG] WARN ' + t.symbol + ' (No Social — narasi cocok, lanjut) [Score:' + socialScore + '/4]');
+        log('SKIP [MIG] ' + t.symbol + ' (No Social) [Score:' + socialScore + '/4]');
+        continue;
       }
     } else {
       log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
@@ -1410,33 +1426,51 @@ async function processTokens() {
     log('[MIG] Cek paid DEX ' + t.symbol + '...');
     var paidDex = await fetchPaidDex(t.address);
     if (!paidDex) {
-      log('[MIG] WARN ' + t.symbol + ' (Belum paid DEX — narasi cocok, lanjut)');
+      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+      continue;
     }
 
-    // RugCheck — filter identik dengan Swing 1D
-    log('[MIG] Cek RugCheck ' + t.symbol + '...');
-    const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
-    if (rug.score > CFG.maxRugScore) {
-      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + rug.score + ' > ' + CFG.maxRugScore + ')');
+    // Rug score — 100% dari GMGN (rug_ratio), bukan RugCheck. Sudah nempel
+    // di objek t sejak fetchGmgnTrenches()/normalizeTrench(), jadi gak perlu
+    // request tambahan. Skala GMGN 0-1, dikonversi ke 0-100 biar konsisten
+    // sama threshold CFG.maxRugScore/CFG.maxInsiderPct yang sudah ada.
+    var gmgnRugScore   = (Number(t.rug_ratio) || 0) * 100;
+    var gmgnInsiderPct = (Number(t.suspected_insider_hold_rate) || 0) * 100;
+    if (gmgnRugScore > CFG.maxRugScore) {
+      log('SKIP [MIG] ' + t.symbol + ' (Rug ' + gmgnRugScore.toFixed(0) + ' > ' + CFG.maxRugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration', lockedReason: 'rug_score' });
       continue;
     }
-    if (rug.insiderPct > CFG.maxInsiderPct) {
-      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
+    if (gmgnInsiderPct > CFG.maxInsiderPct) {
+      log('SKIP [MIG] ' + t.symbol + ' (Insider ' + gmgnInsiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
       continue;
     }
+    // Objek "rug" dipertahankan (dipakai buildMsg/sendRadarBridge) tapi
+    // isinya sekarang murni GMGN. Field yang RugCheck-only (topDangers,
+    // topWarns, tokenType, deployPlatform, scoreNormalised) dikosongkan
+    // karena GMGN gak punya padanannya — bukan bug, memang gak ada datanya.
+    const rug = {
+      score: gmgnRugScore,
+      insiderPct: gmgnInsiderPct,
+      scoreNormalised: -1,
+      tokenType: '',
+      deployPlatform: '',
+      topDangers: [],
+      topWarns: [],
+      creator: t.creator_address || t.dev?.creator_address || '?',
+    };
 
     var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
     // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
     t.volume = vol1h;
-    const grade = gradeToken(t.liquidity, t.volume, rug.score);
+    const grade = gradeToken(t.liquidity, t.volume, gmgnRugScore);
+    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
     if (grade === 'SKIP') {
-      log('[MIG] WARN ' + t.symbol + ' (Grade SKIP — LP/Vol kecil, narasi cocok)');
+      log('SKIP [MIG] ' + t.symbol + ' (Grade SKIP — LP/Vol kecil)');
+      continue;
     }
 
-    SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
-
-    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug:' + rug.score + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
+    log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug(GMGN):' + rug.score.toFixed(0) + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
     const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
     const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
     await sendRadarBridge(t, 'MIGRATION', {
