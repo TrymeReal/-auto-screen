@@ -70,6 +70,9 @@ const CFG = {
   interval:        Number(process.env.POLL_INTERVAL)     || 60,
   healthInterval:  Number(process.env.HEALTH_INTERVAL)   || 3600,
   seenCleanupDays: Number(process.env.SEEN_CLEANUP_DAYS) || 7,
+  // Toggle kirim Telegram. Default nyala (true). Set TG_ENABLED='false' di
+  // workflow/env buat matiin sementara (misal lagi testing), tanpa ubah kode.
+  tgEnabled:       process.env.TG_ENABLED !== 'false',
   tgToken:         process.env.TG_TOKEN,
   tgChatId:        process.env.TG_CHAT_ID,
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
@@ -529,6 +532,10 @@ async function getRugCheck(ca, insiderThreshold) {
 }
 
 async function sendTelegram(msg, replyTo, threadId) {
+  if (!CFG.tgEnabled) {
+    log('[TG SKIPPED - disabled] ' + msg.replace(/<[^>]+>/g, '').slice(0, 80));
+    return null;
+  }
   try {
     var resolvedThread = threadId !== undefined ? threadId : null;
     var payload = { chat_id: CFG.tgChatId, text: msg, parse_mode: 'HTML' };
