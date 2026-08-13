@@ -30,7 +30,6 @@ jobs:
       - run: node screen.js
         env:
           CI: 'false'
-
           # --- Sudah ada di Secrets, tetap pakai secrets ---
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
@@ -39,13 +38,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMGN_API_KEY: ${{ secrets.GMGN_API_KEY }}
-
+          # --- Toggle kirim Telegram (true/false), diatur dari Secrets ---
+          TG_ENABLED: ${{ secrets.TG_ENABLED }}
           # --- Cari ulang di Telegram Web kalau grup pakai fitur Topics ---
           TG_THREAD_ENTRY: ${{ secrets.TG_THREAD_ENTRY }}
           TG_THREAD_SIGNAL: ${{ secrets.TG_THREAD_SIGNAL }}
-
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
-
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
           MIN_LP: '15000'
@@ -56,7 +54,6 @@ jobs:
           MIN_BUY_RATIO: '51'
           MAX_INSIDER_PCT: '10'
           MAX_RUG_SCORE: '40'
-
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '40'
           MAX_TOP10_HOLDERS: '25'
@@ -66,7 +63,6 @@ jobs:
           MAX_SNIPER_PCT: '10'
           MAX_VOL_LP_RATIO: '300'
           MAX_CREATOR_TOKENS: '6'
-
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
           SWING_MIN_VOL1H: '20000'
