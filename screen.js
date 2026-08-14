@@ -321,6 +321,10 @@ function fetchGmgnTrenches() {
     const root = (d && d.completed) ? d : (d && d.data) ? d.data : {};
     const list = root.completed || [];
     log('GMGN trenches completed: ' + list.length + ' tokens');
+    if (list.length > 0) {
+      log('[MIG DEBUG] raw field pertama: ' + JSON.stringify(Object.keys(list[0])));
+      log('[MIG DEBUG] raw sample: ' + JSON.stringify(list[0]).slice(0, 1500));
+    }
     return list.map(normalizeTrench);
   } catch (e) {
     log('GMGN trenches error: ' + e.message);
@@ -1347,6 +1351,26 @@ async function processTokens() {
       continue;
     }
 
+    // normalizeTrench() menghitung price = usd_market_cap / total_supply, tapi
+    // API "market trenches" sering gak ngisi usd_market_cap (jadi price/MC = 0).
+    // tokenInfo (API "token info", per-address, lebih lengkap) biasanya punya
+    // harga & MC asli — pakai itu buat isi ulang kalau hasil trenches kosong.
+    if (!t.price || Number(t.price) <= 0) {
+      var tiPrice = tokenInfo?.price?.price ?? tokenInfo?.price?.usd ?? tokenInfo?.price?.value
+                    ?? tokenInfo?.token?.price ?? tokenInfo?.price;
+      var tiPriceNum = Number(tiPrice);
+      if (tiPriceNum > 0) {
+        log('[MIG] ' + t.symbol + ' price 0 dari trenches, pakai tokenInfo: $' + tiPriceNum);
+        t.price = tiPriceNum;
+      } else {
+        log('[MIG DEBUG] ' + t.symbol + ' price tetap 0 — tokenInfo.price: ' + JSON.stringify(tokenInfo?.price));
+      }
+    }
+    if (!t.market_cap || Number(t.market_cap) <= 0) {
+      var tiMc = tokenInfo?.price?.market_cap ?? tokenInfo?.token?.market_cap ?? tokenInfo?.market_cap;
+      if (Number(tiMc) > 0) t.market_cap = Number(tiMc);
+    }
+
     // Filter narasi dimatikan — semua token lanjut ke gate berikutnya tanpa cek narasi
     var narrativeGate = { skip: false, reason: 'Narrative filter dimatikan' };
     log('[MIG] Narasi SKIP-CHECK ' + t.symbol + ' (' + narrativeGate.reason + ')');
@@ -1488,13 +1512,25 @@ async function processTokens() {
     });
     totalNotified++;
 
-    if (t.price && Number(t.price) > 0) {
+    // Fallback harga: `t.price` dari normalizeTrench() dihitung manual
+    // (usd_market_cap / total_supply) dan sering jadi 0 kalau total_supply
+    // gak ke-isi dari trenches API — bukan berarti gak ada harga sama sekali.
+    // tokenInfo (dari fetchTokenInfo, sudah kepakai di atas buat volume_1h)
+    // biasanya punya harga aktual di tokenInfo.price.price / .usd.
+    var entryPriceRaw = (t.price && Number(t.price) > 0)
+      ? t.price
+      : (tokenInfo?.price?.price ?? tokenInfo?.price?.usd ?? tokenInfo?.price?.value);
+    var entryPriceNum = Number(entryPriceRaw);
+
+    if (entryPriceNum > 0) {
       TRACKED.set(t.address, {
         symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
-        entryPrice: Number(t.price), entryAt: Date.now(), nextTargetIdx: 0, msgId,
+        entryPrice: entryPriceNum, entryAt: Date.now(), nextTargetIdx: 0, msgId,
         threadId: CFG.tgThreadMig,
       });
-      log('Tracked [MIG] ' + t.symbol + ' @ $' + t.price);
+      log('Tracked [MIG] ' + t.symbol + ' @ $' + entryPriceNum);
+    } else {
+      log('WARN [MIG] ' + t.symbol + ' TIDAK di-track — price gak valid. t.price=' + JSON.stringify(t.price) + ' tokenInfo.price=' + JSON.stringify(tokenInfo?.price));
     }
   }
 
@@ -1764,4 +1800,4 @@ if (process.env.CI === 'true') {
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
-} 
+}
