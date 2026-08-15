@@ -46,12 +46,12 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '15000'
+          MIN_LP: '7000'
           MIN_VOL_1H: '60000'
-          MIN_SWAPS_5M: '50'
+          MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
           MAX_AGE_HOURS: '24'
-          MIN_BUY_RATIO: '51'
+          MIN_BUY_RATIO: '55'
           MAX_INSIDER_PCT: '10'
           MAX_RUG_SCORE: '40'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
@@ -61,7 +61,7 @@ jobs:
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '100'
           MAX_SNIPER_PCT: '10'
-          MAX_VOL_LP_RATIO: '300'
+          MAX_VOL_LP_RATIO: '15'
           MAX_CREATOR_TOKENS: '6'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
