@@ -52,7 +52,9 @@ function checkVolLpRatio(vol, lp, maxRatio) {
 }
 
 function checkRugRatio(rugRatio, maxScore) {
-  if (rugRatio == null) return { skip: false, reason: '' };
+  if (rugRatio == null) {
+    return { skip: true, reason: 'Rug ratio GMGN tidak tersedia (data hilang)' };
+  }
   var score = Number(rugRatio) * 100;
   if (score > maxScore) {
     return { skip: true, reason: 'Rug score ' + score.toFixed(0) + ' > ' + maxScore };
