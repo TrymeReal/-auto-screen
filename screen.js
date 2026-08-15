@@ -290,7 +290,7 @@ function normalizeTrench(t) {
     buys:               t.buys_24h,
     sells:              t.sells_24h,
     bundler_rate:       t.bundler_trader_amount_rate,
-    rug_ratio:          Number(t.rug_ratio) || 0,
+    rug_ratio:          t.rug_ratio == null ? null : Number(t.rug_ratio),
     suspected_insider_hold_rate: Number(t.suspected_insider_hold_rate) || 0,
     renounced_mint:           isTruthyFlag(t.renounced_mint) ? 1 : 0,
     renounced_freeze_account: isTruthyFlag(t.renounced_freeze_account) ? 1 : 0,
@@ -442,7 +442,7 @@ function normalizeSignal(signals) {
       volume:        Number(d.volume_1h) || 0,
       holder_count:  Number(d.holder_count) || 0,
       top_10_holder_rate: Number(d.top_10_holder_rate) || 0,
-      rug_ratio:     Number(d.rug_ratio) || 0,
+      rug_ratio:     d.rug_ratio == null ? null : Number(d.rug_ratio),
       creator:       d.creator || '',
       trigger_mc:    Number(s.trigger_mc) || 0,
       trigger_at:    Number(s.trigger_at) || 0,
@@ -1465,7 +1465,11 @@ async function processTokens() {
     // di objek t sejak fetchGmgnTrenches()/normalizeTrench(), jadi gak perlu
     // request tambahan. Skala GMGN 0-1, dikonversi ke 0-100 biar konsisten
     // sama threshold CFG.maxRugScore/CFG.maxInsiderPct yang sudah ada.
-    var gmgnRugScore   = (Number(t.rug_ratio) || 0) * 100;
+    if (t.rug_ratio == null) {
+      log('SKIP [MIG] ' + t.symbol + ' (Rug ratio GMGN tidak tersedia (data hilang))');
+      continue; // TIDAK di-lock ke SEEN — data belum tersedia, coba lagi siklus berikutnya
+    }
+    var gmgnRugScore   = Number(t.rug_ratio) * 100;
     var gmgnInsiderPct = (Number(t.suspected_insider_hold_rate) || 0) * 100;
     if (gmgnRugScore > CFG.maxRugScore) {
       log('SKIP [MIG] ' + t.symbol + ' (Rug ' + gmgnRugScore.toFixed(0) + ' > ' + CFG.maxRugScore + ')');
@@ -1614,7 +1618,11 @@ async function processTokens() {
       continue;
     }
     // Gate 7: rug ratio
-    var rugScore = Math.round((t.rug_ratio || 0) * 100);
+    if (t.rug_ratio == null) {
+      log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ratio GMGN tidak tersedia (data hilang))');
+      continue; // TIDAK di-lock ke SEEN — data belum tersedia, coba lagi siklus berikutnya
+    }
+    var rugScore = Math.round(Number(t.rug_ratio) * 100);
     if (rugScore > CFG.maxRugScore) {
       log('SKIP [SIGNAL] ' + t.symbol + ' (Rug ' + rugScore + ')');
       SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'signal', lockedReason: 'rug_score' });
