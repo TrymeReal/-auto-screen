@@ -46,8 +46,8 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '7000'
-          MIN_VOL_1H: '60000'
+          MIN_LP: '30000'
+          MIN_VOL_1H: '20000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
           MAX_AGE_HOURS: '24'
