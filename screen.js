@@ -1371,6 +1371,18 @@ async function processTokens() {
       if (Number(tiMc) > 0) t.market_cap = Number(tiMc);
     }
 
+    // FIX Vol/LP ratio meledak palsu: t.volume dari normalizeTrench() fallback
+    // ke volume_24h kalau volume_1h trenches kosong (sering terjadi, sama kayak
+    // t.price). volume_24h jauh lebih besar drpd volume_1h, jadi kalau ke-pakai
+    // buat Vol/LP ratio (gate risk di bawah), rasio bisa meledak 80-400x dan
+    // token normal ke-skip dengan alasan "wash trading" yang keliru. Timpa
+    // t.volume dengan volume_1h dari tokenInfo (lebih akurat/real-time) SEBELUM
+    // gate risk dipanggil, bukan sesudahnya.
+    var vol1hReal = Number(tokenInfo?.price?.volume_1h);
+    if (vol1hReal > 0) {
+      t.volume = vol1hReal;
+    }
+
     // Filter narasi dimatikan — semua token lanjut ke gate berikutnya tanpa cek narasi
     var narrativeGate = { skip: false, reason: 'Narrative filter dimatikan' };
     log('[MIG] Narasi SKIP-CHECK ' + t.symbol + ' (' + narrativeGate.reason + ')');
@@ -1495,9 +1507,9 @@ async function processTokens() {
       creator: t.creator_address || t.dev?.creator_address || '?',
     };
 
-    var vol1h = Number(tokenInfo?.price?.volume_1h) || t.volume || 0;
-    // Update t.volume dengan volume_1h dari token info (untuk notifikasi)
-    t.volume = vol1h;
+    // t.volume sudah di-normalisasi ke volume_1h di atas (sebelum gate risk),
+    // jadi di sini tinggal pakai langsung — nggak perlu overwrite lagi.
+    var vol1h = t.volume || 0;
     const grade = gradeToken(t.liquidity, t.volume, gmgnRugScore);
     SEEN.set(t.address, { firstSeen: Date.now(), seenAt: Date.now(), mode: 'migration' });
     if (grade === 'SKIP') {
