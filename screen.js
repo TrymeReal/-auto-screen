@@ -1712,7 +1712,7 @@ async function checkTrackedPositions(trendingTokens) {
     var gain = ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100;
     var modeLabel = pos.mode === 'SWING' ? '🔄 Swing' : '🆕 Mig';
 
-    if (gain <= -80) {
+    if (gain <= -50) {
       var wasProfit   = (pos.nextTargetIdx || 0) > 0;
       var stopLabel   = wasProfit ? '📉 Stop Track (Was Profit)' : '🗑️ Stop Track';
       var stopType    = wasProfit ? 'STOP_TRACK_WAS_PROFIT' : 'STOP_TRACK';
@@ -1725,7 +1725,7 @@ async function checkTrackedPositions(trendingTokens) {
       await sendTelegram(
         gradeEmoji + ' ' + riskLabel + ' | ' + modeLabel + ' | <b>' + stopLabel + '</b> | '
         + pos.name + ' (<code>' + pos.symbol + '</code>)\n'
-        + 'Drop >80% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
+        + 'Drop >50% dari entry $' + pos.entryPrice.toFixed(10) + ' → $' + currentPrice.toFixed(10),
         pos.msgId,
         safeThread
       );
