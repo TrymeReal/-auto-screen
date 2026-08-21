@@ -47,16 +47,16 @@ jobs:
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
           MIN_LP: '20000'
-          MIN_VOL_1H: '20000'
+          MIN_VOL_1H: '60000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
-          MAX_AGE_HOURS: '24'
+          MAX_AGE_HOURS: '1'
           MIN_BUY_RATIO: '55'
           MAX_INSIDER_PCT: '10'
           MAX_RUG_SCORE: '40'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '40'
-          MAX_TOP10_HOLDERS: '25'
+          MAX_TOP10_HOLDERS: '22'
           MAX_DEV_HOLD: '10'
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '100'
@@ -65,12 +65,12 @@ jobs:
           MAX_CREATOR_TOKENS: '6'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
-          SWING_MIN_VOL1H: '20000'
+          SWING_MIN_VOL1H: '60000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
           SWING_VOL_SPIKE: '2.0'
           SWING_MIN_HOLDERS: '500'
-          SWING_MIN_AGE_H: '24'
+          SWING_MIN_AGE_H: '1'
           SWING_MAX_AGE_H: '168'
       - name: Push JSON data to repo
         run: |
