@@ -43,6 +43,20 @@ const CFG = {
   maxSniperPct:      Number(process.env.MAX_SNIPER_PCT)      || 10,
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
+
+  // Gate berbasis skor RISK INDIVIDUAL RugCheck — KHUSUS mode MIGRATION.
+  // RugCheck ngasih tiap risk item skor numerik sendiri (mis. "High holder
+  // correlation" score:15, "Single holder ownership" score:8000) — beda
+  // dari skor total gabungan. maxSingleRiskScore = 0 artinya: ADA SATU
+  // risk aja yang skornya > 0 → skip, apapun namanya (gak match nama
+  // string, jadi tetap jalan walau RugCheck reword nama risk-nya nanti).
+  // RUGCHECK_RISK_GATE_ENABLED=false buat matiin gate ini kalau ternyata
+  // kebanyakan token normal ikut kena (terlalu strict).
+  rugCheckRiskGateEnabled: (process.env.RUGCHECK_RISK_GATE_ENABLED || 'true').trim().toLowerCase() !== 'false',
+  maxSingleRiskScore:      Number(process.env.MAX_SINGLE_RISK_SCORE) || 0,
+  // Skip otomatis kalau RugCheck vonis token ini pernah di-rug (d.rugged === true).
+  skipIfRugged: (process.env.SKIP_IF_RUGGED || 'true').trim().toLowerCase() !== 'false',
+
   narrativeTopK:      Number(process.env.NARRATIVE_TOP_K)      || 3,
   narrativeMinCluster:Number(process.env.NARRATIVE_MIN_CLUSTER)|| 2,
   narrativeMinHeat:   Number(process.env.NARRATIVE_MIN_HEAT)   || 4,
@@ -499,7 +513,19 @@ async function getRugCheck(ca, insiderThreshold) {
   try {
     const res = await getWithRetry('https://api.rugcheck.xyz/v1/tokens/' + ca + '/report', { timeout: 10000 });
     const d   = res.data;
-    const riskNames = (d.risks || []).map(r => {
+
+    // rawRisks: simpan tiap item risk apa adanya (name, level, score
+    // numerik). RugCheck ngasih skor per-risk sendiri-sendiri (mis. score
+    // 15 utk "High holder correlation", score 8000 utk "Single holder
+    // ownership") — beda dari d.score yang cuma total gabungan. Dipakai
+    // buat gate MIGRATION berbasis ANGKA, bukan cocok-cocokan nama.
+    const rawRisks = (d.risks || []).map(r => ({
+      name:  r.name || '(unnamed risk)',
+      level: r.level || '',
+      score: Number(r.score) || 0,
+    }));
+
+    const riskNames = rawRisks.map(r => {
       const lv = r.level ? '[' + r.level.toUpperCase() + '] ' : '';
       return lv + r.name;
     });
@@ -516,21 +542,36 @@ async function getRugCheck(ca, insiderThreshold) {
         }
       });
     }
+
+    // Risk individual dengan skor tertinggi — dasar gate MIGRATION "skip
+    // kalau ADA SATU risk aja yang skornya > threshold". Kalau semua risk
+    // skornya 0, highestRiskScore = 0 dan gate ini gak nge-skip apapun.
+    let highestRiskScore = 0;
+    let highestRiskName  = '';
+    rawRisks.forEach(r => {
+      if (r.score > highestRiskScore) {
+        highestRiskScore = r.score;
+        highestRiskName  = r.name;
+      }
+    });
+
     return {
-      score:           d.score || 0,
-      scoreNormalised: d.score_normalised ?? -1,
-      risks:           riskNames.join(', '),
-      creator:         d.creator || d.owner || '?',
-      topDangers:      riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
-      topWarns:        riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, '')),
-      tokenType:       d.tokenType || '',
-      rugged:          d.rugged || false,
-      deployPlatform:  d.deployPlatform || '',
-      insiderPct:      maxInsiderPct,
+      score:            d.score || 0,
+      scoreNormalised:  d.score_normalised ?? -1,
+      risks:            riskNames.join(', '),
+      highestRiskScore: highestRiskScore,
+      highestRiskName:  highestRiskName,
+      creator:          d.creator || d.owner || '?',
+      topDangers:       riskNames.filter(n => /\[DANGER\]/i.test(n)).map(n => n.replace(/^\[DANGER\]\s*/i, '')),
+      topWarns:         riskNames.filter(n => /\[WARN\]/i.test(n)).map(n => n.replace(/^\[WARN\]\s*/i, '')),
+      tokenType:        d.tokenType || '',
+      rugged:           d.rugged || false,
+      deployPlatform:   d.deployPlatform || '',
+      insiderPct:       maxInsiderPct,
     };
   } catch {
-    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', creator: '?',
-             topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
+    return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', highestRiskScore: 0, highestRiskName: '',
+             creator: '?', topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
              insiderPct: 0 };
   }
 }
@@ -1492,19 +1533,41 @@ async function processTokens() {
       log('SKIP [MIG] ' + t.symbol + ' (Insider ' + gmgnInsiderPct.toFixed(0) + '% > ' + CFG.maxInsiderPct + '%)');
       continue;
     }
-    // Objek "rug" dipertahankan (dipakai buildMsg/sendRadarBridge) tapi
-    // isinya sekarang murni GMGN. Field yang RugCheck-only (topDangers,
-    // topWarns, tokenType, deployPlatform, scoreNormalised) dikosongkan
-    // karena GMGN gak punya padanannya — bukan bug, memang gak ada datanya.
+
+    // Cek RugCheck asli JUGA di mode Migration — sebelumnya cuma mode
+    // SWING yang manggil ini, MIGRATION cuma andalin rug_ratio GMGN yang
+    // metodologinya beda dan bisa melewatkan risk yang RugCheck tangkap.
+    // Dipanggil setelah gate GMGN lolos, biar gak nambah API call buat
+    // token yang udah keskip duluan.
+    const rcMig = await getRugCheck(t.address, CFG.maxInsiderPct);
+    if (CFG.skipIfRugged && rcMig.rugged) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck: pernah dinyatakan rugged)');
+      continue;
+    }
+    // Gate per-risk individual — skip kalau ADA SATU risk RugCheck aja
+    // yang skornya > CFG.maxSingleRiskScore, terlepas dari skor GMGN.
+    // Ini nangkep kasus token lolos gate GMGN padahal RugCheck nemu risk
+    // spesifik (mis. High holder correlation) yang gak kecek kalau cuma
+    // andalin rug_ratio GMGN.
+    if (CFG.rugCheckRiskGateEnabled && rcMig.highestRiskScore > CFG.maxSingleRiskScore) {
+      log('SKIP [MIG] ' + t.symbol + ' (RugCheck risk "' + rcMig.highestRiskName
+        + '" score ' + rcMig.highestRiskScore + ' > ' + CFG.maxSingleRiskScore + ')');
+      continue;
+    }
+
+    // Objek "rug" — skor utama tetap GMGN (gmgnRugScore, dipakai buat
+    // grading/threshold lama, gak diubah biar behavior grading tetap sama).
+    // Field RugCheck-only sekarang diisi dari rcMig (sebelumnya dikosongkan
+    // karena RugCheck emang gak pernah dipanggil di mode ini).
     const rug = {
       score: gmgnRugScore,
       insiderPct: gmgnInsiderPct,
-      scoreNormalised: -1,
-      tokenType: '',
-      deployPlatform: '',
-      topDangers: [],
-      topWarns: [],
-      creator: t.creator_address || t.dev?.creator_address || '?',
+      scoreNormalised: rcMig.scoreNormalised,
+      tokenType: rcMig.tokenType,
+      deployPlatform: rcMig.deployPlatform,
+      topDangers: rcMig.topDangers,
+      topWarns: rcMig.topWarns,
+      creator: t.creator_address || t.dev?.creator_address || rcMig.creator || '?',
     };
 
     // t.volume sudah di-normalisasi ke volume_1h di atas (sebelum gate risk),
