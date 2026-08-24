@@ -62,6 +62,88 @@ const CFG = {
   narrativeMinHeat:   Number(process.env.NARRATIVE_MIN_HEAT)   || 4,
   narrativeDynamic:   process.env.NARRATIVE_DYNAMIC_ENABLED !== 'false',
 
+  // ─────────────────────────────────────────────
+  //  CANDLE ENTRY (breakout / fullback) — KHUSUS MODE MIGRATION.
+  //  Kalau ON, notif MIGRATION GAK LANGSUNG dikirim begitu lolos gate dasar,
+  //  tapi nunggu pola candle dulu:
+  //   - BREAKOUT: body candle hijau, jauh lebih panjang dari body candle
+  //     sebelumnya (bukan cuma wick), DAN close-nya berhasil tembus di atas
+  //     level resistance yang sebelumnya sudah gagal ditembus (rejection).
+  //   - FULLBACK (pullback): sesudah tren naik, muncul candle body KECIL
+  //     (warna apa saja, ekor besar/kecil gak masalah) — tanda momentum
+  //     reda / market ancang-ancang balik arah, dipakai sbg titik entry
+  //     retrace yang searah tren.
+  //  SWING TIDAK TERPENGARUH SAMA SEKALI — tetap notif langsung seperti biasa.
+  //  CATATAN: versi GitHub ini TIDAK pakai Birdeye/GeckoTerminal/DexPaprika
+  //  — candle cuma diambil dari GMGN kline (behavior tier terakhir di lokal).
+  // ─────────────────────────────────────────────
+  migCandleEntryEnabled: isTruthyFlag(process.env.MIG_CANDLE_ENTRY_ENABLED),
+  // Resolusi candle yang dipakai buat deteksi pola (kline GMGN).
+  migCandleResolution: process.env.MIG_CANDLE_RESOLUTION || '5m',
+  // Berapa banyak candle history diambil buat hitung avg body & cari level resistance.
+  migCandleLookback:   Number(process.env.MIG_CANDLE_LOOKBACK) || 30,
+  // BREAKOUT: body candle terakhir harus >= sekian x rata-rata body N candle sebelumnya.
+  migBreakoutBodyMult: Number(process.env.MIG_BREAKOUT_BODY_MULT) || 1.8,
+  // BREAKOUT: wick (ekor) atas+bawah candle breakout maksimal sekian % dari body-nya
+  // (biar "ekor dikit gak masalah" tapi bukan body kecil ekor panjang).
+  migBreakoutMaxWickPct: Number(process.env.MIG_BREAKOUT_MAX_WICK_PCT) || 40,
+  // BREAKOUT: berapa candle ke belakang dicek buat nyari "level kuat yang gagal
+  // ditembus" (resistance yang pernah ada rejection, bukan sekadar high tertinggi).
+  migResistanceLookback: Number(process.env.MIG_RESISTANCE_LOOKBACK) || 20,
+  // FULLBACK: body candle dianggap "kecil" kalau <= sekian x rata-rata body
+  // candle sebelumnya.
+  migFullbackBodyMax: Number(process.env.MIG_FULLBACK_BODY_MAX) || 0.6,
+  // FULLBACK: minimal berapa candle naik (higher close berturut2 dominan)
+  // sebelum candle kecil, biar valid dianggap "napas di tengah uptrend"
+  // bukan cuma noise di awal.
+  migFullbackMinUptrendCandles: Number(process.env.MIG_FULLBACK_MIN_UPTREND) || 3,
+  // Timeout watchlist candle entry — kalau sampai sekian menit gak ada pola
+  // breakout/fullback yang muncul, token di-drop dari watchlist (biar gak
+  // numpuk nunggu selamanya). 0 = gak ada timeout (nunggu terus).
+  migCandleWatchTimeoutMin: Number(process.env.MIG_CANDLE_WATCH_TIMEOUT_MIN) || 180,
+  // Interval recheck watchlist candle-entry (breakout/fullback) MIGRATION,
+  // detik. Candle butuh waktu terbentuk (beda sama cek harga tiap detik),
+  // jadi default lebih longgar drpd fibEntryPollInterval.
+  migCandleEntryPollInterval: Number(process.env.MIG_CANDLE_ENTRY_POLL_INTERVAL) || 30,
+
+  // ─────────────────────────────────────────────
+  //  FIB ENTRY — gate opsional sebelum notif MIGRATION. Kalau OFF (default)
+  //  dan CFG.migCandleEntryEnabled juga OFF, notif tetap jalan seperti biasa
+  //  (langsung notif di harga sekarang begitu lolos grading). Kalau ON,
+  //  token yang lolos grading masuk watchlist dulu dan BARU notif begitu
+  //  harga retrace ke level fib target — level fib dihitung ulang tiap
+  //  cycle dari swing terbaru (dinamis, gak dikunci).
+  //  KHUSUS MIGRATION (SWING tidak disentuh versi GitHub ini).
+  // ─────────────────────────────────────────────
+  fibEntryEnabled: isTruthyFlag(process.env.FIB_ENTRY_ENABLED),
+  // 'fair' | 'support' | angka custom rasio retracement (mis. 0.65)
+  fibEntryLevel:      process.env.FIB_ENTRY_LEVEL || 'fair',
+  fibEntryTolerancePct: Number(process.env.FIB_ENTRY_TOLERANCE_PCT) || 2,
+  // Mode yang pakai gate ini — CSV. Dikunci ke MIGRATION saja di versi GitHub ini.
+  fibEntryModes: (process.env.FIB_ENTRY_MODES || 'MIGRATION')
+    .split(',').map(s => s.trim().toUpperCase()).filter(Boolean),
+  // Interval khusus recheck watchlist fib-entry (PENDING_ENTRY), independen
+  // dari POLL_INTERVAL (scan token baru).
+  fibEntryPollInterval: Number(process.env.FIB_ENTRY_POLL_INTERVAL) || 15,
+
+  // Fib Entry — auto-drop dari watchlist kalau harga udah tembus DI BAWAH
+  // target entry (BELOW_ZONE) pas di-refresh checkPendingEntries(). Default
+  // OFF biar behavior lama (nunggu terus) tetap jalan kalau env var ini
+  // gak diisi.
+  fibDropBelowZoneEnabled: isTruthyFlag(process.env.FIB_DROP_BELOW_ZONE_AFTER_REFRESH),
+  fibDropBelowZonePct: Number(process.env.FIB_DROP_BELOW_ZONE_PCT) || 5,
+
+  // Fib Entry — skip gate KHUSUS MODE MIGRATION (langsung fallback ke notif
+  // normal, gated:false) kalau token masih terlalu "mentah". Default OFF (0).
+  fibMinAgeMinutes:    Number(process.env.FIB_MIN_AGE_MINUTES)    || 0,
+  fibMinLiquidityUsd:  Number(process.env.FIB_MIN_LIQUIDITY_USD)  || 0,
+  fibMinMarketCapUsd:  Number(process.env.FIB_MIN_MARKET_CAP_USD) || 0,
+
+  // Rasio "support" fib — default sesuai fib klasik: 0.500 pas swing bullish
+  // (retrace dari high), 0.272 pas swing bearish (retrace dari low).
+  fibSupportRatioBullish: Number(process.env.FIB_SUPPORT_RATIO_BULLISH) || 0.500,
+  fibSupportRatioBearish: Number(process.env.FIB_SUPPORT_RATIO_BEARISH) || 0.272,
+
   // Mode Swing 1D — filter lebih ketat
   swingMinLp:      Number(process.env.SWING_MIN_LP)      || 30000,
   swingMinVol1h:   Number(process.env.SWING_MIN_VOL1H)   || 20000,
@@ -92,6 +174,7 @@ const CFG = {
   tgThreadId:      Number(process.env.TG_THREAD_ID)      || undefined,  // Swing 1D
   tgThreadMig:     Number(process.env.TG_THREAD_MIG)     || undefined,  // New Migration
   tgThreadEntry:   Number(process.env.TG_THREAD_ENTRY)   || undefined,  // Entry Signal
+  tgThreadAuto:    Number(process.env.TG_THREAD_AUTO)    || undefined,  // Notif Candle/Fib Entry (simulasi buy)
   radarBridgeUrl:  process.env.RADAR_BRIDGE_URL,
   radarBridgeSecret: process.env.RADAR_BRIDGE_SECRET,
 };
@@ -106,11 +189,22 @@ console.log('DEBUG thread SWING=' + process.env.TG_THREAD_ID + ' MIG=' + process
 const TG_API        = 'https://api.telegram.org/bot' + CFG.tgToken + '/sendMessage';
 const SEEN_FILE     = path.join(__dirname, 'seen.json');
 const POSITIONS_FILE= path.join(__dirname, 'positions.json');
+const PENDING_ENTRY_FILE = path.join(__dirname, 'pending_entries.json');
+const CANDLE_ENTRY_WATCH_FILE = path.join(__dirname, 'candle_entry_watch.json');
 const LOG_FILE      = path.join(__dirname, 'screen.log');
 const TRACKING_LOG  = path.join(__dirname, 'tracking_log.json');
 
 const SEEN    = new Map();
 const TRACKED = new Map();
+// Watchlist token MIGRATION yang lolos grading tapi belum entry — dipakai
+// kalau CFG.fibEntryEnabled true. Key = address, value = { symbol, name,
+// grade, mode, address, addedAt, target, fibSource, ...zoneFields }.
+const PENDING_ENTRY = new Map();
+// Watchlist KHUSUS MIGRATION buat gate candle entry (breakout/fullback) —
+// dipakai kalau CFG.migCandleEntryEnabled true. Terpisah dari PENDING_ENTRY
+// (fib entry) karena logic re-check-nya beda (nunggu pola candle, bukan
+// nunggu harga hit level angka tertentu).
+const CANDLE_ENTRY_WATCH = new Map();
 const TARGETS = [30, 50, 100, 200, 500];
 let startTime = Date.now();
 let totalNotified = 0;
@@ -214,6 +308,40 @@ function savePositions() {
   } catch (e) { log('Failed to save positions.json: ' + e.message); }
 }
 
+function loadPendingEntries() {
+  try {
+    const data = JSON.parse(fs.readFileSync(PENDING_ENTRY_FILE, 'utf8'));
+    for (const [ca, entry] of Object.entries(data.entries || {})) PENDING_ENTRY.set(ca, entry);
+    log('Loaded ' + PENDING_ENTRY.size + ' pending fib-entry');
+  } catch { log('No existing pending_entries.json, starting fresh'); }
+}
+
+function savePendingEntries() {
+  try {
+    fs.writeFileSync(PENDING_ENTRY_FILE, JSON.stringify({
+      version: 1, savedAt: Date.now(), entries: Object.fromEntries(PENDING_ENTRY),
+    }));
+  } catch (e) { log('Failed to save pending_entries.json: ' + e.message); }
+}
+
+// Persist watchlist candle-entry (breakout/fullback) KHUSUS MIGRATION —
+// pola sama persis dengan loadPendingEntries/savePendingEntries di atas.
+function loadCandleEntryWatch() {
+  try {
+    const data = JSON.parse(fs.readFileSync(CANDLE_ENTRY_WATCH_FILE, 'utf8'));
+    for (const [ca, entry] of Object.entries(data.entries || {})) CANDLE_ENTRY_WATCH.set(ca, entry);
+    log('Loaded ' + CANDLE_ENTRY_WATCH.size + ' pending candle-entry (MIGRATION)');
+  } catch { log('No existing candle_entry_watch.json, starting fresh'); }
+}
+
+function saveCandleEntryWatch() {
+  try {
+    fs.writeFileSync(CANDLE_ENTRY_WATCH_FILE, JSON.stringify({
+      version: 1, savedAt: Date.now(), entries: Object.fromEntries(CANDLE_ENTRY_WATCH),
+    }));
+  } catch (e) { log('Failed to save candle_entry_watch.json: ' + e.message); }
+}
+
 // ─────────────────────────────────────────────
 //  AUTO PUSH JSON KE GITHUB
 // ─────────────────────────────────────────────
@@ -245,6 +373,8 @@ async function pushJSONToGitHub() {
   const files = [
     { name: 'seen.json', path: SEEN_FILE },
     { name: 'positions.json', path: POSITIONS_FILE },
+    { name: 'pending_entries.json', path: PENDING_ENTRY_FILE },
+    { name: 'candle_entry_watch.json', path: CANDLE_ENTRY_WATCH_FILE },
     { name: 'tracking_log.json', path: TRACKING_LOG },
   ];
   for (const f of files) {
@@ -475,7 +605,54 @@ function normalizeSignal(signals) {
   return result;
 }
 
+// Cache 90s + cooldown per address+resolution — dibutuhkan karena watchlist
+// candle-entry & fib-entry bisa manggil fungsi ini berkali-kali per cycle
+// (recheck tiap CFG.migCandleEntryPollInterval / CFG.fibEntryPollInterval
+// detik), tanpa proteksi ini rawan kena rate-limit GMGN.
+const GMGN_KLINE_CACHE_TTL_MS = 90 * 1000;
+const GMGN_KLINE_COOLDOWN_MS  = 5 * 60 * 1000;
+const gmgnKlineCache = new Map();
+let gmgnKlineCooldownUntil = 0;
+let gmgnKlineLoggedSkip = false;
+
+function getGMGNKlineCached(key) {
+  const hit = gmgnKlineCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() > hit.expiresAt) { gmgnKlineCache.delete(key); return undefined; }
+  return hit.data;
+}
+function setGMGNKlineCached(key, data) {
+  gmgnKlineCache.set(key, { data, expiresAt: Date.now() + GMGN_KLINE_CACHE_TTL_MS });
+}
+function isGMGNKlineCoolingDown() {
+  if (Date.now() >= gmgnKlineCooldownUntil) return false;
+  if (!gmgnKlineLoggedSkip) {
+    log('[GMGN KLINE] Cooldown aktif (rate-limit) — semua request di-skip sampai '
+      + new Date(gmgnKlineCooldownUntil).toLocaleTimeString() + '.');
+    gmgnKlineLoggedSkip = true;
+  }
+  return true;
+}
+function enterGMGNKlineCooldown() {
+  gmgnKlineCooldownUntil = Date.now() + GMGN_KLINE_COOLDOWN_MS;
+  gmgnKlineLoggedSkip    = false;
+  log('[GMGN KLINE] Masuk cooldown: rate-limit — di-skip selama ' + Math.round(GMGN_KLINE_COOLDOWN_MS / 60000)
+    + ' menit (sampai ' + new Date(gmgnKlineCooldownUntil).toLocaleTimeString() + ')');
+}
+function clearGMGNKlineCooldownIfNeeded() {
+  if (gmgnKlineCooldownUntil > 0) {
+    log('[GMGN KLINE] Pulih — request berhasil lagi, cooldown dihapus.');
+    gmgnKlineCooldownUntil = 0;
+    gmgnKlineLoggedSkip    = false;
+  }
+}
+
 async function fetchGMGNKline(address, resolution, fromSec, toSec) {
+  const cacheKey = address + ':' + resolution;
+  const cached = getGMGNKlineCached(cacheKey);
+  if (cached !== undefined) return cached;
+  if (isGMGNKlineCoolingDown()) return null; // short-circuit — gak nembak API sama sekali
+
   try {
     const host = process.env.GMGN_HOST || 'https://openapi.gmgn.ai';
     const ts   = Math.floor(Date.now() / 1000);
@@ -490,6 +667,8 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
       timeout: 10000,
     });
 
+    clearGMGNKlineCooldownIfNeeded(); // request sukses -> kalau sebelumnya cooldown, berarti udah pulih
+
     // Dulu cuma coba res.data.list — kalau API-nya bungkus payload di level
     // "data" (kayak endpoint trending: d.data.rank), .list bakal selalu
     // undefined dan fungsi ini diam-diam balik null tanpa error sama sekali.
@@ -502,10 +681,250 @@ async function fetchGMGNKline(address, resolution, fromSec, toSec) {
         + ' | raw: ' + JSON.stringify(res.data).slice(0, 400));
     }
 
+    setGMGNKlineCached(cacheKey, list);
     return list;
   } catch (e) {
-    log('Kline error ' + address.slice(0, 8) + ': ' + e.message);
+    log('Kline error ' + address.slice(0, 8) + ': ' + e.message
+      + (e.response?.status === 429 ? ' (rate limited)' : ''));
+    if (e.response?.status === 429) enterGMGNKlineCooldown();
+    setGMGNKlineCached(cacheKey, null);
     return null;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CANDLE ENTRY (breakout / fullback) — KHUSUS MODE MIGRATION.
+//  Lihat CFG.migCandleEntryEnabled dkk untuk parameter. Fitur ini TIDAK
+//  menyentuh SWING sama sekali.
+//  CATATAN versi GitHub: candle CUMA diambil dari GMGN kline (gak ada
+//  Birdeye/GeckoTerminal/DexPaprika di versi ini).
+// ─────────────────────────────────────────────
+
+// Normalisasi array candle mentah jadi bentuk { time, open, high, low,
+// close }, urut lama->baru, dengan fallback open (proxy dari close candle
+// sebelumnya) kalau sumbernya gak ngasih open.
+function normalizeCandles(raw, address, sourceLabel) {
+  if (!raw || raw.length < 3) return null;
+
+  let usedOpenFallback = false;
+  const candles = raw
+    .map(c => ({
+      time:  Number(c.time ?? c.timestamp ?? c.t ?? 0),
+      open:  Number(c.open ?? c.o),
+      high:  Number(c.high ?? c.h),
+      low:   Number(c.low  ?? c.l),
+      close: Number(c.close ?? c.c),
+    }))
+    .filter(c => c.close > 0 && c.high > 0 && c.low > 0)
+    .sort((a, b) => a.time - b.time);
+
+  for (let i = 0; i < candles.length; i++) {
+    if (!(candles[i].open > 0)) {
+      usedOpenFallback = true;
+      candles[i].open = i > 0 ? candles[i - 1].close : candles[i].close;
+    }
+  }
+  if (usedOpenFallback) {
+    log('[MIG CANDLE] ' + address.slice(0, 8) + ' (' + sourceLabel + ') — field "open" gak tersedia, pakai fallback close-candle-sebelumnya sbg proxy open.');
+  }
+
+  return candles.length >= 3 ? candles : null;
+}
+
+// Ambil candle buat deteksi pola breakout/fullback MIGRATION — versi
+// GitHub cuma pakai GMGN kline (resolusi tetap dari CFG.migCandleResolution).
+async function fetchMigCandles(address) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const resolution = CFG.migCandleResolution;
+  const secPerCandle = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600 }[resolution] || 300;
+  const fromSec = nowSec - Math.ceil(CFG.migCandleLookback * secPerCandle * 1.5);
+  const rawGmgn = await fetchGMGNKline(address, resolution, fromSec, nowSec);
+  const gmgnCandles = normalizeCandles(rawGmgn, address, 'gmgn_' + resolution);
+  if (gmgnCandles && gmgnCandles.length >= 3) {
+    return gmgnCandles.slice(-CFG.migCandleLookback);
+  }
+  return null;
+}
+
+// Deteksi BREAKOUT: candle terakhir body hijau, body panjang secara relatif
+// (>= migBreakoutBodyMult x rata-rata body candle2 sebelumnya), wick kecil
+// (ekor total <= migBreakoutMaxWickPct% dari body), DAN close-nya berhasil
+// tembus di atas level resistance yang sebelumnya sudah gagal ditembus.
+function detectMigBreakout(candles) {
+  if (!candles || candles.length < 5) return null;
+  const last = candles[candles.length - 1];
+  const history = candles.slice(0, -1);
+
+  const bodies = history.map(c => Math.abs(c.close - c.open)).filter(b => b > 0);
+  const avgBody = bodies.length > 0 ? bodies.reduce((a, b) => a + b, 0) / bodies.length : 0;
+  if (!(avgBody > 0)) return null;
+
+  const lastBody = last.close - last.open; // positif = hijau
+  if (!(lastBody > 0)) return null; // wajib candle hijau
+
+  const bodyRatio = lastBody / avgBody;
+  if (bodyRatio < CFG.migBreakoutBodyMult) return null; // body belum cukup "besar"
+
+  const upperWick = last.high - last.close;
+  const lowerWick = last.open - last.low;
+  const totalWick = Math.max(upperWick, 0) + Math.max(lowerWick, 0);
+  const wickPct = (totalWick / lastBody) * 100;
+  if (wickPct > CFG.migBreakoutMaxWickPct) return null; // ekor kepanjangan, bukan body kuat bersih
+
+  const resWindow = history.slice(-CFG.migResistanceLookback);
+  if (resWindow.length < 2) return null;
+  const resistanceLevel = Math.max(...resWindow.map(c => c.high));
+
+  // Wajib ada rejection sebelumnya: minimal 1 candle di window yang high-nya
+  // dekat resistanceLevel (>=98%) tapi closing-nya balik di bawah level itu.
+  const hadRejection = resWindow.some(c =>
+    c.high >= resistanceLevel * 0.98 && c.close < resistanceLevel
+  );
+  if (!hadRejection) return null;
+
+  if (!(last.close > resistanceLevel)) return null;
+
+  return {
+    type: 'BREAKOUT',
+    resistanceLevel,
+    bodyRatio,
+    wickPct,
+    closePrice: last.close,
+  };
+}
+
+// Deteksi FULLBACK: sesudah tren naik (minimal migFullbackMinUptrendCandles
+// candle dengan close lebih tinggi dari close sebelumnya, dominan naik),
+// muncul candle body KECIL (<= migFullbackBodyMax x rata-rata body sebelumnya)
+// — tanda momentum reda / market ancang-ancang balik arah, titik entry searah tren.
+function detectMigFullback(candles) {
+  if (!candles || candles.length < CFG.migFullbackMinUptrendCandles + 2) return null;
+  const last = candles[candles.length - 1];
+  const history = candles.slice(0, -1);
+
+  const bodies = history.map(c => Math.abs(c.close - c.open)).filter(b => b > 0);
+  const avgBody = bodies.length > 0 ? bodies.reduce((a, b) => a + b, 0) / bodies.length : 0;
+  if (!(avgBody > 0)) return null;
+
+  const lastBody = Math.abs(last.close - last.open);
+  if (lastBody > avgBody * CFG.migFullbackBodyMax) return null; // body gak cukup kecil
+
+  const trendWindow = history.slice(-CFG.migFullbackMinUptrendCandles);
+  if (trendWindow.length < CFG.migFullbackMinUptrendCandles) return null;
+  let higherCount = 0;
+  for (let i = 1; i < trendWindow.length; i++) {
+    if (trendWindow[i].close > trendWindow[i - 1].close) higherCount++;
+  }
+  const upRatio = higherCount / (trendWindow.length - 1);
+  if (upRatio < 0.6) return null; // bukan uptrend yang cukup konsisten
+
+  const trendStart = trendWindow[0].close;
+  const trendEnd    = trendWindow[trendWindow.length - 1].close;
+  if (!(trendEnd > trendStart)) return null;
+
+  return {
+    type: 'FULLBACK',
+    lastBody,
+    avgBody,
+    trendGainPct: ((trendEnd - trendStart) / trendStart) * 100,
+    closePrice: last.close,
+  };
+}
+
+// Entry point: ambil candle terbaru & jalankan kedua detector. Breakout
+// diprioritaskan kalau dua-duanya somehow kepenuhi bareng.
+async function analyzeMigCandlePattern(address) {
+  const candles = await fetchMigCandles(address);
+  if (!candles) return { pattern: null, reason: 'candle_unavailable' };
+
+  const breakout = detectMigBreakout(candles);
+  if (breakout) return { pattern: breakout, reason: null };
+
+  const fullback = detectMigFullback(candles);
+  if (fullback) return { pattern: fullback, reason: null };
+
+  return { pattern: null, reason: 'no_pattern_yet' };
+}
+
+// Gate notif MIGRATION berbasis pola candle (breakout/fullback). Kalau
+// CFG.migCandleEntryEnabled OFF -> return {gated:false} (notif langsung,
+// perilaku lama). Kalau ON: hitung pola, kalau ketemu -> gated:false
+// (lolos, notif langsung terkirim). Kalau belum ketemu -> gated:true,
+// caller simpan ke watchlist candle (CANDLE_ENTRY_WATCH), di-retry oleh
+// runCandleEntryLoop().
+async function gateNotifWithCandlePattern(t, grade) {
+  if (!CFG.migCandleEntryEnabled) return { gated: false };
+  if (grade === 'SKIP') return { gated: false };
+
+  try {
+    const result = await analyzeMigCandlePattern(t.address);
+    if (result.pattern) {
+      const p = result.pattern;
+      if (p.type === 'BREAKOUT') {
+        log('[MIG CANDLE] ' + t.symbol + ' — BREAKOUT terkonfirmasi: body ' + p.bodyRatio.toFixed(1)
+          + 'x avg, wick ' + p.wickPct.toFixed(0) + '%, close $' + fmtPrice(p.closePrice)
+          + ' > resistance $' + fmtPrice(p.resistanceLevel) + ' (level yg sblmnya gagal ditembus)');
+      } else {
+        log('[MIG CANDLE] ' + t.symbol + ' — FULLBACK terkonfirmasi: uptrend +' + p.trendGainPct.toFixed(1)
+          + '%, candle kecil (body ' + fmt(p.lastBody) + ' vs avg ' + fmt(p.avgBody) + '), entry @ $' + fmtPrice(p.closePrice));
+      }
+      return { gated: false, pattern: p };
+    }
+    log('[MIG CANDLE] ' + t.symbol + ' — belum ada pola breakout/fullback (' + result.reason + '), masuk watchlist candle-entry');
+    return { gated: true, reason: result.reason };
+  } catch (e) {
+    log('[MIG CANDLE] Error analisa candle ' + t.symbol + ': ' + e.message + ' — fallback lanjut notif spt biasa');
+    return { gated: false };
+  }
+}
+
+// Gate notif MIGRATION berbasis Fib Entry (retrace ke level fair/support).
+// Kalau CFG.fibEntryEnabled OFF atau mode ini gak masuk CFG.fibEntryModes,
+// return { gated: false } — caller lanjut notif seperti biasa. Kalau ON dan
+// mode cocok: hitung fib zone + level target, kalau harga SEKARANG udah hit
+// target -> gated:false juga (lolos, notif langsung). Kalau belum hit ->
+// simpan ke PENDING_ENTRY, gated:true (di-retry oleh checkPendingEntries()).
+async function gateNotifWithFib(t, grade, mode) {
+  if (!CFG.fibEntryEnabled) return { gated: false };
+  if (!CFG.fibEntryModes.includes(mode)) return { gated: false };
+  if (grade === 'SKIP') return { gated: false };
+
+  const price = Number(t.price);
+  if (!(price > 0)) return { gated: false }; // gak ada harga valid, gak bisa dievaluasi -> lanjut spt biasa
+
+  // Rawness gate — KHUSUS MODE MIGRATION.
+  if (mode === 'MIGRATION') {
+    const ageMin = tokenAgeHours(t.creation_timestamp) * 60;
+    const lp     = Number(t.liquidity) || 0;
+    const mc     = Number(t.market_cap) || 0;
+
+    if (CFG.fibMinAgeMinutes > 0 && ageMin < CFG.fibMinAgeMinutes) {
+      log('[FIB ENTRY] ' + t.symbol + ' (' + mode + ') — umur ' + ageMin.toFixed(1) + 'm < ' + CFG.fibMinAgeMinutes + 'm, chart blm cukup matang, skip fib gate -> notif biasa');
+      return { gated: false };
+    }
+    if (CFG.fibMinLiquidityUsd > 0 && lp < CFG.fibMinLiquidityUsd) {
+      log('[FIB ENTRY] ' + t.symbol + ' (' + mode + ') — LP $' + fmt(lp) + ' < $' + fmt(CFG.fibMinLiquidityUsd) + ', skip fib gate -> notif biasa');
+      return { gated: false };
+    }
+    if (CFG.fibMinMarketCapUsd > 0 && mc < CFG.fibMinMarketCapUsd) {
+      log('[FIB ENTRY] ' + t.symbol + ' (' + mode + ') — MC $' + fmt(mc) + ' < $' + fmt(CFG.fibMinMarketCapUsd) + ', skip fib gate -> notif biasa');
+      return { gated: false };
+    }
+  }
+
+  try {
+    const f = await getFibonacciZone(t.address, t.price, t.price_change_percent1h, t.market_cap, t.history_highest_market_cap, mode);
+    const target = getFibEntryTarget(f);
+    const zoneFields = buildEntryZoneFields(f, target, price, CFG.fibEntryTolerancePct);
+    if (isFibEntryHit(price, target, CFG.fibEntryTolerancePct)) {
+      log('[FIB ENTRY] ' + t.symbol + ' (' + mode + ') — harga $' + fmtPrice(price) + ' udah hit target $' + fmtPrice(target) + ' (' + CFG.fibEntryLevel + '), notif langsung');
+      return { gated: false };
+    }
+    log('[FIB ENTRY] ' + t.symbol + ' (' + mode + ') — harga $' + fmtPrice(price) + ' blm hit target $' + fmtPrice(target) + ' (' + CFG.fibEntryLevel + ', src:' + f.source + '), masuk watchlist');
+    return { gated: true, target, fibSource: f.source, zoneFields };
+  } catch (e) {
+    log('[FIB ENTRY] Error hitung fib utk ' + t.symbol + ': ' + e.message + ' — fallback lanjut notif spt biasa');
+    return { gated: false };
   }
 }
 
@@ -675,6 +1094,14 @@ function gradeToken(lp, vol, rugScore) {
   if (score >= 80) return 'GOLD';
   if (score >= 60) return 'POTENSIAL';
   return 'SKIP';
+}
+
+// Label tampilan grade buat notif Telegram. GOLD (skor tertinggi) tampil
+// sebagai PLATINUM, POTENSIAL (skor menengah) tampil sebagai GOLD.
+function gradeMeta(grade) {
+  if (grade === 'GOLD') return { emoji: '🥇', label: 'PLATINUM' };
+  if (grade === 'POTENSIAL') return { emoji: '🥈', label: 'GOLD' };
+  return { emoji: '🥉', label: 'SILVER' };
 }
 
 function calculateScore(t, rug) {
@@ -915,7 +1342,7 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
         return {
           source: 'kline_' + resolution,
           swingHigh, swingLow,
-          support: Math.max(swingHigh - range * 0.500, floor).toFixed(10),
+          support: Math.max(swingHigh - range * CFG.fibSupportRatioBullish, floor).toFixed(10),
           fair:    Math.max(swingHigh - range * 0.618, floor).toFixed(10),
           resist:  (swingHigh + range * 0.382).toFixed(10),
           sl:      Math.max(swingLow  - range * 0.272, floor * 0.5).toFixed(10),
@@ -942,7 +1369,7 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
     return {
       source: 'estimasi',
       swingHigh: h, swingLow: l,
-      support: Math.max(h - range * 0.500, floor).toFixed(10),
+      support: Math.max(h - range * CFG.fibSupportRatioBullish, floor).toFixed(10),
       fair:    Math.max(h - range * 0.618, floor).toFixed(10),
       resist:  (h + range * 0.382).toFixed(10),
       sl:      Math.max(h - range * 1.272, floor * 0.5).toFixed(10),
@@ -951,12 +1378,77 @@ async function calculateFibonacci(address, price, changePct, mc, athMc, mode) {
     return {
       source: 'estimasi',
       swingHigh: h, swingLow: l,
-      support: Math.max(l - range * 0.272, floor).toFixed(10),
+      support: Math.max(l - range * CFG.fibSupportRatioBearish, floor).toFixed(10),
       fair:    Math.max(l - range * 0.500, floor).toFixed(10),
       resist:  (l + range * 0.382).toFixed(10),
       sl:      Math.max(l - range * 0.618, floor * 0.5).toFixed(10),
     };
   }
+}
+
+// Nama lama dipertahankan sbg alias, biar konsisten penamaan dgn versi
+// lokal (getFibonacciZone) — sama-sama cuma pakai GMGN kline (Tier 4) +
+// estimasi (Tier 5) di versi GitHub ini, tanpa Birdeye/GeckoTerminal/DexPaprika.
+async function getFibonacciZone(address, price, changePct, mc, athMc, mode) {
+  return calculateFibonacci(address, price, changePct, mc, athMc, mode);
+}
+
+// ─────────────────────────────────────────────
+//  FIB ENTRY — level target beli (simulasi), dihitung dari zona fib (f) yang
+//  sudah didapat dari getFibonacciZone(). CFG.fibEntryLevel bisa:
+//    'fair'    -> f.fair
+//    'support' -> f.support
+//    angka (mis. 0.65) -> retracement custom dari swingHigh: swingHigh - range*angka
+function getFibEntryTarget(f) {
+  var level = String(CFG.fibEntryLevel).trim().toLowerCase();
+  if (level === 'fair')    return Number(f.fair);
+  if (level === 'support') return Number(f.support);
+  var ratio = Number(CFG.fibEntryLevel);
+  if (!isNaN(ratio) && f.swingHigh > f.swingLow) {
+    var range = f.swingHigh - f.swingLow;
+    return f.swingHigh - range * ratio;
+  }
+  log('[FIB ENTRY] FIB_ENTRY_LEVEL="' + CFG.fibEntryLevel + '" gak valid, fallback ke fair');
+  return Number(f.fair);
+}
+
+// Cek apakah harga sekarang sudah "hit" level target (dalam toleransi %).
+// Hit kalau harga sekarang ada DI DALAM range [target-toleransi, target+toleransi].
+function isFibEntryHit(currentPrice, target, tolerancePct) {
+  if (!(currentPrice > 0) || !(target > 0)) return false;
+  var upperBound = target * (1 + tolerancePct / 100);
+  var lowerBound = target * (1 - tolerancePct / 100);
+  return currentPrice <= upperBound && currentPrice >= lowerBound;
+}
+
+// Bangun field zona entry (buat dashboard/notif) — f = hasil
+// getFibonacciZone(), target = hasil getFibEntryTarget(f), currentPrice =
+// harga token sekarang.
+function buildEntryZoneFields(f, target, currentPrice, tolerancePct) {
+  var upperBound = target * (1 + tolerancePct / 100);
+  var lowerBound = target * (1 - tolerancePct / 100);
+  var entryZoneLow  = target;
+  var entryZoneHigh = target;
+
+  var distancePct = ((currentPrice - target) / target) * 100;
+
+  var state;
+  if (currentPrice > upperBound) state = 'ABOVE_ZONE';       // masih di atas target, nunggu turun
+  else if (currentPrice >= lowerBound) state = 'IN_ZONE';     // pas di dalam toleransi zona
+  else state = 'BELOW_ZONE';                                  // udah tembus di bawah target
+
+  var range = f.swingHigh - f.swingLow;
+  var fibPositionPct  = range > 0 ? Math.max(0, Math.min(100, ((currentPrice - f.swingLow) / range) * 100)) : 50;
+  var fibZoneStartPct = range > 0 ? Math.max(0, Math.min(100, ((target - f.swingLow) / range) * 100)) : 50;
+  var fibZoneEndPct   = fibZoneStartPct;
+
+  return {
+    entryZoneLow, entryZoneHigh, entryZoneLabel: true,
+    entryDistancePct: distancePct,
+    entryZoneState: state,
+    fibPositionPct, fibZoneStartPct, fibZoneEndPct,
+    pendingCurrentPrice: currentPrice,
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -1581,15 +2073,6 @@ async function processTokens() {
     }
 
     log('[MIG] ' + grade + ' ' + t.symbol + ' (LP:$' + fmt(t.liquidity) + ' Vol1h:$' + fmt(vol1h) + ' Rug(GMGN):' + rug.score.toFixed(0) + ' Insider:' + rug.insiderPct.toFixed(0) + '% Paid:' + (paidDex ? '✅' : '⚠️') + ' Social:' + (dexInfo ? socialScore + '/4' : '?/4') + ')');
-    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
-    const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
-    await sendRadarBridge(t, 'MIGRATION', {
-      grade,
-      rugScore: rug.score,
-      insiderPct: rug.insiderPct,
-      socialScore: dexInfo ? socialScore : undefined
-    });
-    totalNotified++;
 
     // Fallback harga: `t.price` dari normalizeTrench() dihitung manual
     // (usd_market_cap / total_supply) dan sering jadi 0 kalau total_supply
@@ -1600,6 +2083,72 @@ async function processTokens() {
       ? t.price
       : (tokenInfo?.price?.price ?? tokenInfo?.price?.usd ?? tokenInfo?.price?.value);
     var entryPriceNum = Number(entryPriceRaw);
+    if (entryPriceNum > 0) t.price = entryPriceNum; // biar gate (candle/fib) baca harga yg sama dgn yg dipakai track
+
+    // Entry gate KHUSUS MIGRATION — notif (simulasi buy) TIDAK langsung
+    // dikirim begitu lolos gate dasar di atas, tapi nunggu titik entry dulu:
+    //  - CFG.migCandleEntryEnabled ON  -> pakai gate pola candle (breakout/
+    //    fullback). Ini MENGGANTIKAN fib entry khusus di MIGRATION saja.
+    //  - CFG.migCandleEntryEnabled OFF -> tetap fib entry (CFG.fibEntryEnabled).
+    // Kalau dua-duanya OFF -> notif langsung seperti biasa (perilaku lama).
+    let migGate;
+    if (CFG.migCandleEntryEnabled) {
+      migGate = await gateNotifWithCandlePattern(t, grade);
+    } else {
+      migGate = await gateNotifWithFib(t, grade, 'MIGRATION');
+    }
+
+    if (migGate.gated) {
+      if (CFG.migCandleEntryEnabled) {
+        // Watchlist candle-entry: simpan snapshot minimal yang dibutuhkan buat
+        // re-trigger notif nanti begitu breakout/fullback terdeteksi.
+        CANDLE_ENTRY_WATCH.set(t.address, {
+          symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
+          address: t.address, addedAt: Date.now(), lastCheckedAt: Date.now(),
+          reason: migGate.reason || 'no_pattern_yet',
+          rugSnapshot: rug,
+        });
+        saveCandleEntryWatch();
+        const posMigC = TRACKED.get(t.address) || {};
+        TRACKED.set(t.address, Object.assign({}, posMigC, {
+          symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
+          autoBuyStatus: 'WAIT_CANDLE',
+          autoBuyReason: 'Nunggu pola candle breakout/fullback (' + (migGate.reason || 'no_pattern_yet') + ')',
+        }));
+        savePositions();
+        log('[MIG] ' + t.symbol + ' masuk watchlist candle-entry, notif ditunda sampai pola kebentuk');
+      } else {
+        PENDING_ENTRY.set(t.address, {
+          symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
+          address: t.address, addedAt: Date.now(),
+          target: migGate.target, fibSource: migGate.fibSource,
+          rugSnapshot: rug,
+          ...migGate.zoneFields,
+        });
+        savePendingEntries();
+        const posMig = TRACKED.get(t.address) || {};
+        TRACKED.set(t.address, Object.assign({}, posMig, {
+          symbol: t.symbol, name: t.name, grade, mode: 'MIGRATION',
+          autoBuyStatus: 'WAIT_ENTRY',
+          autoBuyReason: 'Nunggu retrace ke level ' + CFG.fibEntryLevel,
+          ...migGate.zoneFields,
+        }));
+        savePositions();
+        log('[MIG] ' + t.symbol + ' masuk watchlist fib-entry, notif ditunda sampai harga hit target');
+      }
+      continue; // JANGAN kirim notif sekarang — nunggu trigger dari watchlist loop
+    }
+
+    // Gate lolos (langsung, atau pattern/hit sudah kebentuk saat gate dicek) — kirim notif sekarang.
+    const fullMsg = await buildMsg(t, rug, grade, null, 'MIGRATION', null);
+    const msgId   = await sendTelegram(fullMsg, null, CFG.tgThreadMig);
+    await sendRadarBridge(t, 'MIGRATION', {
+      grade,
+      rugScore: rug.score,
+      insiderPct: rug.insiderPct,
+      socialScore: dexInfo ? socialScore : undefined
+    });
+    totalNotified++;
 
     if (entryPriceNum > 0) {
       TRACKED.set(t.address, {
@@ -1751,6 +2300,191 @@ async function processTokens() {
 }
 
 // ─────────────────────────────────────────────
+//  FIB ENTRY WATCHLIST — recheck PENDING_ENTRY tiap CFG.fibEntryPollInterval
+//  detik (lihat runFibEntryLoop), independen dari scan token baru. Begitu
+//  harga hit target fib -> kirim notif Telegram (simulasi buy) + track posisi.
+// ─────────────────────────────────────────────
+async function checkPendingEntries() {
+  if (PENDING_ENTRY.size === 0) return;
+
+  for (const [ca, pend] of PENDING_ENTRY) {
+    var currentPrice = null;
+    try {
+      var ds = await axios.get('https://api.dexscreener.com/latest/dex/tokens/' + ca, { timeout: 8000 });
+      var pairs = ds.data.pairs || [];
+      var best  = pairs.find(p => p.priceUsd) || pairs[0] || null;
+      if (best && best.priceUsd) currentPrice = Number(best.priceUsd);
+    } catch (e) {
+      log('[FIB ENTRY] Gagal fetch harga ' + pend.symbol + ': ' + e.message);
+      continue;
+    }
+    if (!currentPrice || currentPrice <= 0) continue;
+
+    var f;
+    try {
+      f = await getFibonacciZone(ca, currentPrice, null, null, null, pend.mode);
+    } catch (e) {
+      log('[FIB ENTRY] Gagal hitung fib ulang ' + pend.symbol + ': ' + e.message);
+      continue;
+    }
+    var target = getFibEntryTarget(f);
+    var zoneFields = buildEntryZoneFields(f, target, currentPrice, CFG.fibEntryTolerancePct);
+
+    if (!isFibEntryHit(currentPrice, target, CFG.fibEntryTolerancePct)) {
+      // BELOW_ZONE = harga udah tembus di bawah target (dump/breakdown).
+      // Langsung DROP saat itu juga, gak nunggu breakdown makin dalam.
+      if (CFG.fibDropBelowZoneEnabled && zoneFields.entryZoneState === 'BELOW_ZONE') {
+        var belowPct = ((Number(target) - currentPrice) / Number(target) * 100).toFixed(1);
+        log('[FIB ENTRY] ' + pend.symbol + ' (' + pend.mode + ') — DROP dari watchlist, harga $'
+          + fmtPrice(currentPrice) + ' udah ' + belowPct + '% di bawah target $' + fmtPrice(target)
+          + ' (breakdown, langsung skip — nunggu zigzag/swing baru)');
+        PENDING_ENTRY.delete(ca);
+        savePendingEntries();
+        const posDrop = TRACKED.get(ca) || {};
+        TRACKED.set(ca, Object.assign({}, posDrop, {
+          autoBuyStatus: 'ENTRY_INVALIDATED',
+          autoBuyReason: 'Support breakdown ' + belowPct + '% di bawah target — entry dibatalkan otomatis',
+          ...zoneFields,
+        }));
+        savePositions();
+        continue;
+      }
+      // Belum hit — update target di watchlist (level fib dinamis, ngikutin swing baru)
+      pend.target = target;
+      pend.fibSource = f.source;
+      pend.lastCheckedAt = Date.now();
+      Object.assign(pend, zoneFields);
+      PENDING_ENTRY.set(ca, pend);
+      const posPend = TRACKED.get(ca) || {};
+      TRACKED.set(ca, Object.assign({}, posPend, {
+        autoBuyStatus: 'WAIT_ENTRY',
+        autoBuyReason: 'Nunggu retrace ke level ' + CFG.fibEntryLevel,
+        ...zoneFields,
+      }));
+      continue;
+    }
+
+    log('[FIB ENTRY] ' + pend.symbol + ' (' + pend.mode + ') — harga $' + fmtPrice(currentPrice) + ' HIT target $' + fmtPrice(target) + ' (src:' + f.source + '), kirim notif');
+
+    var gmFib = gradeMeta(pend.grade);
+    var buyMsgIdFib = await sendTelegram(
+      '🎯 <b>ENTRY SIGNAL</b> | ' + gmFib.emoji + ' ' + gmFib.label + ' | 🆕 New Migration (Fib Entry)\n'
+      + pend.name + ' (<code>' + pend.symbol + '</code>)\n'
+      + '━━━━━━━━━━━━━━━━━━━━\n'
+      + '🏷️ Entry   : $' + fmtPrice(currentPrice) + ' (target $' + fmtPrice(target) + ', ' + CFG.fibEntryLevel + ')\n'
+      + '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>'
+      + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+      null,
+      CFG.tgThreadAuto || CFG.tgThreadMig
+    );
+    totalNotified++;
+
+    TRACKED.set(ca, {
+      symbol: pend.symbol, name: pend.name, grade: pend.grade, mode: pend.mode,
+      entryPrice: currentPrice, entryAt: Date.now(), nextTargetIdx: 0, msgId: buyMsgIdFib,
+      threadId: CFG.tgThreadAuto || CFG.tgThreadMig,
+      autoBuyStatus: 'ENTERED',
+      fibEntry: true, fibEntrySource: f.source, fibEntryTarget: target,
+    });
+    savePositions();
+    logTrackingEvent({
+      type: 'ENTRY_SIGNAL',
+      mode: pend.mode,
+      ca, symbol: pend.symbol, name: pend.name,
+      entryPriceUsd: currentPrice,
+      fibEntry: true, fibSource: f.source, fibTarget: target,
+    });
+    PENDING_ENTRY.delete(ca);
+    savePendingEntries();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CANDLE ENTRY WATCHLIST — recheck CANDLE_ENTRY_WATCH tiap
+//  CFG.migCandleEntryPollInterval detik (lihat runCandleEntryLoop), nunggu
+//  pola breakout/fullback kebentuk. Begitu kebentuk -> kirim notif Telegram
+//  (simulasi buy) + track posisi. KHUSUS MIGRATION.
+// ─────────────────────────────────────────────
+async function checkCandleEntryWatch() {
+  if (CANDLE_ENTRY_WATCH.size === 0) return;
+
+  for (const [ca, watch] of CANDLE_ENTRY_WATCH) {
+    // Timeout opsional — kalau kelamaan gak ada pola sama sekali, drop.
+    if (CFG.migCandleWatchTimeoutMin > 0) {
+      const ageMin = (Date.now() - (watch.addedAt || Date.now())) / 60000;
+      if (ageMin > CFG.migCandleWatchTimeoutMin) {
+        log('[MIG CANDLE] ' + watch.symbol + ' — timeout ' + CFG.migCandleWatchTimeoutMin + 'm tanpa pola breakout/fullback, drop dari watchlist');
+        CANDLE_ENTRY_WATCH.delete(ca);
+        saveCandleEntryWatch();
+        const posTimeout = TRACKED.get(ca) || {};
+        TRACKED.set(ca, Object.assign({}, posTimeout, {
+          autoBuyStatus: 'ENTRY_TIMEOUT',
+          autoBuyReason: 'Timeout ' + CFG.migCandleWatchTimeoutMin + 'm — gak ada pola breakout/fullback',
+        }));
+        savePositions();
+        continue;
+      }
+    }
+
+    let result;
+    try {
+      result = await analyzeMigCandlePattern(ca);
+    } catch (e) {
+      log('[MIG CANDLE] Gagal analisa ulang ' + watch.symbol + ': ' + e.message);
+      continue;
+    }
+
+    if (!result.pattern) {
+      watch.lastCheckedAt = Date.now();
+      watch.reason = result.reason;
+      CANDLE_ENTRY_WATCH.set(ca, watch);
+      continue; // belum ada pola, tetap di watchlist, coba lagi cycle berikutnya
+    }
+
+    const p = result.pattern;
+    if (p.type === 'BREAKOUT') {
+      log('[MIG CANDLE] ' + watch.symbol + ' — BREAKOUT terkonfirmasi (watchlist): body ' + p.bodyRatio.toFixed(1)
+        + 'x avg, close $' + fmtPrice(p.closePrice) + ' > resistance $' + fmtPrice(p.resistanceLevel) + ', kirim notif');
+    } else {
+      log('[MIG CANDLE] ' + watch.symbol + ' — FULLBACK terkonfirmasi (watchlist): uptrend +' + p.trendGainPct.toFixed(1)
+        + '%, entry @ $' + fmtPrice(p.closePrice) + ', kirim notif');
+    }
+
+    var gmCandle = gradeMeta(watch.grade);
+    var patternLabel = p.type === 'BREAKOUT' ? '🚀 Breakout' : '↩️ Fullback';
+    var buyMsgIdCandle = await sendTelegram(
+      '🎯 <b>ENTRY SIGNAL</b> | ' + gmCandle.emoji + ' ' + gmCandle.label + ' | 🆕 New Migration (' + patternLabel + ')\n'
+      + watch.name + ' (<code>' + watch.symbol + '</code>)\n'
+      + '━━━━━━━━━━━━━━━━━━━━\n'
+      + '🏷️ Entry   : $' + fmtPrice(p.closePrice) + '\n'
+      + '<a href="https://dexscreener.com/solana/' + ca + '">Chart</a>'
+      + ' | <a href="https://gmgn.ai/sol/token/' + ca + '">GMGN</a>',
+      null,
+      CFG.tgThreadAuto || CFG.tgThreadMig
+    );
+    totalNotified++;
+
+    TRACKED.set(ca, {
+      symbol: watch.symbol, name: watch.name, grade: watch.grade, mode: 'MIGRATION',
+      entryPrice: p.closePrice, entryAt: Date.now(), nextTargetIdx: 0, msgId: buyMsgIdCandle,
+      threadId: CFG.tgThreadAuto || CFG.tgThreadMig,
+      autoBuyStatus: 'ENTERED',
+      candleEntry: true, candleEntryType: p.type,
+    });
+    savePositions();
+    logTrackingEvent({
+      type: 'ENTRY_SIGNAL',
+      mode: 'MIGRATION',
+      ca, symbol: watch.symbol, name: watch.name,
+      entryPriceUsd: p.closePrice,
+      candleEntry: true, candleEntryType: p.type,
+    });
+    CANDLE_ENTRY_WATCH.delete(ca);
+    saveCandleEntryWatch();
+  }
+}
+
+// ─────────────────────────────────────────────
 //  POSITION TRACKING
 // ─────────────────────────────────────────────
 async function checkTrackedPositions(trendingTokens) {
@@ -1843,6 +2577,54 @@ async function runLoop() {
   setTimeout(runLoop, CFG.interval * 1000);
 }
 
+// ─────────────────────────────────────────────
+//  FIB ENTRY LOOP — independen dari scan token baru (runLoop). Recheck
+//  watchlist PENDING_ENTRY tiap CFG.fibEntryPollInterval detik.
+// ─────────────────────────────────────────────
+var fibEntryRunning = false;
+async function runFibEntryLoop() {
+  if (fibEntryRunning) {
+    setTimeout(runFibEntryLoop, CFG.fibEntryPollInterval * 1000);
+    return;
+  }
+  fibEntryRunning = true;
+  try {
+    if (PENDING_ENTRY.size > 0) {
+      await checkPendingEntries();
+    }
+  } catch (e) {
+    log('[FIB ENTRY LOOP] FATAL: ' + (e && e.message ? e.message : String(e)));
+  } finally {
+    fibEntryRunning = false;
+    setTimeout(runFibEntryLoop, CFG.fibEntryPollInterval * 1000);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  CANDLE ENTRY LOOP — KHUSUS MIGRATION, independen dari runLoop/
+//  runFibEntryLoop. Recheck watchlist CANDLE_ENTRY_WATCH tiap
+//  CFG.migCandleEntryPollInterval detik. No-op kalau migCandleEntryEnabled OFF.
+// ─────────────────────────────────────────────
+var candleEntryRunning = false;
+async function runCandleEntryLoop() {
+  if (!CFG.migCandleEntryEnabled) return; // fitur OFF, gak perlu loop jalan sama sekali
+  if (candleEntryRunning) {
+    setTimeout(runCandleEntryLoop, CFG.migCandleEntryPollInterval * 1000);
+    return;
+  }
+  candleEntryRunning = true;
+  try {
+    if (CANDLE_ENTRY_WATCH.size > 0) {
+      await checkCandleEntryWatch();
+    }
+  } catch (e) {
+    log('[MIG CANDLE LOOP] FATAL: ' + (e && e.message ? e.message : String(e)));
+  } finally {
+    candleEntryRunning = false;
+    setTimeout(runCandleEntryLoop, CFG.migCandleEntryPollInterval * 1000);
+  }
+}
+
 process.on('SIGINT',  () => { log('Saving...'); saveSeen(); process.exit(0); });
 process.on('SIGTERM', () => { log('Saving...'); saveSeen(); process.exit(0); });
 
@@ -1858,6 +2640,15 @@ log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG
 log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
+log('  Entry gate: ' + (CFG.migCandleEntryEnabled
+  ? '🕯️ Candle Pattern (breakout/fullback) — sumber candle: GMGN kline'
+  : (CFG.fibEntryEnabled && CFG.fibEntryModes.includes('MIGRATION') ? '📐 Fib Entry (fair/support retrace)' : '⚡ Langsung (no gate)')));
+if (CFG.migCandleEntryEnabled) {
+  log('    Resolusi: ' + CFG.migCandleResolution + ' | Lookback: ' + CFG.migCandleLookback + ' candle');
+  log('    Breakout: body >= ' + CFG.migBreakoutBodyMult + 'x avg, wick <= ' + CFG.migBreakoutMaxWickPct + '%, tembus resistance (lookback ' + CFG.migResistanceLookback + ')');
+  log('    Fullback: body <= ' + CFG.migFullbackBodyMax + 'x avg, min uptrend ' + CFG.migFullbackMinUptrendCandles + ' candle');
+  log('    Watchlist timeout: ' + (CFG.migCandleWatchTimeoutMin > 0 ? CFG.migCandleWatchTimeoutMin + 'm' : 'tidak ada'));
+}
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
@@ -1870,16 +2661,22 @@ if (CFG.signalEnabled) {
   log('  SM count > 0 | Bot < 50% | Creator token < ' + CFG.maxCreatorTokens);
 }
 log('');
-log('Interval: ' + CFG.interval + 's');
+log('Interval: ' + CFG.interval + 's'
+  + (CFG.fibEntryEnabled ? ' | Interval fib-entry: ' + CFG.fibEntryPollInterval + 's' : '')
+  + (CFG.migCandleEntryEnabled ? ' | Interval candle-entry: ' + CFG.migCandleEntryPollInterval + 's' : ''));
 log('');
 
 loadSeen();
 loadPositions();
+loadPendingEntries();
+loadCandleEntryWatch();
 
 if (process.env.CI === 'true') {
   processTokens().then(() => process.exit(0));
 } else {
   runLoop();
+  runFibEntryLoop(); // loop terpisah recheck watchlist fib-entry, lihat CFG.fibEntryPollInterval
+  runCandleEntryLoop(); // loop terpisah recheck watchlist candle-entry MIGRATION (no-op kalau migCandleEntryEnabled OFF)
   setInterval(doHealthCheck, CFG.healthInterval * 1000);
   setTimeout(() => pushJSONToGitHub(), 60 * 1000); // push pertama setelah 1 menit
   setInterval(() => pushJSONToGitHub(), 10 * 60 * 1000); // push tiap 10 menit
