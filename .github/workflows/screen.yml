@@ -63,19 +63,6 @@ jobs:
           MAX_SNIPER_PCT: '10'
           MAX_VOL_LP_RATIO: '15'
           MAX_CREATOR_TOKENS: '6'
-          # --- Mode 1 (MIGRATION): Candle Entry gate (breakout/fullback) ---
-          # ON = notif MIGRATION ditunda sampai pola candle breakout/fullback
-          # kebentuk (gantikan fib-entry khusus MIGRATION selama ini ON).
-          MIG_CANDLE_ENTRY_ENABLED: 'true'
-          MIG_CANDLE_RESOLUTION: '5m'
-          MIG_CANDLE_LOOKBACK: '30'
-          MIG_BREAKOUT_BODY_MULT: '1.8'
-          MIG_BREAKOUT_MAX_WICK_PCT: '40'
-          MIG_RESISTANCE_LOOKBACK: '20'
-          MIG_FULLBACK_BODY_MAX: '0.6'
-          MIG_FULLBACK_MIN_UPTREND: '3'
-          MIG_CANDLE_WATCH_TIMEOUT_MIN: '180'
-          MIG_CANDLE_ENTRY_POLL_INTERVAL: '30'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
           SWING_MIN_VOL1H: '60000'
