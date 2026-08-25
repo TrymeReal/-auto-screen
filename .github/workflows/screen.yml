@@ -51,7 +51,7 @@ jobs:
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
           MAX_AGE_HOURS: '6'
-          MIN_BUY_RATIO: '0'
+          MIN_BUY_RATIO: '48'
           MAX_INSIDER_PCT: '10'
           MAX_RUG_SCORE: '40'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
