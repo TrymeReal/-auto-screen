@@ -37,7 +37,7 @@ const CFG = {
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
 
   // Sumber data buat gate Social Score mode MIGRATION.
-  // 'GMGN' = cuma pakai field social bawaan GMGN trenches (t.twitter_username/
+  // 'GMGN' = cuma pakai field social bawaan GMGN trenches (t.twitter/
   //          t.website/t.telegram) — lebih cepat, gak nambah API call ke DexScreener.
   // 'DEX'  = cuma pakai DexScreener (fetchDexInfo), behavior lama.
   // 'BOTH' = gabungan, token lolos kalau salah satu sumber (GMGN atau DEX) punya social.
@@ -406,10 +406,15 @@ async function fetchPaidDex(address) {
 
 // Baca field social bawaan GMGN (sudah nempel di objek token sejak
 // fetchGmgnTrenches()/normalizeTrench(), gak perlu API call tambahan).
+// PENTING: endpoint `market trenches` pakai field `twitter` (bukan
+// `twitter_username` — itu nama field di endpoint `market trending` yang beda).
+// Sebelumnya kode ini baca t.twitter_username, yang selalu undefined di data
+// trenches, jadi hasTwitter selalu false meskipun tokennya sebenarnya punya
+// Twitter link (makanya banyak token ke-skip "No Social" padahal ada socialnya).
 function getGmgnSocial(t) {
   return {
     hasWebsite:  !!t.website,
-    hasTwitter:  !!t.twitter_username,
+    hasTwitter:  !!t.twitter,
     hasTelegram: !!t.telegram,
   };
 }
@@ -1208,9 +1213,9 @@ async function buildMsg(t, rug, grade, dex24h, mode, swingSignals) {
   }
 
   var linkParts = [];
-  if (t.twitter_username) linkParts.push('<a href="' + t.twitter_username + '">Twitter</a>');
-  if (t.website)          linkParts.push('<a href="' + t.website + '">Web</a>');
-  if (t.telegram)         linkParts.push('<a href="' + t.telegram + '">TG</a>');
+  if (t.twitter) linkParts.push('<a href="' + t.twitter + '">Twitter</a>');
+  if (t.website) linkParts.push('<a href="' + t.website + '">Web</a>');
+  if (t.telegram) linkParts.push('<a href="' + t.telegram + '">TG</a>');
 
   var mi          = t.renounced_mint === 1 ? '✅' : '❌';
   var fr          = t.renounced_freeze_account === 1 ? '✅' : '❌';
@@ -1521,7 +1526,7 @@ async function processTokens() {
 
     // Gate: Social Score — sumber data diatur via CFG.socialSource (env
     // SOCIAL_SOURCE):
-    //   'GMGN' — pakai field bawaan GMGN trenches (t.twitter_username/t.website/
+    //   'GMGN' — pakai field bawaan GMGN trenches (t.twitter/t.website/
     //            t.telegram), sudah nempel di objek token, TANPA API call tambahan.
     //   'DEX'  — pakai DexScreener (fetchDexInfo), behavior lama. Kalau DexScreener
     //            belum index token (dexInfo null), itu masalah timing data BUKAN
