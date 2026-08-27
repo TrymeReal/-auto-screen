@@ -70,7 +70,7 @@ jobs:
           SOCIAL_SOURCE: 'GMGN'
           # Wajib paid DEX (DexScreener) sebelum token lolos. Set 'false'
           # buat matiin gate ini.
-          REQUIRE_PAID_DEX: 'true'
+          REQUIRE_PAID_DEX: 'false'
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) yang
           # pegang/pernah trading token. Set '0' buat matiin gate ini.
           MIG_MIN_KOL: '3'
