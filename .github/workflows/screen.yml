@@ -73,7 +73,7 @@ jobs:
           REQUIRE_PAID_DEX: 'false'
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) yang
           # pegang/pernah trading token. Set '0' buat matiin gate ini.
-          MIG_MIN_KOL: '3'
+          MIG_MIN_KOL: '5'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
           SWING_MIN_VOL1H: '60000'
