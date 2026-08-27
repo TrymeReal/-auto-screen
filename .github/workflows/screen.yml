@@ -63,6 +63,17 @@ jobs:
           MAX_SNIPER_PCT: '10'
           MAX_VOL_LP_RATIO: '15'
           MAX_CREATOR_TOKENS: '6'
+          # --- Mode 1: gate baru (social source / paid dex / KOL) — bisa
+          # di-tuning langsung dari workflow ini tanpa ubah kode ---
+          # Sumber cek social: GMGN (default, cepat, tanpa API call
+          # tambahan) | DEX (DexScreener) | BOTH (GMGN dulu, fallback DEX).
+          SOCIAL_SOURCE: 'GMGN'
+          # Wajib paid DEX (DexScreener) sebelum token lolos. Set 'false'
+          # buat matiin gate ini.
+          REQUIRE_PAID_DEX: 'true'
+          # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) yang
+          # pegang/pernah trading token. Set '0' buat matiin gate ini.
+          MIG_MIN_KOL: '3'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
           SWING_MIN_VOL1H: '60000'
