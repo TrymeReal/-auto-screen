@@ -31,7 +31,33 @@ const CFG = {
   minLp:           Number(process.env.MIN_LP)           || 5000,
   minVol:          Number(process.env.MIN_VOL_5M)       || 5000,
   maxRugScore:     Number(process.env.MAX_RUG_SCORE)     || 100,
+  // MIN_BUY_RATIO SENGAJA TIDAK dipakai sebagai gate skip di sini — behavior
+  // lama tetap dipertahankan: momentumGate/shouldSkipNewMigration cuma jadi
+  // WARNING log, token tetap lanjut diproses walau buy ratio-nya rendah.
   minBuyRatio:     Number(process.env.MIN_BUY_RATIO)     || 0,
+
+  // Sumber data buat gate Social Score mode MIGRATION.
+  // 'GMGN' = cuma pakai field social bawaan GMGN trenches (t.twitter_username/
+  //          t.website/t.telegram) — lebih cepat, gak nambah API call ke DexScreener.
+  // 'DEX'  = cuma pakai DexScreener (fetchDexInfo), behavior lama.
+  // 'BOTH' = gabungan, token lolos kalau salah satu sumber (GMGN atau DEX) punya social.
+  // Default 'GMGN' kalau env kosong/nilai gak dikenal.
+  socialSource: (function () {
+    var v = (process.env.SOCIAL_SOURCE || 'GMGN').trim().toUpperCase();
+    return ['GMGN', 'DEX', 'BOTH'].includes(v) ? v : 'GMGN';
+  })(),
+
+  // Gate: wajib paid DEX (DexScreener) sebelum token lolos mode MIGRATION.
+  // Default TRUE (wajib, behavior lama) kalau env kosong/tidak diisi.
+  // Set REQUIRE_PAID_DEX=false di .env/workflow buat matiin gate ini — token
+  // tetap discreening & lolos meskipun belum bayar DexScreener.
+  requirePaidDex: (process.env.REQUIRE_PAID_DEX || 'true').trim().toLowerCase() !== 'false',
+
+  // KOL/wallet ternama minimal KHUSUS MODE MIGRATION (field t.renowned_count
+  // dari GMGN, sama yang dipakai di notif "🌟 KOL"). Default 3 — token butuh
+  // minimal 3 KOL/wallet ternama yang pegang/pernah trading sebelum lolos
+  // gate MIGRATION. Set MIG_MIN_KOL=0 di .env/workflow buat matiin gate ini.
+  migMinKol:       Number(process.env.MIG_MIN_KOL)        || 3,
 
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 25,
@@ -376,6 +402,16 @@ async function fetchPaidDex(address) {
     log('DEX Screener error ' + (address || '').slice(0, 8) + ': ' + e.message);
     return false;
   }
+}
+
+// Baca field social bawaan GMGN (sudah nempel di objek token sejak
+// fetchGmgnTrenches()/normalizeTrench(), gak perlu API call tambahan).
+function getGmgnSocial(t) {
+  return {
+    hasWebsite:  !!t.website,
+    hasTwitter:  !!t.twitter_username,
+    hasTelegram: !!t.telegram,
+  };
 }
 
 async function fetchDexInfo(address) {
@@ -1483,35 +1519,83 @@ async function processTokens() {
       continue;
     }
 
-    // Gate: Social Score via DEX Screener (wajib min 1: Twitter/Website/Telegram).
-    // Kalau DexScreener belum index token (dexInfo null) — itu masalah timing data,
-    // BUKAN bukti token tanpa sosial — jadi token tetap diloloskan biar gak
-    // kehilangan entry fresh. Gate sosial hanya menghukum token yang DATANYA ADA
-    // tapi beneran 0 sosial.
-    log('[MIG] Cek Social Score ' + t.symbol + '...');
-    const dexInfo = await fetchDexInfo(t.address);
+    // Gate: Social Score — sumber data diatur via CFG.socialSource (env
+    // SOCIAL_SOURCE):
+    //   'GMGN' — pakai field bawaan GMGN trenches (t.twitter_username/t.website/
+    //            t.telegram), sudah nempel di objek token, TANPA API call tambahan.
+    //   'DEX'  — pakai DexScreener (fetchDexInfo), behavior lama. Kalau DexScreener
+    //            belum index token (dexInfo null), itu masalah timing data BUKAN
+    //            bukti token tanpa sosial — token tetap diloloskan.
+    //   'BOTH' — cek GMGN dulu (gratis, instant); kalau GMGN nemu social, langsung
+    //            lolos tanpa perlu hit DexScreener. Kalau GMGN kosong, baru fallback
+    //            fetch DexScreener sebagai second opinion sebelum diputus skip.
+    log('[MIG] Cek Social Score ' + t.symbol + ' (source: ' + CFG.socialSource + ')...');
 
+    const gmgnSocial = getGmgnSocial(t);
+    let dexInfo = null;
     let socialScore = 0;
-    if (dexInfo) {
-      if (dexInfo.hasImage)    socialScore++;
-      if (dexInfo.hasWebsite)  socialScore++;
-      if (dexInfo.hasTwitter)  socialScore++;
-      if (dexInfo.hasTelegram) socialScore++;
+    let hasSocial = false;
 
-      if (!(dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram)) {
-        log('SKIP [MIG] ' + t.symbol + ' (No Social) [Score:' + socialScore + '/4]');
-        continue;
+    if (CFG.socialSource === 'GMGN') {
+      hasSocial = gmgnSocial.hasTwitter || gmgnSocial.hasWebsite || gmgnSocial.hasTelegram;
+      socialScore = [gmgnSocial.hasWebsite, gmgnSocial.hasTwitter, gmgnSocial.hasTelegram].filter(Boolean).length;
+    } else if (CFG.socialSource === 'DEX') {
+      dexInfo = await fetchDexInfo(t.address);
+      if (dexInfo) {
+        socialScore = [dexInfo.hasImage, dexInfo.hasWebsite, dexInfo.hasTwitter, dexInfo.hasTelegram].filter(Boolean).length;
+        hasSocial = dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram;
+      } else {
+        hasSocial = true; // dexInfo null → gate di-skip, sama seperti behavior lama
       }
-    } else {
-      log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?/4)');
+    } else { // BOTH
+      hasSocial = gmgnSocial.hasTwitter || gmgnSocial.hasWebsite || gmgnSocial.hasTelegram;
+      socialScore = [gmgnSocial.hasWebsite, gmgnSocial.hasTwitter, gmgnSocial.hasTelegram].filter(Boolean).length;
+      if (!hasSocial) {
+        // GMGN kosong — coba DexScreener sebagai fallback sebelum divonis skip.
+        dexInfo = await fetchDexInfo(t.address);
+        if (dexInfo) {
+          socialScore = [dexInfo.hasImage, dexInfo.hasWebsite, dexInfo.hasTwitter, dexInfo.hasTelegram].filter(Boolean).length;
+          hasSocial = dexInfo.hasTwitter || dexInfo.hasWebsite || dexInfo.hasTelegram;
+        } else {
+          hasSocial = true; // dexInfo null → gate di-skip
+        }
+      }
     }
 
-    // Cek paid DEX via DEX Screener API
-    log('[MIG] Cek paid DEX ' + t.symbol + '...');
-    var paidDex = await fetchPaidDex(t.address);
-    if (!paidDex) {
-      log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+    if (!hasSocial) {
+      log('SKIP [MIG] ' + t.symbol + ' (No Social) [Score:' + socialScore + ']');
       continue;
+    }
+    if (CFG.socialSource === 'DEX' && !dexInfo) {
+      log('[MIG] ' + t.symbol + ' — DexScreener belum index, gate sosial di-skip (Social:?)');
+    }
+
+    // Cek paid DEX via DEX Screener API — bisa dimatikan lewat
+    // REQUIRE_PAID_DEX=false (CFG.requirePaidDex). Kalau OFF, gate ini
+    // di-skip total (gak nge-hit API, paidDex dianggap null/unknown dan
+    // token tetap lanjut ke gate berikutnya).
+    var paidDex = null;
+    if (CFG.requirePaidDex) {
+      log('[MIG] Cek paid DEX ' + t.symbol + '...');
+      paidDex = await fetchPaidDex(t.address);
+      if (!paidDex) {
+        log('SKIP [MIG] ' + t.symbol + ' (Belum paid DEX)');
+        continue;
+      }
+    }
+
+    // Gate: KOL/wallet ternama minimal (default MIG_MIN_KOL=3, set 0 buat
+    // matiin) — field t.renowned_count dari GMGN, sama yang dipakai notif
+    // "🌟 KOL". Null/tidak tersedia dari API → gate di-skip (bukan bukti KOL
+    // beneran 0), biar gak salah nge-skip token cuma karena field ini kosong.
+    if (CFG.migMinKol > 0) {
+      var kolCountMig = (typeof t.renowned_count === 'number') ? t.renowned_count : null;
+      if (kolCountMig !== null && kolCountMig < CFG.migMinKol) {
+        log('SKIP [MIG] ' + t.symbol + ' (KOL terlalu sedikit (' + kolCountMig + ' < ' + CFG.migMinKol + '))');
+        continue;
+      } else if (kolCountMig === null) {
+        log('[MIG] ' + t.symbol + ': renowned_count (KOL) tidak tersedia dari API, gate KOL di-skip');
+      }
     }
 
     // Rug score — 100% dari GMGN (rug_ratio), bukan RugCheck. Sudah nempel
@@ -1858,6 +1942,8 @@ log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG
 log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
+log('  Social wajib ada [source: ' + CFG.socialSource + '] | Paid DEX ' + (CFG.requirePaidDex ? 'wajib' : 'OFF (REQUIRE_PAID_DEX=false)')
+  + (CFG.migMinKol > 0 ? ' | KOL min: ' + CFG.migMinKol : ' | KOL: OFF'));
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
