@@ -46,7 +46,7 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '15000'
+          MIN_LP: '25000'
           MIN_VOL_1H: '60000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
@@ -75,7 +75,7 @@ jobs:
           # pegang/pernah trading token. Set '0' buat matiin gate ini.
           MIG_MIN_KOL: '5'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
-          SWING_MIN_LP: '30000'
+          SWING_MIN_LP: '35000'
           SWING_MIN_VOL1H: '60000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
