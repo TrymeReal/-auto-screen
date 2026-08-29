@@ -50,7 +50,7 @@ jobs:
           MIN_VOL_1H: '60000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
-          MAX_AGE_HOURS: '6'
+          MAX_AGE_HOURS: '3'
           MIN_BUY_RATIO: '48'
           MAX_INSIDER_PCT: '10'
           MAX_RUG_SCORE: '40'
@@ -75,13 +75,13 @@ jobs:
           # pegang/pernah trading token. Set '0' buat matiin gate ini.
           MIG_MIN_KOL: '8'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
-          SWING_MIN_LP: '35000'
-          SWING_MIN_VOL1H: '60000'
+          SWING_MIN_LP: '30000'
+          SWING_MIN_VOL1H: '35000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
-          SWING_VOL_SPIKE: '2.0'
+          SWING_VOL_SPIKE: '0.2'
           SWING_MIN_HOLDERS: '500'
-          SWING_MIN_AGE_H: '6'
+          SWING_MIN_AGE_H: '3'
           SWING_MAX_AGE_H: '168'
       - name: Push JSON data to repo
         run: |
