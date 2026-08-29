@@ -83,6 +83,9 @@ jobs:
           SWING_MIN_HOLDERS: '500'
           SWING_MIN_AGE_H: '3'
           SWING_MAX_AGE_H: '168'
+          # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) khusus
+          # mode Swing. Set '0' buat matiin gate ini.
+          SWING_MIN_KOL: '1'
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
