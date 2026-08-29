@@ -1,1 +1,1 @@
-[]
+[{"type":"STOP_TRACK","symbol":"CHILLAPE","name":"Chill Ape","grade":"GOLD","mode":"SWING","entryPrice":0.000267659,"entryAt":1788011980193,"nextTargetIdx":0,"msgId":190813,"threadId":171,"currentPrice":0.000002353,"gain":"-99.1","time":1788013187815},{"type":"TERCAPAI","symbol":"OTC","name":"OTC","grade":"GOLD","mode":"SWING","entryPrice":0.00154287,"entryAt":1788012492387,"nextTargetIdx":0,"msgId":190837,"threadId":171,"currentPrice":0.0020445,"target":30,"gain":"32.5","time":1788013381169}]
