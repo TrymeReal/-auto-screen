@@ -97,6 +97,13 @@ const CFG = {
   swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
   swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
+  // Gate: KOL/wallet ternama minimal KHUSUS MODE SWING (field t.renowned_count
+  // dari GMGN, sama yang dipakai di notif "🌟 KOL" & gate MIG_MIN_KOL di mode
+  // Migration). Default 1 — token butuh minimal 1 KOL/wallet ternama yang
+  // pegang/pernah trading sebelum lolos gate Swing. Set SWING_MIN_KOL=0 di
+  // .env/workflow buat matiin gate ini (behavior lama, gak ada cek KOL sama
+  // sekali di mode Swing).
+  swingMinKol:     Number(process.env.SWING_MIN_KOL)     || 1,
 
   // Smart Money Signal
   signalEnabled:      isTruthyFlag(process.env.SIGNAL_ENABLED),
@@ -822,6 +829,19 @@ async function checkSwingSignal(t) {
   const buyRatio = totalTxn > 0 ? (t.buys / totalTxn) * 100 : 0;
   if (totalTxn > 0 && buyRatio < 50)
     return { pass: false, reason: 'Buy ratio lemah (' + buyRatio.toFixed(0) + '% buy)' };
+
+  // — Gate 7: KOL/wallet ternama minimal (default SWING_MIN_KOL=1, set 0
+  // buat matiin) — field t.renowned_count dari GMGN, sama yang dipakai
+  // notif "🌟 KOL". Null/tidak tersedia dari API → gate di-skip (bukan
+  // bukti KOL kosong, cuma datanya gak ada).
+  if (CFG.swingMinKol > 0) {
+    const kolCountSwing = (typeof t.renowned_count === 'number') ? t.renowned_count : null;
+    if (kolCountSwing !== null && kolCountSwing < CFG.swingMinKol) {
+      return { pass: false, reason: 'KOL terlalu sedikit (' + kolCountSwing + ' < ' + CFG.swingMinKol + ')' };
+    } else if (kolCountSwing === null) {
+      log('[SWING] ' + (t.symbol || '?') + ': renowned_count (KOL) tidak tersedia dari API, gate KOL di-skip');
+    }
+  }
 
   // — Analisa kline 1D untuk konfirmasi sinyal —
   const signals = [];
@@ -1954,6 +1974,7 @@ log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMin
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
 log('  Vol spike min: ' + CFG.swingVolSpikeMin + 'x | Holders min: ' + CFG.swingMinHolders);
 log('  Age: ' + CFG.swingMinAge + 'j – ' + CFG.swingMaxAge + 'j');
+log('  KOL min: ' + (CFG.swingMinKol > 0 ? CFG.swingMinKol : 'OFF (SWING_MIN_KOL=0)'));
 if (CFG.signalEnabled) {
   log('[ Mode 3: Smart Money Signal ]');
   log('  LP > $' + CFG.signalMinLiquidity.toLocaleString() + ' | Holders > ' + CFG.signalMinHolders);
