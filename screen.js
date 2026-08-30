@@ -625,6 +625,9 @@ async function getRugCheck(ca, insiderThreshold) {
     // salah reject token.
     let topHolderPcts = [];
     if (Array.isArray(d.topHolders) && d.topHolders.length > 0) {
+      // DEBUG SEMENTARA: print raw item pertama biar kelihatan nama field
+      // aslinya di log Actions. Hapus/comment baris ini setelah dicek.
+      log('[DEBUG topHolders] ' + JSON.stringify(d.topHolders.slice(0, 4)));
       const totalSupply = d.token?.supply ? Number(d.token.supply) : 0;
       topHolderPcts = d.topHolders.slice(0, 4).map(h => {
         if (typeof h.pct === 'number') return h.pct;
