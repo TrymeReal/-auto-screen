@@ -46,17 +46,17 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '12000'
-          MIN_VOL_1H: '4000'
+          MIN_LP: '15000'
+          MIN_VOL_1H: '60000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
-          MAX_AGE_HOURS: '6'
+          MAX_AGE_HOURS: '24'
           MIN_BUY_RATIO: '32'
           MAX_INSIDER_PCT: '1'
           MAX_RUG_SCORE: '40'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '40'
-          MAX_TOP10_HOLDERS: '28'
+          MAX_TOP10_HOLDERS: '24'
           MAX_DEV_HOLD: '0.5'
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '60'
@@ -70,18 +70,18 @@ jobs:
           SOCIAL_SOURCE: 'GMGN'
           # Wajib paid DEX (DexScreener) sebelum token lolos. Set 'false'
           # buat matiin gate ini.
-          REQUIRE_PAID_DEX: 'false'
+          REQUIRE_PAID_DEX: 'true'
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) yang
           # pegang/pernah trading token. Set '0' buat matiin gate ini.
           MIG_MIN_KOL: '1'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
-          SWING_MIN_VOL1H: '35000'
+          SWING_MIN_VOL1H: '60000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
           SWING_VOL_SPIKE: '0.2'
           SWING_MIN_HOLDERS: '500'
-          SWING_MIN_AGE_H: '3'
+          SWING_MIN_AGE_H: '24'
           SWING_MAX_AGE_H: '168'
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) khusus
           # mode Swing. Set '0' buat matiin gate ini.
