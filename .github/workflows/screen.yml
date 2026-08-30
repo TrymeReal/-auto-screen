@@ -92,7 +92,7 @@ jobs:
           # posisi itu. Set '0' buat matiin gate posisi tsb (default mati). ---
           SWING_MAX_TOP1: '8'
           SWING_MAX_TOP2: '4'
-          SWING_MAX_TOP3: '4'
+          SWING_MAX_TOP3: '3'
           SWING_MAX_TOP4: '3'
       - name: Push JSON data to repo
         run: |
