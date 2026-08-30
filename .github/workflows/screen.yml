@@ -46,22 +46,22 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '25000'
-          MIN_VOL_1H: '60000'
+          MIN_LP: '12000'
+          MIN_VOL_1H: '4000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
-          MAX_AGE_HOURS: '3'
-          MIN_BUY_RATIO: '48'
-          MAX_INSIDER_PCT: '10'
+          MAX_AGE_HOURS: '6'
+          MIN_BUY_RATIO: '32'
+          MAX_INSIDER_PCT: '1'
           MAX_RUG_SCORE: '40'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '40'
-          MAX_TOP10_HOLDERS: '22'
-          MAX_DEV_HOLD: '10'
+          MAX_TOP10_HOLDERS: '28'
+          MAX_DEV_HOLD: '0.5'
           MAX_PRICE_CHANGE_1H: '20'
-          MIN_HOLDERS_MIG: '100'
-          MAX_SNIPER_PCT: '10'
-          MAX_VOL_LP_RATIO: '15'
+          MIN_HOLDERS_MIG: '60'
+          MAX_SNIPER_PCT: '1'
+          MAX_VOL_LP_RATIO: '300'
           MAX_CREATOR_TOKENS: '6'
           # --- Mode 1: gate baru (social source / paid dex / KOL) — bisa
           # di-tuning langsung dari workflow ini tanpa ubah kode ---
