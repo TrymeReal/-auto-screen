@@ -617,17 +617,12 @@ async function getRugCheck(ca, insiderThreshold) {
     });
 
     // topHolderPcts: persentase kepemilikan wallet #1, #2, #3, #4 (index
-    // 0-3), diurutkan besar ke kecil, buat gate SWING_MAX_TOP1..4. Parsing
-    // defensif karena field persen di dalam d.topHolders belum diverifikasi
-    // 100% namanya (bisa 'pct' atau field lain tergantung versi API
-    // RugCheck) — kalau gak ketemu, array-nya kosong dan gate-nya otomatis
-    // di-skip dengan log warning (lihat checkSwingSignal), bukan silently
-    // salah reject token.
+    // 0-3), diurutkan besar ke kecil, buat gate SWING_MAX_TOP1..4. Field
+    // 'pct' di dalam d.topHolders sudah dikonfirmasi lewat log produksi
+    // (30/8/2026) — fallback 'percentage'/hitung manual tetap dijaga buat
+    // jaga-jaga kalau RugCheck ubah format di masa depan.
     let topHolderPcts = [];
     if (Array.isArray(d.topHolders) && d.topHolders.length > 0) {
-      // DEBUG SEMENTARA: print raw item pertama biar kelihatan nama field
-      // aslinya di log Actions. Hapus/comment baris ini setelah dicek.
-      log('[DEBUG topHolders] ' + JSON.stringify(d.topHolders.slice(0, 4)));
       const totalSupply = d.token?.supply ? Number(d.token.supply) : 0;
       topHolderPcts = d.topHolders.slice(0, 4).map(h => {
         if (typeof h.pct === 'number') return h.pct;
