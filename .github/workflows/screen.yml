@@ -86,10 +86,18 @@ jobs:
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) khusus
           # mode Swing. Set '0' buat matiin gate ini.
           SWING_MIN_KOL: '1'
+          # --- Mode 2: Swing 1D — gate Top 1-4 holder individual (dari
+          # RugCheck, data per-wallet #1/#2/#3/#4, bukan gabungan top10).
+          # Masing-masing angka = batas MAKSIMAL % kepemilikan wallet di
+          # posisi itu. Set '0' buat matiin gate posisi tsb (default mati). ---
+          SWING_MAX_TOP1: '8'
+          SWING_MAX_TOP2: '4'
+          SWING_MAX_TOP3: '4'
+          SWING_MAX_TOP4: '3'
       - name: Push JSON data to repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f positions.json tracking_log.json seen.json
           git diff --staged --quiet || git commit -m "chore: update data [skip ci]"
-          git push 
+          git push
