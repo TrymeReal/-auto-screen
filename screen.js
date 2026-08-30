@@ -97,6 +97,19 @@ const CFG = {
   swingMinHolders: Number(process.env.SWING_MIN_HOLDERS) || 500,
   swingMinAge:     Number(process.env.SWING_MIN_AGE_H)   || 24,   // token minimal 24 jam
   swingMaxAge:     Number(process.env.SWING_MAX_AGE_H)   || 720,  // max 30 hari (720 jam)
+  // Gate: Top 1-4 holder individual — KHUSUS MODE SWING. Beda dari
+  // top_10_holder_rate (gabungan top 10 wallet dari GMGN) — ini ngecek
+  // wallet TERBESAR nomor 1, 2, 3, 4 satu-satu, masing-masing punya batas
+  // % sendiri. Datanya dari RugCheck (field topHolders, array per-wallet
+  // sudah diurutkan besar ke kecil oleh API).
+  // Default 0 = gate MATI (skip), karena data ini dari API pihak ketiga
+  // (RugCheck) yang formatnya bisa berubah — aman kalau gak diisi eksplisit
+  // di workflow. Isi salah satu/semua lewat screen.yml buat nyalain.
+  swingMaxTop1: Number(process.env.SWING_MAX_TOP1) || 0,
+  swingMaxTop2: Number(process.env.SWING_MAX_TOP2) || 0,
+  swingMaxTop3: Number(process.env.SWING_MAX_TOP3) || 0,
+  swingMaxTop4: Number(process.env.SWING_MAX_TOP4) || 0,
+
   // Gate: KOL/wallet ternama minimal KHUSUS MODE SWING (field t.renowned_count
   // dari GMGN, sama yang dipakai di notif "🌟 KOL" & gate MIG_MIN_KOL di mode
   // Migration). Default 1 — token butuh minimal 1 KOL/wallet ternama yang
@@ -603,6 +616,24 @@ async function getRugCheck(ca, insiderThreshold) {
       }
     });
 
+    // topHolderPcts: persentase kepemilikan wallet #1, #2, #3, #4 (index
+    // 0-3), diurutkan besar ke kecil, buat gate SWING_MAX_TOP1..4. Parsing
+    // defensif karena field persen di dalam d.topHolders belum diverifikasi
+    // 100% namanya (bisa 'pct' atau field lain tergantung versi API
+    // RugCheck) — kalau gak ketemu, array-nya kosong dan gate-nya otomatis
+    // di-skip dengan log warning (lihat checkSwingSignal), bukan silently
+    // salah reject token.
+    let topHolderPcts = [];
+    if (Array.isArray(d.topHolders) && d.topHolders.length > 0) {
+      const totalSupply = d.token?.supply ? Number(d.token.supply) : 0;
+      topHolderPcts = d.topHolders.slice(0, 4).map(h => {
+        if (typeof h.pct === 'number') return h.pct;
+        if (typeof h.percentage === 'number') return h.percentage;
+        if (totalSupply > 0 && typeof h.amount === 'number') return (h.amount / totalSupply) * 100;
+        return null;
+      });
+    }
+
     return {
       score:            d.score || 0,
       scoreNormalised:  d.score_normalised ?? -1,
@@ -616,11 +647,12 @@ async function getRugCheck(ca, insiderThreshold) {
       rugged:           d.rugged || false,
       deployPlatform:   d.deployPlatform || '',
       insiderPct:       maxInsiderPct,
+      topHolderPcts:    topHolderPcts,
     };
   } catch {
     return { score: 999, scoreNormalised: -1, risks: 'Fetch failed', highestRiskScore: 0, highestRiskName: '',
              creator: '?', topDangers: [], topWarns: [], tokenType: '', rugged: false, deployPlatform: '',
-             insiderPct: 0 };
+             insiderPct: 0, topHolderPcts: [] };
   }
 }
 
@@ -1741,6 +1773,30 @@ async function processTokens() {
       const rug = await getRugCheck(t.address, CFG.maxInsiderPct);
       if (rug.score > CFG.maxRugScore) { log('SKIP [SWING] ' + t.symbol + ' (Rug ' + rug.score + ')'); continue; }
       if (rug.insiderPct > CFG.maxInsiderPct) { log('SKIP [SWING] ' + t.symbol + ' (Insider ' + rug.insiderPct.toFixed(0) + '%)'); continue; }
+
+      // — Gate Top 1-4 holder individual (khusus SWING, override via
+      // SWING_MAX_TOP1..4 di screen.yml). Cek wallet #1,#2,#3,#4 satu-satu
+      // (bukan gabungan top10). Threshold 0 (default) = gate itu mati.
+      // Kalau data topHolderPcts kosong/gak lengkap dari RugCheck, gate
+      // buat index yg datanya gak ada di-skip + log warning, gak nge-reject
+      // token secara diam-diam.
+      const top4Limits = [CFG.swingMaxTop1, CFG.swingMaxTop2, CFG.swingMaxTop3, CFG.swingMaxTop4];
+      let top4Failed = false;
+      for (let idx = 0; idx < 4; idx++) {
+        const limit = top4Limits[idx];
+        if (limit <= 0) continue; // gate posisi ini mati
+        const pct = rug.topHolderPcts[idx];
+        if (typeof pct !== 'number') {
+          log('[SWING] ' + t.symbol + ': data top' + (idx + 1) + ' holder tidak tersedia dari RugCheck, gate top' + (idx + 1) + ' di-skip');
+          continue;
+        }
+        if (pct > limit) {
+          log('SKIP [SWING] ' + t.symbol + ' (Top' + (idx + 1) + ' holder ' + pct.toFixed(1) + '% > ' + limit + '%)');
+          top4Failed = true;
+          break;
+        }
+      }
+      if (top4Failed) continue;
 
       const grade = gradeToken(t.liquidity, t.volume, rug.score);
       if (grade === 'SKIP') { log('SKIP [SWING] ' + t.symbol + ' (Grade SKIP)'); continue; }
