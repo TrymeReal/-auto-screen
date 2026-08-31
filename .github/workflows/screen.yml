@@ -46,23 +46,23 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '7000'
-          MIN_VOL_1H: '4000'
+          MIN_LP: '15000'
+          MIN_VOL_1H: '50000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
           MAX_AGE_HOURS: '24'
-          MIN_BUY_RATIO: 50'
+          MIN_BUY_RATIO: '50'
           MAX_INSIDER_PCT: '1'
-          MAX_RUG_SCORE: '100'
+          MAX_RUG_SCORE: '40'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
-          MAX_BUNDLER_PCT: '70'
-          MAX_TOP10_HOLDERS: '30'
+          MAX_BUNDLER_PCT: '50'
+          MAX_TOP10_HOLDERS: '24'
           MAX_DEV_HOLD: '0.5'
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '60'
           MAX_SNIPER_PCT: '1'
           MAX_VOL_LP_RATIO: '300'
-          MAX_CREATOR_TOKENS: '6'
+          MAX_CREATOR_TOKENS: '20'
           # --- Mode 1: gate baru (social source / paid dex / KOL) — bisa
           # di-tuning langsung dari workflow ini tanpa ubah kode ---
           # Sumber cek social: GMGN (default, cepat, tanpa API call
@@ -80,7 +80,7 @@ jobs:
           # buat matiin gate ini. DEV_ATH_TIMEOUT_MS sengaja tidak diset,
           # pakai default kode (10000ms). ---
           DEV_ATH_GATE_ENABLED: 'true'
-          DEV_MIN_BEST_ATH: '1000000'
+          DEV_MIN_BEST_ATH: '300000'
           # Wallet dev yang belum pernah bikin token sama sekali (riwayat
           # kosong) ikut DI-SKIP, bukan dilolosin.
           DEV_ATH_ALLOW_NEW_WALLET: 'false'
@@ -89,7 +89,7 @@ jobs:
           SWING_MIN_VOL1H: '25000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
-          SWING_VOL_SPIKE: '0.2'
+          SWING_VOL_SPIKE: '2.0'
           SWING_MIN_HOLDERS: '500'
           SWING_MIN_AGE_H: '24'
           SWING_MAX_AGE_H: '168'
