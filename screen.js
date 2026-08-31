@@ -70,6 +70,32 @@ const CFG = {
   maxVolLpRatio:     Number(process.env.MAX_VOL_LP_RATIO)    || 15,
   maxCreatorTokens:  Number(process.env.MAX_CREATOR_TOKENS) || 20,
 
+  // ─────────────────────────────────────────────
+  //  DEV BEST-ATH GATE — KHUSUS MODE MIGRATION.
+  //  Skip token kalau creator/dev wallet-nya BELUM PERNAH punya token lain
+  //  (dari riwayat `gmgn-cli portfolio created-tokens`) dengan ATH market cap
+  //  >= devMinBestAth. Tujuannya nyaring dev serial-creator yang track
+  //  record-nya emang jelek (semua token bikinannya gak pernah moon),
+  //  beda dari gate maxCreatorTokens yang cuma liat JUMLAH token, bukan
+  //  kualitas/hasil ATH-nya.
+  //  Default OFF (devAthGateEnabled=false) - fitur baru, harus di-enable
+  //  eksplisit lewat .env dulu (DEV_ATH_GATE_ENABLED=true) biar gak
+  //  tiba-tiba ngubah behavior MIGRATION yang sudah jalan buat siapapun yang
+  //  belum sempat nyetel/nge-tes threshold ATH-nya sendiri.
+  devAthGateEnabled: (process.env.DEV_ATH_GATE_ENABLED || 'false').trim().toLowerCase() === 'true',
+  // Ambang ATH minimal (dalam USD) yang WAJIB pernah dicapai salah satu
+  // token riwayat dev tsb supaya token barunya lolos gate ini.
+  devMinBestAth:     Number(process.env.DEV_MIN_BEST_ATH) || 100000,
+  // Wallet baru / belum pernah bikin token sama sekali (riwayat kosong):
+  // default FALSE = ikut DI-SKIP. Gak ada riwayat = gak ada bukti track
+  // record, dan wallet fresh gampang dipakai dev buat ngehindar dari gate
+  // ini (ganti wallet tiap deploy). Set DEV_ATH_ALLOW_NEW_WALLET=true di
+  // .env kalau mau balik ke perilaku lama (wallet baru dilewatin).
+  devAthAllowNewWallet: (process.env.DEV_ATH_ALLOW_NEW_WALLET || 'false').trim().toLowerCase() === 'true',
+  // Timeout proses gmgn-cli (ms) - dipisah dari default axios (8000/10000)
+  // di file ini karena manggil child process (execSync), bukan HTTP call.
+  devAthTimeoutMs:   Number(process.env.DEV_ATH_TIMEOUT_MS) || 10000,
+
   // Gate berbasis skor RISK INDIVIDUAL RugCheck — KHUSUS mode MIGRATION.
   // RugCheck ngasih tiap risk item skor numerik sendiri (mis. "High holder
   // correlation" score:15, "Single holder ownership" score:8000) — beda
@@ -473,6 +499,152 @@ function getCreatorTokenCount(walletAddress) {
   } catch (e) {
     return 0;
   }
+}
+
+// ─────────────────────────────────────────────
+//  DEV BEST-ATH GATE (khusus mode MIGRATION, lihat CFG.devAthGateEnabled).
+//  Cache in-memory per proses (Map wallet -> hasil), TIDAK di-persist ke
+//  disk — sengaja, karena ATH riwayat dev bisa berubah kapan aja (token
+//  lama dev yang sama bisa pump belakangan), jadi cache di-reset tiap kali
+//  proses bot di-restart, bukan dianggap "final" selamanya kayak SEEN.
+//  Dalam SATU proses yang sama, cache ini tetap kepake kalau dev yang sama
+//  nongol lagi di siklus scan berikutnya - ngirit call gmgn-cli berulang.
+// ─────────────────────────────────────────────
+var DEV_ATH_CACHE = new Map();
+
+// Ambil ATH market cap tertinggi dari SELURUH token yang pernah dibuat
+// wallet ini (via gmgn-cli portfolio created-tokens), plus total token yang
+// pernah dibuat. Return null kalau fetch gagal / data gak valid (BUKAN 0 -
+// null artinya "gak tau", 0 artinya "sudah tau, wallet baru/kosong").
+// Ini bedanya krusial di getDevAthGate() supaya error network gak keliru
+// kebaca sebagai "riwayat ATH-nya jelek".
+// Struktur response ASLI `gmgn-cli portfolio created-tokens --raw` (dicek
+// langsung dari output mentah, bukan tebakan):
+//   {
+//     "last_create_timestamp": ..., "inner_count": N, "open_count": N,
+//     "creator_ath_info": { "creator": "...", "ath_token": "...",
+//                            "ath_mc": "7357909.13...", "token_symbol": "...", ... },
+//     "tokens": [ { "token_address":..., "symbol":..., "token_ath_mc": "...", ... }, ... ]
+//   }
+// PENTING - 2 hal yang sebelumnya salah tebak:
+//  1. Root object LANGSUNG di top-level (bukan dibungkus {data:{...}}).
+//  2. Field ATH per-token namanya `token_ath_mc`, BUKAN `ath_market_cap`.
+// GMGN sendiri sudah hitung ATH TERBAIK di `creator_ath_info.ath_mc` -
+// dipakai langsung sebagai sumber utama (lebih diandalkan drpd loop manual),
+// fallback ke loop tokens[].token_ath_mc kalau creator_ath_info kosong/absen.
+// Total token pakai inner_count + open_count (innerC + openC, lihat catatan
+// Get-GmgnDevReputation di PowerShell profile) - BUKAN tokens.length, karena
+// array `tokens` di respons ini sering ke-cap/paginated dan gak represent
+// jumlah SEBENARNYA token yang pernah dibuat wallet ini.
+// excludeTokenAddress: alamat token yang LAGI DISCAN sekarang — WAJIB
+// dikecualikan dari perhitungan bestAth. Tujuan gate ini adalah menilai
+// REKAM JEJAK dev SEBELUM token ini ada, bukan ikut menghitung performa
+// token yang sedang berjalan itu sendiri (kalau ikut dihitung, token yang
+// kebetulan lagi pump gede otomatis bikin dev-nya "lolos" gate ini padahal
+// itu bukan bukti track record lama, cuma muter balik ke token itu sendiri).
+function fetchDevBestAth(walletAddress, excludeTokenAddress) {
+  var cacheKey = walletAddress + '|' + (excludeTokenAddress || '');
+  if (DEV_ATH_CACHE.has(cacheKey)) return DEV_ATH_CACHE.get(cacheKey);
+
+  var result;
+  try {
+    var out = execSync(
+      'npx gmgn-cli portfolio created-tokens --chain sol --wallet ' + walletAddress + ' --raw',
+      { encoding: 'utf8', timeout: CFG.devAthTimeoutMs, env: { ...process.env, GMGN_API_KEY: process.env.GMGN_API_KEY || '' } }
+    );
+    var data = JSON.parse(out);
+    // Root bisa langsung object (kasus umum) atau dibungkus {data:{...}}
+    // (jaga-jaga kalau CLI versi lain beda pembungkus) - dicoba dua-duanya.
+    var body = (data && data.tokens) ? data : (data && data.data && data.data.tokens ? data.data : data);
+
+    var tokens = Array.isArray(body.tokens) ? body.tokens : [];
+    var totalTokens = (Number(body.inner_count) || 0) + (Number(body.open_count) || 0);
+    if (totalTokens === 0) totalTokens = tokens.length; // fallback kalau inner/open_count gak ada
+
+    var bestAth = 0;
+    var bestSymbol = null;
+
+    // Sumber utama: creator_ath_info (sudah dihitung GMGN sendiri) — TAPI
+    // ini ngitung ATH dari SELURUH token dev termasuk yang lagi discan
+    // sekarang. Kalau creator_ath_info.ath_token == token yg lagi discan,
+    // SKIP sumber ini (jangan dipakai), turun ke loop tokens[] di bawah
+    // yang sudah exclude token berjalan.
+    var athTokenIsCurrent = excludeTokenAddress
+      && body.creator_ath_info && body.creator_ath_info.ath_token === excludeTokenAddress;
+    if (!athTokenIsCurrent && body.creator_ath_info && body.creator_ath_info.ath_mc != null) {
+      bestAth = Number(body.creator_ath_info.ath_mc) || 0;
+      bestSymbol = body.creator_ath_info.token_symbol || null;
+    }
+
+    // Loop tokens[].token_ath_mc — dipakai sbg fallback/cross-check KALAU
+    // creator_ath_info di-skip di atas, ATAU buat cari runner-up kalau
+    // creator_ath_info ternyata dari token yang lagi discan. Token yang
+    // lagi discan (excludeTokenAddress) WAJIB dilewatin di loop ini.
+    for (var i = 0; i < tokens.length; i++) {
+      if (excludeTokenAddress && tokens[i].token_address === excludeTokenAddress) continue;
+      var athVal = Number(tokens[i].token_ath_mc) || 0;
+      if (athVal > bestAth) {
+        bestAth = athVal;
+        bestSymbol = tokens[i].symbol || '?';
+      }
+    }
+
+    result = { ok: true, totalTokens: totalTokens, bestAth: bestAth, bestSymbol: bestSymbol };
+  } catch (e) {
+    // Fetch/parse gagal - "gak tau", bukan "riwayat jelek". Gak di-cache,
+    // biar dicoba lagi di siklus scan berikutnya (network/rate-limit
+    // sementara mustinya bisa pulih; beda kasus dari hasil yang valid).
+    return { ok: false, totalTokens: 0, bestAth: 0, bestSymbol: null, error: e.message };
+  }
+
+  DEV_ATH_CACHE.set(cacheKey, result);
+  return result;
+}
+
+
+// Gate utama - dipanggil dari alur MIGRATION. Return {skip, reason}, sama
+// pola return value kayak gate-gate lain di file ini (checkBaseLiquidity dkk).
+// currentTokenAddress: alamat token yang LAGI DISCAN — diteruskan ke
+// fetchDevBestAth supaya token ini gak ikut dihitung sbg "riwayat" dev-nya
+// sendiri (lihat catatan di fetchDevBestAth).
+function getDevAthGate(walletAddress, currentTokenAddress) {
+  if (!CFG.devAthGateEnabled) return { skip: false, reason: '' };
+  if (!walletAddress || walletAddress === '?' || walletAddress.length < 30) {
+    // Alamat creator gak valid/gak ke-detect - bukan salah dev-nya, jangan
+    // skip token cuma gara-gara data creator kosong.
+    return { skip: false, reason: '', noCreator: true };
+  }
+
+  var info = fetchDevBestAth(walletAddress, currentTokenAddress);
+  if (!info.ok) {
+    // Gagal fetch riwayat dev - lolosin (fail-open), sama filosofi kayak
+    // gate-gate lain di file ini pas API down (mis. dexInfo null di gate
+    // social DEX). Dicatat di log call site, bukan di sini.
+    return { skip: false, reason: '', unavailable: true };
+  }
+
+  if (info.totalTokens === 0) {
+    // Wallet belum pernah bikin token sama sekali.
+    if (CFG.devAthAllowNewWallet) return { skip: false, reason: '' };
+    return { skip: true, reason: 'Dev wallet baru, belum ada riwayat token (DEV_ATH_ALLOW_NEW_WALLET=false)' };
+  }
+
+  if (info.bestAth < CFG.devMinBestAth) {
+    return {
+      skip: true,
+      reason: 'Dev ATH terbaik cuma $' + Math.round(info.bestAth).toLocaleString()
+        + (info.bestSymbol ? ' (' + info.bestSymbol + ')' : '')
+        + ' dari ' + info.totalTokens + ' token < $' + CFG.devMinBestAth.toLocaleString(),
+    };
+  }
+
+  return {
+    skip: false,
+    reason: '',
+    bestAth: info.bestAth,
+    bestSymbol: info.bestSymbol,
+    totalTokens: info.totalTokens,
+  };
 }
 
 function fetchGmgnSignal() {
@@ -1698,6 +1870,25 @@ async function processTokens() {
     // grading/threshold lama, gak diubah biar behavior grading tetap sama).
     // Field RugCheck-only sekarang diisi dari rcMig (sebelumnya dikosongkan
     // karena RugCheck emang gak pernah dipanggil di mode ini).
+    //
+    // creator: rcMig.creator (RugCheck d.creator/d.owner) SENGAJA TIDAK
+    // dipakai lagi di fallback ini. RugCheck punya konsep "creator"/"owner"
+    // sendiri (bisa jadi mint authority/program address) yang BEDA dari
+    // "wallet yang deploy token di GMGN" — pernah kejadian (kasus MACRODUCK
+    // di versi lain script ini) rcMig.creator ngasih alamat lain sama
+    // sekali yang gak ada riwayat token-nya sama sekali, bikin getDevAthGate
+    // salah nganggep dev baru.
+    //
+    // SUMBER YANG BENAR (dibuktikan via debug log [TOKENINFO-DEV-DEBUG]):
+    // t.creator_address / t.dev dari GMGN TRENCHES selalu undefined —
+    // endpoint `market trenches --type completed` gak nyediain field ini
+    // sama sekali. Tapi tokenInfo.dev (dari `gmgn-cli token info`, yang
+    // SUDAH di-fetch lebih awal di atas sbg `tokenInfo`) PUNYA field
+    // dev.creator_address yang valid.
+    // Urutan fallback: t.creator_address (trenches, kalau suatu saat
+    // GMGN nambahin) -> t.dev?.creator_address (sama, jaga2 nested) ->
+    // tokenInfo.dev?.creator_address (sumber utama yg terbukti terisi)
+    // -> '?' (gak ketemu sama sekali, getDevAthGate fail-open/noCreator).
     const rug = {
       score: gmgnRugScore,
       insiderPct: gmgnInsiderPct,
@@ -1706,8 +1897,40 @@ async function processTokens() {
       deployPlatform: rcMig.deployPlatform,
       topDangers: rcMig.topDangers,
       topWarns: rcMig.topWarns,
-      creator: t.creator_address || t.dev?.creator_address || rcMig.creator || '?',
+      creator: t.creator_address || t.dev?.creator_address || tokenInfo?.dev?.creator_address || '?',
     };
+
+    // Gate: Dev Best-ATH — khusus MIGRATION, default OFF (lihat
+    // CFG.devAthGateEnabled). Skip kalau riwayat token dev ini belum pernah
+    // sekalipun tembus ATH >= CFG.devMinBestAth. Dipanggil di sini (setelah
+    // rug.creator ke-resolve, sebelum grading) biar gak nambah exec()
+    // gmgn-cli buat token yang sudah keskip di gate-gate sebelumnya (LP,
+    // umur, momentum, risk, social, paid DEX, rug score) — exec() child
+    // process lebih mahal dibanding gate in-memory lain di atasnya.
+    if (CFG.devAthGateEnabled) {
+      var devAthGate = getDevAthGate(rug.creator, t.address);
+      if (devAthGate.noCreator) {
+        log('[MIG] ' + t.symbol + ' — creator address tidak terdeteksi (' + rug.creator + '), gate Dev-ATH di-skip');
+      } else if (devAthGate.unavailable) {
+        log('[MIG] ' + t.symbol + ' — gagal ambil riwayat ATH dev, gate Dev-ATH di-skip (fail-open)');
+      } else if (devAthGate.skip) {
+        log('SKIP [MIG] ' + t.symbol + ' (' + devAthGate.reason + ')');
+        continue;
+      } else if (devAthGate.totalTokens > 0) {
+        // Punya riwayat token DAN lolos gate (bestAth >= threshold). Dicek
+        // totalTokens, BUKAN bestAth, supaya tetap ke-log walau bestAth
+        // kebetulan bernilai 0 (falsy tapi valid secara data).
+        log('[MIG] ' + t.symbol + ' — Dev ATH terbaik: $' + Math.round(devAthGate.bestAth).toLocaleString()
+          + (devAthGate.bestSymbol ? ' (' + devAthGate.bestSymbol + ')' : '')
+          + ' dari ' + devAthGate.totalTokens + ' token — lolos');
+      } else {
+        // totalTokens === 0 -> wallet dev baru, belum ada riwayat token
+        // sama sekali. Cabang ini cuma ke-hit kalau CFG.devAthAllowNewWallet
+        // = true (di .env) — default sekarang FALSE, jadi wallet baru
+        // normalnya masuk devAthGate.skip di atas, bukan sampai ke sini.
+        log('[MIG] ' + t.symbol + ' — dev wallet baru/belum ada riwayat token, lolos (DEV_ATH_ALLOW_NEW_WALLET=true di .env)');
+      }
+    }
 
     // t.volume sudah di-normalisasi ke volume_1h di atas (sebelum gate risk),
     // jadi di sini tinggal pakai langsung — nggak perlu overwrite lagi.
@@ -2023,6 +2246,10 @@ log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
 log('  Social wajib ada [source: ' + CFG.socialSource + '] | Paid DEX ' + (CFG.requirePaidDex ? 'wajib' : 'OFF (REQUIRE_PAID_DEX=false)')
   + (CFG.migMinKol > 0 ? ' | KOL min: ' + CFG.migMinKol : ' | KOL: OFF'));
+log('  Dev Best-ATH gate: ' + (CFG.devAthGateEnabled
+  ? '🟢 ON — wajib riwayat dev pernah ATH >= $' + CFG.devMinBestAth.toLocaleString()
+    + ' (wallet baru: ' + (CFG.devAthAllowNewWallet ? 'lolos' : 'skip') + ')'
+  : '🔴 OFF (DEV_ATH_GATE_ENABLED=false)'));
 log('[ Mode 2: Swing 1D Pre-Pump ]');
 log('  LP > $' + CFG.swingMinLp.toLocaleString() + ' | Vol1h > $' + CFG.swingMinVol1h.toLocaleString());
 log('  Max pump 1h: ' + CFG.swingMaxChange1h + '% | Max pump 24h: ' + CFG.swingMaxChange24h + '%');
