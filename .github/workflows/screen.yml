@@ -74,6 +74,16 @@ jobs:
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) yang
           # pegang/pernah trading token. Set '0' buat matiin gate ini.
           MIG_MIN_KOL: '1'
+          # --- Mode 1: gate Dev Best-ATH — skip token kalau riwayat dev
+          # (creator wallet) belum pernah punya token lain yang tembus ATH
+          # market cap >= DEV_MIN_BEST_ATH. Set DEV_ATH_GATE_ENABLED=false
+          # buat matiin gate ini. DEV_ATH_TIMEOUT_MS sengaja tidak diset,
+          # pakai default kode (10000ms). ---
+          DEV_ATH_GATE_ENABLED: 'true'
+          DEV_MIN_BEST_ATH: '1000000'
+          # Wallet dev yang belum pernah bikin token sama sekali (riwayat
+          # kosong) ikut DI-SKIP, bukan dilolosin.
+          DEV_ATH_ALLOW_NEW_WALLET: 'false'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
           SWING_MIN_VOL1H: '60000'
