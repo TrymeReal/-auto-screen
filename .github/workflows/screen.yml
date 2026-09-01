@@ -50,17 +50,17 @@ jobs:
           MIN_VOL_1H: '50000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
-          MAX_AGE_HOURS: '24'
-          MIN_BUY_RATIO: '50'
-          MAX_INSIDER_PCT: '1'
-          MAX_RUG_SCORE: '40'
+          MAX_AGE_HOURS: '1'
+          MIN_BUY_RATIO: '53'
+          MAX_INSIDER_PCT: '10'
+          MAX_RUG_SCORE: '100'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '50'
           MAX_TOP10_HOLDERS: '24'
-          MAX_DEV_HOLD: '0.5'
+          MAX_DEV_HOLD: '5'
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '60'
-          MAX_SNIPER_PCT: '1'
+          MAX_SNIPER_PCT: '15'
           MAX_VOL_LP_RATIO: '300'
           MAX_CREATOR_TOKENS: '20'
           # --- Mode 1: gate baru (social source / paid dex / KOL) — bisa
@@ -80,18 +80,18 @@ jobs:
           # buat matiin gate ini. DEV_ATH_TIMEOUT_MS sengaja tidak diset,
           # pakai default kode (10000ms). ---
           DEV_ATH_GATE_ENABLED: 'true'
-          DEV_MIN_BEST_ATH: '300000'
+          DEV_MIN_BEST_ATH: '150000'
           # Wallet dev yang belum pernah bikin token sama sekali (riwayat
           # kosong) ikut DI-SKIP, bukan dilolosin.
           DEV_ATH_ALLOW_NEW_WALLET: 'false'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
-          SWING_MIN_VOL1H: '25000'
+          SWING_MIN_VOL1H: '20000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
           SWING_VOL_SPIKE: '2.0'
           SWING_MIN_HOLDERS: '500'
-          SWING_MIN_AGE_H: '24'
+          SWING_MIN_AGE_H: '1'
           SWING_MAX_AGE_H: '168'
           # Minimal KOL/wallet ternama (t.renowned_count dari GMGN) khusus
           # mode Swing. Set '0' buat matiin gate ini.
