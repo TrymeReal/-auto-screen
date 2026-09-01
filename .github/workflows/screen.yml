@@ -46,7 +46,7 @@ jobs:
           # RADAR_BRIDGE_URL / RADAR_BRIDGE_SECRET: sengaja di-skip (tidak dipakai)
           # --- Threshold & config, di-hardcode dari file lama ---
           SIGNAL_ENABLED: 'false'
-          MIN_LP: '15000'
+          MIN_LP: '25000'
           MIN_VOL_1H: '50000'
           MIN_SWAPS_5M: '40'
           MIN_VOL_5M: '5000'
@@ -85,8 +85,8 @@ jobs:
           # kosong) ikut DI-SKIP, bukan dilolosin.
           DEV_ATH_ALLOW_NEW_WALLET: 'false'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
-          SWING_MIN_LP: '30000'
-          SWING_MIN_VOL1H: '20000'
+          SWING_MIN_LP: '50000'
+          SWING_MIN_VOL1H: '40000'
           SWING_MAX_CHG1H: '15'
           SWING_MAX_CHG24H: '50'
           SWING_VOL_SPIKE: '2.0'
