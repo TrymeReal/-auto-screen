@@ -83,7 +83,7 @@ jobs:
           DEV_MIN_BEST_ATH: '150000'
           # Wallet dev yang belum pernah bikin token sama sekali (riwayat
           # kosong) ikut DI-SKIP, bukan dilolosin.
-          DEV_ATH_ALLOW_NEW_WALLET: 'false'
+          DEV_ATH_ALLOW_NEW_WALLET: 'true'
           # --- Mode 2: Swing 1D — sebelumnya pakai default kode, sekarang eksplisit ---
           SWING_MIN_LP: '30000'
           SWING_MIN_VOL1H: '30000'
