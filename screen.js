@@ -12,6 +12,7 @@ const {
   checkVol1h,
   checkSwaps5m,
   checkVol5m,
+  checkTop10HoldersRate,
 } = require('./filters');
 
 // ─────────────────────────────────────────────
@@ -61,6 +62,7 @@ const CFG = {
 
   // New Migration extra gates
   maxBundlerPct:     Number(process.env.MAX_BUNDLER_PCT)     || 25,
+  minTop10Holders:   Number(process.env.MIN_TOP10_HOLDERS)   || 10,
   maxTop10Holders:   Number(process.env.MAX_TOP10_HOLDERS)   || 25,
   maxInsiderPct:     Number(process.env.MAX_INSIDER_PCT)     || 20,
   maxDevHold:        Number(process.env.MAX_DEV_HOLD)        || 10,
@@ -2240,7 +2242,7 @@ log('');
 log('[ Mode 1: New Migration ]');
 log('  LP > $' + CFG.minLp.toLocaleString() + ' | Rug < ' + CFG.maxRugScore + ' [RugCheck API]');
 log('  Insider < ' + CFG.maxInsiderPct + '% [RugCheck API] | Narasi cocok tetap lanjut walau GMGN risk/momentum/grade lemah');
-log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10 > ' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
+log('  GMGN risk warning: Bundler > ' + CFG.maxBundlerPct + '% | Top10: ' + CFG.minTop10Holders + '%-' + CFG.maxTop10Holders + '% | CreatorHold > ' + CFG.maxDevHold + '%');
 log('  GMGN risk warning: Sniper > ' + CFG.maxSniperPct + '% | Vol/LP > ' + CFG.maxVolLpRatio + 'x');
 log('  Momentum warning: Vol1h < $' + CFG.minVol1h.toLocaleString() + ' | Txns5m < ' + CFG.minSwaps5m + ' | Vol5m < $' + CFG.minVol5m.toLocaleString());
 log('  Creator tokens < ' + CFG.maxCreatorTokens + ' (serial creator check)');
