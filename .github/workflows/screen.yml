@@ -56,7 +56,8 @@ jobs:
           MAX_RUG_SCORE: '100'
           # --- Mode 1: gate warning (GMGN risk) — sebelumnya pakai default kode, sekarang eksplisit ---
           MAX_BUNDLER_PCT: '50'
-          MAX_TOP10_HOLDERS: '18'
+          MIN_TOP10_HOLDERS: '13'
+          MAX_TOP10_HOLDERS: '20'
           MAX_DEV_HOLD: '5'
           MAX_PRICE_CHANGE_1H: '20'
           MIN_HOLDERS_MIG: '60'
