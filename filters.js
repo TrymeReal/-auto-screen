@@ -71,6 +71,19 @@ function checkInsiderRate(rate, maxInsiderPct) {
   return { skip: false, reason: '' };
 }
 
+// NEW: Check Min/Max Top10 Holders rate
+function checkTop10HoldersRate(rate, minTop10, maxTop10) {
+  if (rate == null) return { skip: false, reason: '' };
+  var pct = Number(rate) * 100;
+  if (pct < minTop10) {
+    return { skip: true, reason: 'Top10 ' + pct.toFixed(0) + '% < ' + minTop10 + '%' };
+  }
+  if (pct > maxTop10) {
+    return { skip: true, reason: 'Top10 ' + pct.toFixed(0) + '% > ' + maxTop10 + '%' };
+  }
+  return { skip: false, reason: '' };
+}
+
 function shouldSkipMigration(token, cfg) {
   var t = token;
 
@@ -94,10 +107,9 @@ function shouldSkipMigration(token, cfg) {
     return { skip: true, reason: 'Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%' };
   }
 
-  var top10 = (t.top_10_holder_rate || 0) * 100;
-  if (top10 > cfg.maxTop10Holders) {
-    return { skip: true, reason: 'Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%' };
-  }
+  // UPDATED: Check Min/Max Top10 Holders
+  var top10 = checkTop10HoldersRate(t.top_10_holder_rate, cfg.minTop10Holders, cfg.maxTop10Holders);
+  if (top10.skip) return top10;
 
   var devHold = checkDevHoldRate(t.dev_team_hold_rate, cfg.maxDevHold);
   if (devHold.skip) return devHold;
@@ -132,10 +144,9 @@ function collectMigrationHardRiskReasons(token, cfg) {
     reasons.push('Bundler ' + bundlerPct.toFixed(0) + '% > ' + cfg.maxBundlerPct + '%');
   }
 
-  var top10 = (t.top_10_holder_rate || 0) * 100;
-  if (top10 > cfg.maxTop10Holders) {
-    reasons.push('Top10 ' + top10.toFixed(0) + '% > ' + cfg.maxTop10Holders + '%');
-  }
+  // UPDATED: Check Min/Max Top10 Holders
+  var top10 = checkTop10HoldersRate(t.top_10_holder_rate, cfg.minTop10Holders, cfg.maxTop10Holders);
+  if (top10.skip) reasons.push(top10.reason);
 
   var devHold = checkDevHoldRate(t.dev_team_hold_rate, cfg.maxDevHold);
   if (devHold.skip) reasons.push(devHold.reason);
@@ -247,6 +258,7 @@ module.exports = {
   checkVolLpRatio,
   checkRugRatio,
   checkInsiderRate,
+  checkTop10HoldersRate,
   shouldSkipMigration,
   collectMigrationHardRiskReasons,
   shouldSkipMigrationHardRisk,
@@ -256,4 +268,4 @@ module.exports = {
   checkSwaps5m,
   checkVol5m,
   shouldSkipNewMigration,
-}; 
+};
